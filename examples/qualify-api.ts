@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { CheckpointRegistry } from "../src/core/checkpoints.js";
 import type { Json } from "../src/core/contracts.js";
+import { DEFAULTS } from "../src/core/contracts.js";
 import { type Sandbox, SandboxManager } from "../src/core/manager.js";
 import { parseArchive } from "../src/core/transfer.js";
 import { SshHostProvider } from "../src/providers/ssh.js";
@@ -39,6 +40,7 @@ const transport = new SshTransport([
 ]);
 const objects = new LocalCheckpointStore(join(directory, "objects"));
 let controlUnavailable = false;
+let clockOffset = 0;
 const manager = new SandboxManager(
   state,
   new SshHostProvider(["ssh-ci"], state, transport),
@@ -49,7 +51,11 @@ const manager = new SandboxManager(
     },
   },
   objects,
-  { poolId: "ci", approvedImages: [image] },
+  {
+    poolId: "ci",
+    approvedImages: [image],
+    now: () => Date.now() + clockOffset,
+  },
 );
 const token = randomBytes(32).toString("hex"),
   foreignToken = randomBytes(32).toString("hex");
@@ -243,6 +249,37 @@ try {
     parseArchive(firstRoot.metadata).sha256,
     parseArchive(secondRoot.metadata).sha256,
   );
+  // Advance only this controller's injected clock; no provider clocks or GC
+  // grace periods are modified. SSH retirement must leave the machine alive.
+  clockOffset = DEFAULTS.idleMs;
+  await manager.reconcile("qualification");
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const allocation = await state.transaction((tx) =>
+      tx.get<{ allocated: boolean }>("ssh-host/ssh-ci"),
+    );
+    if (allocation?.allocated === false) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(
+    (
+      await state.transaction((tx) =>
+        tx.get<{ allocated: boolean }>("ssh-host/ssh-ci"),
+      )
+    )?.allocated,
+    false,
+  );
+  const hostStatus = await transport.request("ssh-ci", {
+    version: 1,
+    id: randomUUID(),
+    action: "status",
+    payload: null,
+  });
+  assert.ok(
+    hostStatus.result &&
+      typeof hostStatus.result === "object" &&
+      !Array.isArray(hostStatus.result) &&
+      hostStatus.result.ready === true,
+  );
   console.log(
     JSON.stringify({
       standaloneApi: true,
@@ -256,6 +293,7 @@ try {
       warmHostReuse: true,
       apiSourceDeletedRestore: true,
       repeatedCheckpointEqual: true,
+      idleRetirementWithoutPowerOff: true,
       completeLifecycle: false,
     }),
   );

@@ -398,3 +398,30 @@ Direct resume from a checkpoint that still holds its host is not implemented yet
 Delete/idle-expiry orchestration, all interactive transports, Boat/S3 qualification,
 complete GC, client staging and matched benchmarks remain open. No paid host or
 existing GC experiment state touched.
+
+Verified resume source: **d420c1a0c6eeba37934fb5d89e1b5d4f0887a03d**, CI
+**41211881089**, all four jobs passed; watcher 37714 terminal0. Real API log
+confirms apiSourceDeletedRestore=true and repeatedCheckpointEqual=true, alongside
+warm host reuse and durable stop. This qualifies same-physical-host/fresh-assignment
+restore through the standalone API, not fresh-host or cloud-store replacement.
+The fixture correctly leaves completeLifecycle=false. Next: direct resume from a
+held checkpoint, interrupted import/controller recovery, delete and idle-expiry
+orchestration; then the remaining provider/storage/transport/GC/client qualification
+and matched benchmarks. Keep the full acceptance matrix and budget boundaries.
+No paid resources or original experiment changes occurred in this continuation.
+
+Idle-retirement continuation: wired the durable pool's retirement receipts into
+server-owned reconciliation. Released idle allocations retire at the ten-minute
+boundary or allocation expiry; unknown retirement results retain their capacity
+until retry succeeds. No-demand pools stay empty, and later SSH re-adoption keeps
+owner/fence/generation continuity. Added injectable controller clock for bounded
+qualification. Tests cover the idle boundary, active-assignment exclusion, lost
+retirement ACK/controller restart, no duplicate completion, zero replenishment and
+next-generation demand. Existing SSH contract proves retirement sends no poweroff
+or delete command. The real API fixture now advances only its injected controller
+clock after stop, observes allocation release and checks that SSH host control is
+still healthy. Await CI before claiming that combined behavior qualified.
+All 55 unit tests, build/typecheck/Biome/Ruff pass locally. Active-host pre-expiry
+drain is still incomplete and must not be inferred from idle retirement. Direct
+held-checkpoint resume, interrupted import/save recovery, delete and all previously
+listed release gates remain open. No original GC clock/state or budget was touched.

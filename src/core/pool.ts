@@ -331,6 +331,7 @@ export class PoolJournal {
   async retired(id: string): Promise<void> {
     await this.state.transaction((tx) => {
       const slot = tx.get<PoolSlot>(this.slotKey(id));
+      if (slot?.phase === "retired") return;
       if (
         !slot ||
         slot.phase !== "quarantined" ||

@@ -3,6 +3,7 @@ import { CommandOutputStore, type OutputChannel } from "./command-output.js";
 import {
   type CheckpointStore,
   canonical,
+  DEFAULTS,
   type HostProvider,
   identifier,
   type Json,
@@ -47,6 +48,7 @@ export type ManagerOptions = {
   poolId: string;
   approvedImages: string[];
   hostsPerOwner?: number;
+  now?: () => number;
 };
 
 /** Portable lifecycle coordinator; all principal scope is supplied by the caller's
@@ -59,6 +61,7 @@ export class SandboxManager {
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
   private readonly shutdown: ShutdownCoordinator;
+  private readonly now: () => number;
   constructor(
     private readonly state: StateStore,
     private readonly provider: HostProvider,
@@ -66,15 +69,16 @@ export class SandboxManager {
     private readonly objects: CheckpointStore,
     options: ManagerOptions,
   ) {
+    this.now = options.now ?? Date.now;
     this.pool = new PoolJournal(
       state,
       options.poolId,
-      Date.now,
+      this.now,
       () => crypto.randomUUID(),
       options.hostsPerOwner ?? 1,
     );
-    this.operations = new OperationJournal(state);
-    this.checkpoints = new CheckpointRegistry(state, objects);
+    this.operations = new OperationJournal(state, this.now);
+    this.checkpoints = new CheckpointRegistry(state, objects, this.now);
     this.outputs = new CommandOutputStore(objects, this.checkpoints);
     this.shutdown = new ShutdownCoordinator({
       state,
@@ -250,6 +254,23 @@ export class SandboxManager {
       });
     }
   }
+  private async retireIdleHosts(owner: string): Promise<void> {
+    for (let slot of await this.pool.inspect(owner)) {
+      if (slot.lease || !slot.machineId) continue;
+      if (
+        slot.phase === "idle" &&
+        (slot.expiresAt <= this.now() ||
+          (slot.idleSince !== null &&
+            slot.idleSince + DEFAULTS.idleMs <= this.now()))
+      )
+        slot = await this.pool.retireIdle(slot.id);
+      if (slot.phase !== "quarantined" || !slot.machineId) continue;
+      // Allocation identity fences provider retries. SSH releases only its
+      // adoption record; cloud adapters must acknowledge actual retirement.
+      await this.provider.retire(slot.machineId, slot.allocationId);
+      await this.pool.retired(slot.id);
+    }
+  }
   /** Pending placement and running receipts survive restarts. Unknown remote
    * effects quarantine the source; they never trigger a second allocation. */
   async reconcile(owner: string): Promise<void> {
@@ -258,6 +279,7 @@ export class SandboxManager {
     try {
       await this.recoverObservedCreates(owner);
       await this.shutdown.reconcile(owner);
+      await this.retireIdleHosts(owner);
       // Repair admission interrupted between sandbox, operation and queue commits.
       for (const sandbox of await this.list(owner))
         if (sandbox.phase === "queued") {

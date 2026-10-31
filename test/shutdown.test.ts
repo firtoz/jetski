@@ -6,7 +6,11 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { gzipSync } from "node:zlib";
 import { CheckpointRegistry } from "../src/core/checkpoints.js";
-import type { HostProvider, Json } from "../src/core/contracts.js";
+import {
+  DEFAULTS,
+  type HostProvider,
+  type Json,
+} from "../src/core/contracts.js";
 import { SandboxManager } from "../src/core/manager.js";
 import type { HostTransport } from "../src/core/transport.js";
 import { SqliteState } from "../src/state/sqlite.js";
@@ -44,6 +48,9 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     };
     const actions: string[] = [];
     const imported: Buffer[] = [];
+    let now = 1,
+      retirements = 0;
+    let failRetirement = true;
     let failRelease = failure === "release-ack",
       allocations = 0;
     const provider: HostProvider = {
@@ -57,7 +64,13 @@ for (const failure of ["release-ack", "upload", "none"] as const)
         return { id: "host", allocationId: input.operationId };
       },
       inspect: async () => ({ state: "ready" }),
-      retire: async () => {},
+      retire: async () => {
+        retirements++;
+        if (failRetirement) {
+          failRetirement = false;
+          throw Error("retirement ACK lost");
+        }
+      },
     };
     const transport: HostTransport = {
       request: async (_host, request) => {
@@ -108,7 +121,7 @@ for (const failure of ["release-ack", "upload", "none"] as const)
         return { version: 1, id: request.id, result };
       },
     };
-    const options = { poolId: "pool", approvedImages: [image] },
+    const options = { poolId: "pool", approvedImages: [image], now: () => now },
       id = randomUUID(),
       scope = { owner: "alice", sandbox: id };
     let manager = new SandboxManager(
@@ -203,6 +216,9 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     assert.equal((await manager.get(scope))?.generation, 2);
     assert.equal((await manager.get(scope))?.lease?.generation, 2);
     assert.deepEqual(Buffer.concat(imported), archive);
+    now += DEFAULTS.idleMs;
+    await manager.reconcile("alice");
+    assert.equal(retirements, 0, "an active assignment is never idle-retired");
     const afterResume = actions.length;
     await manager.resume(scope, resumeId);
     await manager.reconcile("alice");
@@ -215,4 +231,33 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     await manager.reconcile("alice");
     assert.equal((await manager.get(scope))?.phase, "stopped");
     assert.equal(allocations, 1, "resume reuses warm host");
+    now += DEFAULTS.idleMs - 1;
+    await manager.reconcile("alice");
+    assert.equal(retirements, 0, "retain host for full idle window");
+    now++;
+    await assert.rejects(manager.reconcile("alice"), /retirement ACK lost/);
+    assert.equal(retirements, 1);
+    manager = new SandboxManager(state, provider, transport, objects, options);
+    await manager.reconcile("alice");
+    assert.equal(
+      retirements,
+      2,
+      "restart reconciles the same allocation retirement",
+    );
+    await manager.reconcile("alice");
+    assert.equal(retirements, 2, "completed retirement is not redispatched");
+    assert.equal(
+      allocations,
+      1,
+      "zero warm minimum does not replenish idle hosts",
+    );
+    const fresh = randomUUID();
+    await manager.create("alice", fresh, image, randomUUID());
+    await manager.reconcile("alice");
+    assert.equal(allocations, 2);
+    assert.equal(
+      (await manager.get({ owner: "alice", sandbox: fresh }))?.lease
+        ?.generation,
+      3,
+    );
   });

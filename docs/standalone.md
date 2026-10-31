@@ -59,3 +59,11 @@ be reconciled using the existing receipt without creating a new assignment.
 writable assignment. Checkpoints and prior command output remain retained across
 generations. For now, issue `stop` before resuming a checkpoint that still holds
 its host; direct resume from a held checkpoint is not yet implemented.
+
+The worker retires released idle host allocations after ten minutes, or when their
+allocation lifetime expires. It does not replenish idle hosts without queued demand.
+SSH retirement releases the adoption record and leaves the operator's machine
+running; permanent owner binding and generation continuity survive re-adoption.
+Lost retirement acknowledgements retain the slot for reconciliation. This idle
+maintenance never retires an active/quarantined assignment; pre-expiry save/drain
+of active cloud hosts remains an unqualified release gate.
