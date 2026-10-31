@@ -260,6 +260,25 @@ export async function qualifyHostStream(
       Buffer.from("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"),
     );
     await connection.end();
+    // Leave response bytes buffered while the host has already completed.
+    let hostClosed = false;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const observed = (await request("stream-status", {
+        ...payload,
+        streamId: adapterId,
+      })) as { phase: string };
+      if (observed.phase === "closed") {
+        hostClosed = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.ok(
+      hostClosed,
+      "Host should finish before the client drains its buffered response",
+    );
+    await coordinator.reconcileOwner(scope.owner);
+    assert.equal((await coordinator.status(scope, adapterId)).phase, "open");
     const adapterBytes: Uint8Array[] = [];
     for await (const part of connection.output) adapterBytes.push(part);
     await connection.completed;

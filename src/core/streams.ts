@@ -97,6 +97,14 @@ export class StreamCoordinator {
     let record = await this.status(scope, id);
     if (record.phase === "closed" || record.phase === "cancelled")
       return record;
+    // Host completion does not mean a live controller has drained its output.
+    // Never settle a valid controller's stream out from under its consumer.
+    if (
+      (record.phase === "open" || record.phase === "dispatched") &&
+      record.validUntil > this.now() &&
+      (await this.state.transaction((tx) => this.allowed(tx, scope, record)))
+    )
+      return record;
     const response = await this.control.request(record.lease.machineId, {
       version: HOST_PROTOCOL_VERSION,
       id,

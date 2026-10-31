@@ -269,3 +269,23 @@ test("another controller preserves a valid connection and cancels an expired own
   assert.equal((await restarted.status(scope, id)).phase, "cancelled");
   assert.equal(f.opens, 1);
 });
+
+test("host completion cannot discard bytes still buffered by a live controller", async (t) => {
+  const f = await fixture(t),
+    source = connection(),
+    id = randomUUID();
+  const first = f.build(async () => source.wire);
+  const live = await first.open(scope, "port", id);
+  f.setObserved({ phase: "closed", delivery: "complete" });
+  const other = f.build(async () => {
+    throw Error("must not reopen");
+  });
+  await other.reconcileOwner(scope.owner);
+  assert.equal((await other.status(scope, id)).phase, "open");
+  const received: number[] = [];
+  for await (const bytes of live.output) received.push(...bytes);
+  await live.completed;
+  assert.deepEqual(received, [1, 0, 255]);
+  assert.equal((await first.status(scope, id)).phase, "closed");
+  assert.equal(source.aborted, 0);
+});

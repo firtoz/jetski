@@ -93,6 +93,27 @@ workload-specific products.
 
 ## Latest continuation status
 
+Follow-up correctness fix: recovery must not settle a valid live controller's
+stream from host completion while response bytes remain buffered locally. It now
+leaves valid active leases untouched; regression verifies another controller sees
+a host-complete receipt without closing the live stream and exact buffered bytes
+still reach its caller. Prior43faeb9CI remains running; retain its results but do
+not treat it as the final qualified source. This fixes a review-discovered race,
+not a demonstrated hosted byte-loss incident. Local checks/follow-upCI pending.
+
+
+Published43faeb9c872ad88ba4a65b61537b37f21abe7606; CI41243652847.
+Watcher4360 logs /tmp/jetski-stream-recovery-ci.log. Local87TS/70Python checks,
+build/typecheck/lint pass. Hosted completion-ACK recovery with separate SQLite
+connection pending; observe exact workflow to terminal without restarting it.
+Next complete recovery for dispatch that never created a host record: status
+failure must not permanently prevent an expired/cancelled stream from installing
+its host-side cancellation tombstone. Preserve uncertainty on ambiguous outages.
+Also reconcile terminal streams from verified whole-runtime stop before old host
+retirement, then finish public gateway authorization/cleanup and Boat streaming.
+No paid-host allocation, desktop workloads or protected experiment changes.
+
+
 Recovery scheduling candidate: terminal host receipts are observed before issuing
 cancellation, so a lost completion ACK can recover without network-byte replay.
 An active controller has a durable10second lease, renewed when half remains;
