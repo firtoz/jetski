@@ -93,6 +93,19 @@ workload-specific products.
 
 ## Latest continuation status
 
+faa917ecb5acea1ba74203fc5afd14efc840b940 / CI41237509396 passed all five
+jobs; watcher49938 exited0. API job124644274733 receipt
+/tmp/jetski-ssh-gateway-api.log confirms sshGatewayOwnerTerminalReconnect=true
+on a real disposable rootless container: reconnect to existing remote terminal,
+41x99geometry, exact output and normal exit. Existing API checkpoint/recovery tests
+also pass. This is SSH-adopted CI qualification, not paid Boat or client staging.
+Follow-up hardening uses a bounded TCP listener and public ssh2 injectSocket API:
+15second pre-header/authentication deadline, capped sockets and shutdown that closes
+silent pre-header clients. Earlier library connection callback runs only after
+header receipt; it cannot enforce that deadline by itself. New regression test
+confirms silent socket shutdown.71TS tests/build/typecheck/lint pass locally;
+59Python unchanged pass. Follow-up exact-SHA CI pending.
+
 SSH gateway candidate: isolated server/ssh subpath and opt-in standalone config,
 public-key owner identity, strict existing-terminal attach command with byte cursor,
 no outer shell/subsystem/env/host forwarding. Serialized bounded terminal input

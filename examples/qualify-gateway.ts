@@ -33,6 +33,7 @@ export async function qualifyGateway(
   async function attach(terminal: string, offset: number) {
     const connection = new ssh2.Client();
     connections.push(connection);
+    connection.on("error", () => {});
     const ready = once(connection, "ready");
     connection.connect({
       host: "127.0.0.1",

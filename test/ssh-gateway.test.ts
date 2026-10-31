@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { connect as connectSocket } from "node:net";
 import { test } from "node:test";
 import ssh2, {
   type ClientChannel,
@@ -82,6 +83,8 @@ test("SSH gateway authenticates keys, scopes attachments, denies host commands a
   async function connect(key: string, username = "box") {
     const client = new Client();
     clients.push(client);
+    // Rejected channels and teardown may reset an already authenticated transport.
+    client.on("error", () => {});
     const ready = once(client, "ready");
     client.connect({
       host: "127.0.0.1",
@@ -192,4 +195,38 @@ test("SSH gateway authenticates keys, scopes attachments, denies host commands a
   assert.ok(
     !inputs.some((entry) => (entry as { kind: string }).kind === "close"),
   );
+});
+
+test("SSH gateway shutdown closes silent pre-header sockets", {
+  timeout: 3000,
+}, async () => {
+  const unavailable = async (): Promise<never> => {
+    throw Error("Backend must not be reached");
+  };
+  const gateway = createSshGateway(
+    {
+      get: unavailable,
+      requireTerminal: unavailable,
+      terminalInput: unavailable,
+      terminalInputStatus: unavailable,
+      commandOutput: unavailable,
+      commandStatus: unavailable,
+    },
+    {
+      hostKey: Buffer.from(host.private),
+      principals: [{ owner: "alice", publicKey: alice.public }],
+    },
+  );
+  await new Promise<void>((resolve) =>
+    gateway.server.listen(0, "127.0.0.1", resolve),
+  );
+  const address = gateway.server.address();
+  assert.ok(address && typeof address !== "string");
+  const socket = connectSocket(address.port, "127.0.0.1");
+  socket.on("error", () => {});
+  await once(socket, "connect");
+  socket.resume();
+  const closed = once(socket, "close");
+  await gateway.close();
+  await closed;
 });

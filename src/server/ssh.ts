@@ -1,5 +1,6 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
+import { createServer, type Socket } from "node:net";
 import ssh2, { type Connection, type ServerChannel } from "ssh2";
 
 const { Server, utils } = ssh2;
@@ -50,9 +51,10 @@ export function createSshGateway(
     throw Error("Unique SSH principal keys required");
   const clients = new Set<Connection>();
   const tasks = new Set<Promise<void>>();
-  const server = new Server(
+  const sockets = new Map<string, { socket: Socket; timer: NodeJS.Timeout }>();
+  const ssh = new Server(
     { hostKeys: [options.hostKey], ident: "Jetski" },
-    (client) => {
+    (client, info) => {
       if (clients.size >= maximum) {
         client.end();
         return;
@@ -104,6 +106,8 @@ export function createSshGateway(
         }
       });
       client.on("ready", () => {
+        const pending = sockets.get(`${info.ip}/${info.port}`);
+        if (pending) clearTimeout(pending.timer);
         if (!scope) {
           client.end();
           return;
@@ -288,20 +292,37 @@ export function createSshGateway(
       });
     },
   );
+  const server = createServer((socket) => {
+    if (sockets.size >= maximum) {
+      socket.destroy();
+      return;
+    }
+    const key = `${socket.remoteAddress}/${socket.remotePort}`;
+    const timer = setTimeout(() => socket.destroy(), 15000);
+    sockets.set(key, { socket, timer });
+    socket.on("error", () => {});
+    socket.once("close", () => {
+      clearTimeout(timer);
+      sockets.delete(key);
+    });
+    ssh.injectSocket(socket);
+  });
   server.maxConnections = maximum;
+  const closeConnections = () => {
+    for (const client of clients) client.end();
+    for (const { socket } of sockets.values()) socket.destroy();
+  };
   return {
     server,
     close: async () => {
       const closed = new Promise<void>((resolve) =>
         server.close(() => resolve()),
       );
-      for (const client of clients) client.end();
+      closeConnections();
       await Promise.allSettled([...tasks]);
       await closed;
     },
-    closeConnections: () => {
-      for (const client of clients) client.end();
-    },
+    closeConnections,
   };
 }
 function phase(value: Json): unknown {
