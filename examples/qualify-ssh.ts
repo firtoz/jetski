@@ -239,10 +239,12 @@ try {
   await request("terminal-start", {
     ...payload,
     commandId: terminalId,
+    rows: 33,
+    columns: 97,
     argv: [
       "/bin/sh",
       "-ec",
-      'stty -echo; printf TERMINAL-READY; IFS= read -r first; printf "FIRST:%s\\n" "$first"; stty size; IFS= read -r second; test "$second" = second; trap "printf INTERRUPTED; exit 0" INT; printf SIGNAL-READY; while :; do sleep 1; done',
+      'test "$(stty size)" = "33 97"; stty -echo; printf TERMINAL-READY; IFS= read -r first; printf "FIRST:%s\\n" "$first"; stty size; IFS= read -r second; test "$second" = second; trap "printf INTERRUPTED; exit 0" INT; printf SIGNAL-READY; while :; do sleep 1; done',
     ],
   });
   const terminalOutput = async (marker: string) => {

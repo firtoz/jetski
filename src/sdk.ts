@@ -10,7 +10,11 @@ import {
   type FileListing,
   persistentPath,
 } from "./core/files.js";
-import type { TerminalInput } from "./core/terminal-input.js";
+import {
+  type TerminalGeometry,
+  type TerminalInput,
+  terminalGeometry,
+} from "./core/terminal-input.js";
 import type { UploadSpec, UploadStatus } from "./core/uploads.js";
 export class JetskiClient {
   private readonly base: URL;
@@ -55,11 +59,12 @@ export class JetskiClient {
     argv: string[],
     cwd = "/workspace",
     timeout = 120,
+    geometry?: TerminalGeometry,
   ): Promise<Json> {
     return this.request(
       `/v1/sandboxes/${identifier(sandbox)}/terminals`,
       "POST",
-      { id, argv, cwd, timeout },
+      { id, argv, cwd, timeout, ...terminalGeometry(geometry) },
     );
   }
   terminalInput(

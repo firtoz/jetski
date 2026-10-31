@@ -167,6 +167,8 @@ the host; proved absent inputs on a closed host settle as cancelled.
 The SDK exposes startTerminal, terminalInput, terminalInputStatus, terminalStatus,
 terminalOutput and closeTerminal. Thin CLI commands use the same terminal names;
 terminal-input reads bounded JSON from stdin with `--id` for replay identity.
-Full interactive attach, worker-loss qualification, initial geometry and gateways
+Initial rows/columns default to 24/80 (each 1–4096); they are applied before the
+workload starts and bound to terminal identity. CLI terminal-start accepts
+--rows and --columns. Full interactive attach, worker-loss qualification and gateways
 remain under development. These endpoints are experimental; releaseQualified and
 PTY qualification remain false until the remaining terminal checks pass.

@@ -277,11 +277,21 @@ try {
   const terminalId = randomUUID(),
     terminalFirst = randomUUID(),
     terminalSecond = randomUUID();
-  await client.startTerminal(id, terminalId, [
+  const terminalArgv = [
     "/bin/sh",
     "-ec",
-    'test -t 0; stty -echo; printf READY; IFS= read -r first; printf "FIRST:%s\\n" "$first"; IFS= read -r second; test "$second" = second; printf TERMINAL-DONE',
-  ]);
+    'test -t 0; test "$(stty size)" = "37 101"; stty -echo; printf READY; IFS= read -r first; printf "FIRST:%s\\n" "$first"; IFS= read -r second; test "$second" = second; printf TERMINAL-DONE',
+  ];
+  await client.startTerminal(id, terminalId, terminalArgv, "/workspace", 120, {
+    rows: 37,
+    columns: 101,
+  });
+  await assert.rejects(
+    client.startTerminal(id, terminalId, terminalArgv, "/workspace", 120, {
+      rows: 38,
+      columns: 101,
+    }),
+  );
   const waitTerminalText = async (marker: string) => {
     for (let attempt = 0; attempt < 100; attempt++) {
       const output = await client.terminalOutput(id, terminalId);

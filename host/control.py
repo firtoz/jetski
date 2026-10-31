@@ -126,6 +126,8 @@ def dispatch(request, config, account, run, launch=None):
             payload.get("cwd", "/workspace"),
             payload.get("timeout", 120),
             terminal=action == "terminal-start",
+            rows=payload.get("rows", 24),
+            columns=payload.get("columns", 80),
         )
     if action in ("terminal-input", "terminal-input-status"):
         inputs = TerminalInputs(fence, CONTROL_ROOT / "terminal-input")

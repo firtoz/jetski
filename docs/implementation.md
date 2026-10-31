@@ -93,6 +93,32 @@ workload-specific products.
 
 ## Latest continuation status
 
+Initial terminal geometry continuation: core/SDK/API/CLI and host/native supervision
+now bind rows/columns to stable terminal identity and apply them before workload
+execution. Defaults24x80, integer bounds1..4096. Invalid dimensions fail before
+host admission; changed dimensions conflict on replay. Native/installed SSH/API
+fixtures assert three nondefault initial sizes from inside the workload, before
+input or resize. Local build/typecheck/lint/C syntax and55Python tests pass;
+TypeScript suite and exact-SHA CI pending. No desktop workload execution, paid
+resources, protected experiment or storage changes. Full release goal remains open.
+
+Verifiedbecf6656c9dfb9bfd948fc63ca24881ac43c7a72, CI41230894930 all five
+jobs passed; watcher7797 exited0. Final journal-integrity fix preserves installed
+SSH/API terminal and recovery qualification. Local60TypeScript/54Python tests pass.
+Source is pushed to main; scratchpad-only verified update follows code. This turn
+made verified progress: experimental core/API/SDK/CLI terminal inputs and durable
+outcome retention, controller ordering, and fail-closed journal absence. No paid
+host, desktop runtime or protected experiment changes. Full goal remains active.
+
+Next complete terminal initial geometry, worker-loss/backpressure and full interactive
+attachment/reconnect, then SSH gateway/authenticated previews/TCP. Preserve explicit
+uncertainty and input order; do not advertise PTY release qualification prematurely.
+After terminal inputs are durably retained, qualify bounded cleanup of host input
+history (currently retained host-side). Live Boat/R2 physical replacement, verified
+cache reuse, client staging integration and matched benchmark/full release gates
+remain required. All current CI handles terminal; do not restart old runs.
+
+
 Verified7703853a90da471f0c0fcee3f60fe8a2dadc42d2, CI41230673705 all five
 jobs passed; watcher10448 exited0. Core admission ordering survives SQLite restart;
 installed terminal/API/lifecycle regressions remain green.60TypeScript tests pass.

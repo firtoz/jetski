@@ -5,6 +5,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { DEFAULT_TERMINAL_GEOMETRY } from "./core/terminal-input.js";
 import { MAX_FILE_UPLOAD_BYTES } from "./core/uploads.js";
 import { JetskiClient } from "./sdk.js";
 
@@ -17,6 +18,8 @@ const { values, positionals } = parseArgs({
     operation: { type: "string" },
     image: { type: "string" },
     cwd: { type: "string" },
+    rows: { type: "string" },
+    columns: { type: "string" },
     checkpoint: { type: "string" },
   },
 });
@@ -184,6 +187,17 @@ if (command === "serve") {
         required(values.id, "--id"),
         positionals.slice(2),
         values.cwd ?? "/workspace",
+        120,
+        {
+          rows:
+            values.rows === undefined
+              ? DEFAULT_TERMINAL_GEOMETRY.rows
+              : Number(values.rows),
+          columns:
+            values.columns === undefined
+              ? DEFAULT_TERMINAL_GEOMETRY.columns
+              : Number(values.columns),
+        },
       );
       break;
     case "terminal-status":

@@ -10,6 +10,7 @@ import {
   type TerminalInput,
   TerminalInputJournal,
   terminalFrame,
+  terminalGeometry,
 } from "../src/core/terminal-input.js";
 import { SqliteState } from "../src/state/sqlite.js";
 
@@ -223,4 +224,22 @@ test("controller recovery preserves input admission order rather than UUID order
   assert.deepEqual(admissions, [...ids, closeId]);
   await journal.reconcile(scope.owner);
   assert.deepEqual(admissions, [...ids, closeId]);
+});
+
+test("initial terminal geometry is bounded and copied", () => {
+  assert.deepEqual(terminalGeometry(), { rows: 24, columns: 80 });
+  const dimensions = { rows: 37, columns: 101 };
+  assert.deepEqual(terminalGeometry(dimensions), dimensions);
+  assert.notEqual(terminalGeometry(dimensions), dimensions);
+  for (const value of [
+    null,
+    [],
+    {},
+    { rows: 0, columns: 80 },
+    { rows: true, columns: 80 },
+    { rows: 24, columns: 4097 },
+    { rows: 1.5, columns: 80 },
+    { rows: 24, columns: 80, extra: 1 },
+  ])
+    assert.throws(() => terminalGeometry(value));
 });

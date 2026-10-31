@@ -9,6 +9,28 @@ import {
 } from "./contracts.js";
 import type { HostLease } from "./pool.js";
 
+export type TerminalGeometry = { rows: number; columns: number };
+export const DEFAULT_TERMINAL_GEOMETRY: Readonly<TerminalGeometry> =
+  Object.freeze({ rows: 24, columns: 80 });
+export function terminalGeometry(
+  value: unknown = DEFAULT_TERMINAL_GEOMETRY,
+): TerminalGeometry {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).sort().join(",") !== "columns,rows"
+  )
+    throw Error("Invalid terminal geometry");
+  const geometry = value as TerminalGeometry;
+  if (
+    ![geometry.rows, geometry.columns].every(
+      (size) => Number.isInteger(size) && size >= 1 && size <= 4096,
+    )
+  )
+    throw Error("Invalid terminal geometry");
+  return { rows: geometry.rows, columns: geometry.columns };
+}
 export type TerminalInput =
   | { kind: "stdin"; base64: string }
   | { kind: "resize"; rows: number; columns: number }

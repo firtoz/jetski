@@ -58,13 +58,19 @@ class Commands:
     def __init__(self, fence, root, launch):
         self.fence, self.root, self.launch = fence, pathlib.Path(root), launch
 
-    def start(self, raw, command, argv, cwd="/workspace", timeout=120, terminal=False):
+    def start(
+        self, raw, command, argv, cwd="/workspace", timeout=120, terminal=False, rows=24, columns=80
+    ):
         lease = identity(raw)
         command_id(command)
         spec = specification(argv, cwd, timeout)
         if type(terminal) is not bool:
             raise ValueError("invalid_terminal_mode")
         spec["terminal"] = terminal
+        if terminal:
+            if any(type(size) is not int or not 1 <= size <= 4096 for size in (rows, columns)):
+                raise ValueError("invalid_terminal_geometry")
+            spec.update(rows=rows, columns=columns)
         with self.fence.locked():
             state = self.fence.read()
             self.fence.match(state, lease)
@@ -216,11 +222,13 @@ def worker(command):
         # Nonce remains in this host worker's memory; never in public receipts.
         decoder = CompletionDecoder(nonce)
         failure_stage = "exec-create"
+        geometry_args = [str(spec["rows"]), str(spec["columns"])] if spec["terminal"] else []
         session = api.create(
             runtime.container(lease),
             [
                 "/jetski-supervisor",
                 "--jetski-pty-v1" if spec["terminal"] else "--jetski-exec-v1",
+                *geometry_args,
                 *spec["argv"],
             ],
             spec["cwd"],

@@ -138,6 +138,17 @@ static int terminal_pump(struct terminal *term) {
     return 0;
 }
 
+static int dimension(const char *value) {
+    unsigned result = 0;
+    if (!*value) return -1;
+    for (; *value; value++) {
+        if (*value < '0' || *value > '9') return -1;
+        result = result * 10 + (unsigned)(*value - '0');
+        if (result > 4096) return -1;
+    }
+    return result ? (int)result : -1;
+}
+
 int main(int argc, char **argv) {
     if (argc < 3) return 125;
     if (prctl(PR_SET_CHILD_SUBREAPER, 1) || prctl(PR_SET_DUMPABLE, 0)) return 125;
@@ -155,6 +166,10 @@ int main(int argc, char **argv) {
     }
     int interactive = strcmp(argv[1], "--jetski-pty-v1") == 0;
     if (!interactive && strcmp(argv[1], "--jetski-exec-v1") != 0) return 125;
+    if (interactive && argc < 5) return 125;
+    int rows = interactive ? dimension(argv[2]) : 24;
+    int columns = interactive ? dimension(argv[3]) : 80;
+    if (rows < 0 || columns < 0) return 125;
     struct terminal term = {.master = -1};
     char slave_path[128];
     int slave = -1;
@@ -162,7 +177,7 @@ int main(int argc, char **argv) {
         term.master = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC | O_NONBLOCK);
         if (term.master < 0 || grantpt(term.master) || unlockpt(term.master) ||
             ptsname_r(term.master, slave_path, sizeof(slave_path))) return 125;
-        struct winsize dimensions = {.ws_row = 24, .ws_col = 80};
+        struct winsize dimensions = {.ws_row = (unsigned short)rows, .ws_col = (unsigned short)columns};
         if (ioctl(term.master, TIOCSWINSZ, &dimensions)) return 125;
         slave = open(slave_path, O_RDWR | O_NOCTTY | O_CLOEXEC);
         if (slave < 0) return 125;
@@ -184,7 +199,7 @@ int main(int argc, char **argv) {
             if (null_input < 0 || dup2(null_input, STDIN_FILENO) < 0) _exit(125);
             if (null_input != STDIN_FILENO) close(null_input);
         }
-        execvp(argv[2], argv + 2);
+        execvp(argv[interactive ? 4 : 2], argv + (interactive ? 4 : 2));
         _exit(127);
     }
     if (interactive) close(slave);

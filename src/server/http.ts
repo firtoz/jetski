@@ -6,7 +6,11 @@ import {
 } from "node:http";
 import { identifier } from "../core/contracts.js";
 import type { SandboxManager } from "../core/manager.js";
-import type { TerminalInput } from "../core/terminal-input.js";
+import {
+  DEFAULT_TERMINAL_GEOMETRY,
+  type TerminalInput,
+  terminalGeometry,
+} from "../core/terminal-input.js";
 
 export type Principal = { owner: string };
 export type Authenticate = (
@@ -340,7 +344,12 @@ export function createHttpServer(
         const terminal = parts[3] === "terminals";
         if (parts.length === 4 && request.method === "POST") {
           const input = await body(request);
-          fields(input, ["id", "argv", "cwd", "timeout"]);
+          fields(
+            input,
+            terminal
+              ? ["id", "argv", "cwd", "timeout", "rows", "columns"]
+              : ["id", "argv", "cwd", "timeout"],
+          );
           if (
             !Array.isArray(input.argv) ||
             !input.argv.every((arg) => typeof arg === "string")
@@ -358,6 +367,18 @@ export function createHttpServer(
               string(input.cwd ?? "/workspace"),
               timeout,
               terminal,
+              terminal
+                ? terminalGeometry({
+                    rows:
+                      input.rows === undefined
+                        ? DEFAULT_TERMINAL_GEOMETRY.rows
+                        : input.rows,
+                    columns:
+                      input.columns === undefined
+                        ? DEFAULT_TERMINAL_GEOMETRY.columns
+                        : input.columns,
+                  })
+                : undefined,
             ),
           );
           return;

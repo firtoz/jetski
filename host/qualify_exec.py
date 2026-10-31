@@ -61,7 +61,9 @@ def main():
         nonces, completions = {}, {}
 
         def create(argv):
-            if argv[1] != "--jetski-pty-v1":
+            if argv[1] == "--jetski-pty-v1":
+                argv = [*argv[:2], "31", "91", *argv[2:]]
+            else:
                 argv = [argv[0], "--jetski-exec-v1", *argv[1:]]
             session = api.create(container, argv, stdin=True)
             nonces[session] = secrets.token_bytes(32)
@@ -252,7 +254,7 @@ def main():
                 [
                     "/bin/sh",
                     "-ec",
-                    "test -t 0; test -t 1; test -t 2; stty -echo; "
+                    'test -t 0; test -t 1; test -t 2; test "$(stty size)" = "31 91"; stty -echo; '
                     "printf READY; IFS= read -r line; printf 'LINE:%s\\n' \"$line\"; stty size; "
                     "trap 'printf SIGNAL; exit 0' INT; printf SIGNAL-READY; while :; do sleep 1; done",
                 ],

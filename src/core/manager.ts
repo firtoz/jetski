@@ -17,7 +17,12 @@ import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
 import { restoreCheckpoint } from "./restore.js";
 import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
-import { type TerminalInput, TerminalInputJournal } from "./terminal-input.js";
+import {
+  type TerminalGeometry,
+  type TerminalInput,
+  TerminalInputJournal,
+  terminalGeometry,
+} from "./terminal-input.js";
 import { CheckpointTransfer, parseArchive } from "./transfer.js";
 import { HOST_PROTOCOL_VERSION, type HostTransport } from "./transport.js";
 import { UploadCoordinator } from "./uploads.js";
@@ -671,10 +676,13 @@ export class SandboxManager {
     cwd = "/workspace",
     timeout = 120,
     terminal = false,
+    geometry?: TerminalGeometry,
   ): Promise<Json> {
     this.uuid(id);
     if (typeof terminal !== "boolean") throw Error("Invalid terminal mode");
-    const spec = { argv, cwd, timeout };
+    const spec = terminal
+      ? { argv, cwd, timeout, ...terminalGeometry(geometry) }
+      : { argv, cwd, timeout };
     const admission = await this.state.transaction((tx) => {
       const key = `command/${scopeKey(scope)}/${id}`;
       const prior = tx.get<CommandRecord>(key);
@@ -719,8 +727,9 @@ export class SandboxManager {
     argv: string[],
     cwd = "/workspace",
     timeout = 120,
+    geometry?: TerminalGeometry,
   ): Promise<Json> {
-    return this.startCommand(scope, id, argv, cwd, timeout, true);
+    return this.startCommand(scope, id, argv, cwd, timeout, true, geometry);
   }
   async requireTerminal(scope: Scope, id: string): Promise<void> {
     if (!(await this.command(scope, id)).terminal)

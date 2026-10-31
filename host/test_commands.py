@@ -30,6 +30,29 @@ class CommandTests(unittest.TestCase):
         self.commands = Commands(self.fence, self.base / "outputs", self.launched.append)
         self.command = str(uuid.uuid4())
 
+    def test_terminal_geometry_is_validated_and_bound_to_identity(self):
+        for rows, columns in [(0, 80), (True, 80), (24, 4097), (1.5, 80)]:
+            with self.assertRaisesRegex(ValueError, "invalid_terminal_geometry"):
+                self.commands.start(
+                    self.lease, self.command, ["true"], terminal=True, rows=rows, columns=columns
+                )
+        self.assertEqual(self.launched, [])
+        first = self.commands.start(
+            self.lease, self.command, ["true"], terminal=True, rows=37, columns=101
+        )
+        self.assertEqual(first["spec"]["rows"], 37)
+        self.assertEqual(
+            self.commands.start(
+                self.lease, self.command, ["true"], terminal=True, rows=37, columns=101
+            ),
+            first,
+        )
+        with self.assertRaisesRegex(ValueError, "identity_conflict"):
+            self.commands.start(
+                self.lease, self.command, ["true"], terminal=True, rows=38, columns=101
+            )
+        self.assertEqual(self.launched, [self.command])
+
     def test_replay_and_new_controller_do_not_launch_again(self):
         original = self.commands.start(self.lease, self.command, ["printf", "hello"])
         restarted = Commands(
