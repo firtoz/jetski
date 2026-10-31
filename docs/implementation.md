@@ -93,6 +93,32 @@ workload-specific products.
 
 ## Latest continuation status
 
+SSH gateway candidate: isolated server/ssh subpath and opt-in standalone config,
+public-key owner identity, strict existing-terminal attach command with byte cursor,
+no outer shell/subsystem/env/host forwarding. Serialized bounded terminal input
+uses existing core receipts and fencing; disconnect detaches without remote close.
+Encrypted loopback tests use a simulated backend (not container qualification),
+including key rejection, owner isolation, injection rejection, resize/signal,
+20KiB binary input split, reconnect offsets and forbidden shell/SFTP/TCP requests.
+New installed API fixture will exercise real container terminal detach/reconnect,
+geometry, exact output and completion. ssh2 MIT dependency via npm, no vendoring;
+SDK/core imports remain independent. Local tests70 pass; current candidate checks
+and CI must complete before qualification. No paid hosts or protected GC changes.
+
+Verified201eb61b3ea3cb026384819710011b86ae0888fd, CI41236777071 all five
+jobs passed; watcher64403 exited0. /tmp/jetski-tty-unref-ci.log and
+/tmp/jetski-tty-unref-api.log (job124642122502). Real disposable PTY confirms
+rawTtyCliDetachResizeSignalRestore=true: detach preserves running remote terminal,
+same-journal reconnect,57x123resize, Ctrl-C and exact terminal restoration.
+Releasing the paused local TTY handle resolves the observed exit hang. API lifecycle,
+source-deleted restore, checkpoint and retained-input pressure checks also passed
+(22 pressure identities this run). Local69TS/59Python tests/build/typecheck/lint
+passed. No desktop workload, paid allocations or protected experiment changes.
+Scratchpad verification update is uncommitted; executable source is published.
+Next: public-key SSH gateway and authenticated preview/TCP transport through the
+same owner and lease machinery. Actual Boat qualification, full storage/cache matrix,
+matched benchmarks and downstream staging integration remain open; full goal active.
+
 5c4781c7ff4f0e2ca85f77b6cc10ccb1a7a02e12 / CI41236570528 failed only
 API job124641498203. /tmp/jetski-tty-read-api.log confirms terminal_restored=True
 at detach exit timeout: cleanup runs, but process remains alive. Reading through
@@ -127,7 +153,7 @@ New disposable Python PTY fixture drives typing, detach with remote still runnin
 same-journal reattach,57x123resize, Ctrl-C trap and terminal attribute restoration.
 Local private-directory/symlink rejection test makes no runtime/network calls.
 Local69TypeScript tests/build/typecheck/lint and Python fixture lint pass.
-Published78f6f7f4963271818d18e3c9f5d7c913e50c179e; CI41235795138 running,
+Initial78f6f7f4963271818d18e3c9f5d7c913e50c179e / CI41235795138 failed,
 /tmp/jetski-tty-ci.log. Real raw-TTY fixture qualification pending. No desktop raw-TTY/workload
 execution, paid resources or protected experiment changes. Full goal active;
 gateway/provider/storage/client/benchmark release gates remain open.

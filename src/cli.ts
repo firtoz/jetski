@@ -39,6 +39,13 @@ if (command === "serve") {
     approvedImages: string[];
     port?: number;
     hostsPerOwner?: number;
+    sshGateway?: {
+      hostKeyPath: string;
+      host?: string;
+      port: number;
+      maxConnections?: number;
+      principals: Array<{ owner: string; publicKey: string }>;
+    };
     storage?: import("./server/storage.js").StorageConfig;
     hostProvider: import("./server/hosts.js").HostConfig;
     principals: Array<{ owner: string; tokenEnv: string }>;
@@ -84,6 +91,24 @@ if (command === "serve") {
     })),
   );
   const server = createHttpServer(manager, authenticate);
+  let sshGateway:
+    | ReturnType<typeof import("./server/ssh.js").createSshGateway>
+    | undefined;
+  if (config.sshGateway) {
+    const { createSshGateway } = await import("./server/ssh.js");
+    const ssh = config.sshGateway;
+    sshGateway = createSshGateway(manager, {
+      hostKey: await readFile(ssh.hostKeyPath),
+      principals: ssh.principals,
+      ...(ssh.maxConnections === undefined
+        ? {}
+        : { maxConnections: ssh.maxConnections }),
+    });
+    await new Promise<void>((resolve, reject) => {
+      sshGateway!.server.once("error", reject);
+      sshGateway!.server.listen(ssh.port, ssh.host ?? "127.0.0.1", resolve);
+    });
+  }
   const stopWorker = startWorker(manager, () =>
     process.stderr.write(
       "Reconciliation failed; inspect persisted operation status\n",
@@ -98,6 +123,7 @@ if (command === "serve") {
   const stop = async () => {
     if (stopping) return;
     stopping = true;
+    await sshGateway?.close();
     await stopWorker();
     server.close(() => {
       state.close();

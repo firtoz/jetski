@@ -231,3 +231,51 @@ client deadline; timeout preserves its journal identity for explicit reconnect.
 The output side follows consumer demand. Local display and cursor persistence are
 not atomic; interrupted display can repeat bytes on reconnect. API gates and real
 PTY qualification are tracked in the implementation document.
+
+## SSH terminal gateway (experimental)
+
+The optional `jetski/server/ssh` export provides an encrypted, public-key-only
+attachment gateway. It is not loaded by SDK/core imports. `serve` enables it only
+when `sshGateway` is configured:
+
+```json
+{
+  "sshGateway": {
+    "hostKeyPath": "/private/gateway-host-key",
+    "host": "127.0.0.1",
+    "port": 2222,
+    "maxConnections": 64,
+    "principals": [{ "owner": "alice", "publicKey": "ssh-ed25519 PUBLIC_KEY" }]
+  }
+}
+```
+
+Protect the host private key with operator-only permissions and pin its public key
+in clients' known-hosts files. Keys map to owners; the SSH username selects a
+sandbox. First create a terminal through the API/SDK, then attach with an explicit
+terminal identity and output byte offset:
+
+```sh
+ssh -p 2222 -t SANDBOX_ID@localhost 'attach TERMINAL_ID 0'
+```
+
+The command has a strict grammar and is never interpreted by a host shell.
+Password auth, outer shells, arbitrary commands, SFTP, environment changes,
+agent/X11 forwarding and arbitrary host TCP forwarding are rejected. Dedicated
+sandbox network gateways remain separate unfinished work. The current gateway
+attaches to existing PTY terminals; it does not create work on reconnect.
+
+Input uses the core's durable receipt IDs, one serialized frame at a time, up to
+16 KiB per frame. Queued control requests are bounded to 64; receipt observation
+has a 30-second deadline. Failed/uncertain delivery closes the connection rather
+than resending bytes. SSH transport acknowledgement is not proof that the workload
+consumed input. Reconnecting SSH clients must not automatically replay typed input.
+Output resumes at the explicitly supplied byte offset; ordinary SSH clients do not
+persist a verified display cursor. Use the durable SDK/CLI attachment for that.
+
+PTY geometry and supported INT/QUIT/TSTP signals use the same core lease checks.
+Disconnect or input EOF detaches without closing the remote terminal. Connections
+allow one session, have a 15-second admission deadline and a one-hour attachment
+limit. Server shutdown waits for active attachment tasks. These bounds do not
+replace an operator's network ingress policy. Container-backed qualification and
+all broader release gates are tracked in the implementation checklist.

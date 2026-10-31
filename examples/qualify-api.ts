@@ -22,6 +22,7 @@ import {
 import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 import { SshTransport } from "../src/transport/ssh.js";
+import { qualifyGateway } from "./qualify-gateway.js";
 
 const key = process.env.JETSKI_TEST_SSH_KEY,
   knownHosts = process.env.JETSKI_TEST_KNOWN_HOSTS,
@@ -524,6 +525,7 @@ try {
     timeout: 60000,
   });
   await waitPhase(ttyTerminal, "succeeded");
+  await qualifyGateway(manager, client, id);
   const commandId = randomUUID();
   const request = {
     id: commandId,
@@ -1075,6 +1077,7 @@ try {
       terminalFollowDetachReconnect: true,
       clientAttachmentRestartLostAck: true,
       rawTtyCliDetachResizeSignalRestore: true,
+      sshGatewayOwnerTerminalReconnect: true,
       terminalFollowCliWithoutHost: true,
       terminalOutcomesWithoutHost: true,
       apiTerminalPressureUncertaintyRetained: true,
