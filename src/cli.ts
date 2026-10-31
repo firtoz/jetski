@@ -17,6 +17,7 @@ const { values, positionals } = parseArgs({
     operation: { type: "string" },
     image: { type: "string" },
     cwd: { type: "string" },
+    checkpoint: { type: "string" },
   },
 });
 const command = positionals[0];
@@ -193,6 +194,12 @@ if (command === "serve") {
       );
       break;
     case "resume":
+      result = await client.resume(
+        required(positionals[1], "sandbox ID"),
+        required(values.operation, "--operation"),
+        values.checkpoint,
+      );
+      break;
     case "stop":
     case "checkpoint":
       result = await client.request(

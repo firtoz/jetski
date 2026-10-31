@@ -551,6 +551,10 @@
                   "operationId": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "checkpointId": {
+                    "type": "string",
+                    "description": "Optional retained filesystem checkpoint ID in this sandbox"
                   }
                 }
               }
@@ -570,7 +574,8 @@
           "404": {
             "description": "Sandbox unavailable in principal scope"
           }
-        }
+        },
+        "description": "Resume a stopped sandbox from the latest checkpoint by default, or select a retained filesystem checkpoint explicitly. A durable lifecycle reference protects the selection until ready or queued cancellation. Reusing an operation ID with a different explicit checkpoint is rejected."
       }
     },
     "/v1/sandboxes/{sandbox}/files/read": {

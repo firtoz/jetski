@@ -406,6 +406,27 @@ export class CheckpointRegistry {
   rootsIn(tx: Transaction, fence: Fence): CheckpointRoot[] {
     return this.load(tx, fence).roots;
   }
+  /** Internal lifecycle reference, distinct from user-removable retention pins. */
+  holdIn(tx: Transaction, fence: Fence, id: string, rootId: string): void {
+    identifier(id);
+    identifier(rootId);
+    const state = this.load(tx, fence);
+    if (state.collection) throw Error("Collection in progress");
+    if (
+      !state.roots.some((root) => root.id === rootId && root.retiredAt === null)
+    )
+      throw Error("Root unavailable");
+    const key = `checkpoint-reference/${scopeKey(fence)}/${id}`;
+    const prior = tx.get<{ rootId: string }>(key);
+    if (prior && prior.rootId !== rootId)
+      throw Error("Checkpoint reference conflict");
+    tx.put(key, { rootId });
+  }
+  releaseIn(tx: Transaction, fence: Fence, id: string): void {
+    this.load(tx, fence);
+    identifier(id);
+    tx.delete(`checkpoint-reference/${scopeKey(fence)}/${id}`);
+  }
   /** Retirement is explicit; acknowledged history never expires automatically. */
   async retire(fence: Fence, rootId: string): Promise<void> {
     await this.state.transaction((tx) => {
@@ -415,6 +436,9 @@ export class CheckpointRegistry {
       if (
         !root ||
         root.pins.length ||
+        tx
+          .scan<{ rootId: string }>(`checkpoint-reference/${scopeKey(fence)}/`)
+          .some((row) => row.value.rootId === rootId) ||
         state.accesses.some((access) => access.root === rootId)
       )
         throw new Error("Root protected or unavailable");
@@ -432,6 +456,8 @@ export class CheckpointRegistry {
     const snapshot = await this.state.transaction((tx) => {
       const state = this.load(tx, fence);
       if (state.accesses.length) throw new Error("Active readers or writers");
+      if (tx.scan(`checkpoint-reference/${scopeKey(fence)}/`).length)
+        throw Error("Active checkpoint references");
       if (state.collection && state.collection !== collection)
         throw new Error("Different collection in progress");
       state.collection = collection;

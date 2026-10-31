@@ -122,5 +122,16 @@ collection; acknowledged history remains retained until explicit retirement.
 SDK methods are `checkpoints`, `checkpoint` and `pinCheckpoint`. CLI equivalents:
 `jetski checkpoints ID`, `jetski checkpoint-info ID CHECKPOINT`, and
 `jetski checkpoint-pin ID CHECKPOINT NAME --operation OP_ID` (or `checkpoint-unpin`).
-These metadata operations survive sandbox stop, resume and deletion. Restoring a
-selected historical checkpoint and public explicit retirement remain pending.
+These metadata operations survive sandbox stop, resume and deletion. Public explicit
+retirement remains pending.
+
+`POST /v1/sandboxes/{id}/resume` accepts optional `checkpointId` alongside its
+`operationId`. Omit it for the latest checkpoint; supply a retained filesystem root
+to restore older bytes into a fresh writable sandbox. The sandbox must be stopped.
+This does not delete newer history. SDK: `resume(id, operationId, checkpointId)`;
+CLI: `jetski resume ID --operation UUID --checkpoint CHECKPOINT`.
+The selected root has an internal lifecycle reference until placement succeeds or
+queued placement is cancelled. User pin removal cannot remove this reference.
+Uncertain restore preserves it. Replaying the same operation observes its original
+selection; an explicitly different target conflicts. Invalid, retired or non-filesystem
+roots are rejected before placement or generation advance.

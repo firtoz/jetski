@@ -185,11 +185,17 @@ export function createHttpServer(
         request.method === "POST"
       ) {
         const input = await body(request);
-        fields(input, ["operationId"]);
+        fields(input, ["operationId", "checkpointId"]);
         send(
           response,
           202,
-          await manager.resume(scope, string(input.operationId)),
+          await manager.resume(
+            scope,
+            string(input.operationId),
+            input.checkpointId === undefined
+              ? undefined
+              : string(input.checkpointId),
+          ),
         );
         return;
       }

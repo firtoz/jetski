@@ -17,7 +17,7 @@ import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
 import { restoreCheckpoint } from "./restore.js";
 import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
-import { CheckpointTransfer } from "./transfer.js";
+import { CheckpointTransfer, parseArchive } from "./transfer.js";
 import { HOST_PROTOCOL_VERSION, type HostTransport } from "./transport.js";
 import { UploadCoordinator } from "./uploads.js";
 
@@ -298,6 +298,12 @@ export class SandboxManager {
         if (!current?.lease || canonical(current.lease) !== canonical(lease))
           throw new Error("Recovery assignment changed");
         tx.put(this.key(scope), { ...current, phase: "running" });
+        if (current.restoreCheckpoint)
+          this.checkpoints.releaseIn(
+            tx,
+            { ...scope, generation: current.generation },
+            current.placementOperation,
+          );
       });
       await this.operations.finish(fence, operation.id, {
         phase: "succeeded",
@@ -449,6 +455,12 @@ export class SandboxManager {
           if (!current?.lease || canonical(current.lease) !== canonical(lease))
             throw new Error("Sandbox assignment changed");
           tx.put(this.key(scope), { ...current, phase: "running" });
+          if (current.restoreCheckpoint)
+            this.checkpoints.releaseIn(
+              tx,
+              { ...scope, generation: current.generation },
+              current.placementOperation,
+            );
         });
         await this.operations.finish(operationFence, ticket.id, {
           phase: "succeeded",
@@ -519,11 +531,16 @@ export class SandboxManager {
       });
     }
   }
-  async resume(scope: Scope, id: string) {
+  async resume(scope: Scope, id: string, checkpointId?: string) {
     this.uuid(id);
+    if (checkpointId !== undefined) identifier(checkpointId);
     await this.state.transaction((tx) => {
       const prior = tx.get<ResumeRecord>(`resume/${scopeKey(scope)}/${id}`);
-      if (prior) return prior;
+      if (prior) {
+        if (checkpointId !== undefined && checkpointId !== prior.checkpointId)
+          throw Error("Resume checkpoint identity conflict");
+        return prior;
+      }
       const sandbox = tx.get<Sandbox>(this.key(scope));
       if (
         !sandbox ||
@@ -533,17 +550,24 @@ export class SandboxManager {
       )
         throw Error("Resume requires a durably released checkpoint");
       const fence = { ...scope, generation: sandbox.generation };
+      const selected = checkpointId ?? sandbox.checkpoint;
+      const root = this.checkpoints
+        .rootsIn(tx, fence)
+        .find((root) => root.id === selected && root.retiredAt === null);
+      if (!root) throw Error("Restore checkpoint unavailable");
+      parseArchive(root.metadata);
+      this.checkpoints.holdIn(tx, fence, id, selected);
       if (sandbox.lease) {
         const releaseId = crypto.randomUUID();
         this.operations.admitIn(tx, fence, id, "resume", {
-          checkpointId: sandbox.checkpoint,
+          checkpointId: selected,
         });
         this.shutdown.admitIn(tx, fence, releaseId, "stop");
         const current = tx.get<Sandbox>(this.key(scope))!;
         tx.put(this.key(scope), { ...current, pendingResume: id });
         const record: ResumeRecord = {
           generation: fence.generation,
-          checkpointId: sandbox.checkpoint,
+          checkpointId: selected,
           releaseId,
           placed: false,
         };
@@ -553,11 +577,11 @@ export class SandboxManager {
       const next = this.checkpoints.advanceIn(tx, fence);
       this.operations.advanceIn(tx, fence);
       this.operations.admitIn(tx, next, id, "resume", {
-        checkpointId: sandbox.checkpoint,
+        checkpointId: selected,
       });
       const record = {
         generation: next.generation,
-        checkpointId: sandbox.checkpoint,
+        checkpointId: selected,
         releaseId: null,
         placed: true,
       };
@@ -567,7 +591,7 @@ export class SandboxManager {
         generation: next.generation,
         phase: "queued",
         placementOperation: id,
-        restoreCheckpoint: sandbox.checkpoint,
+        restoreCheckpoint: selected,
       });
       return record;
     });
@@ -600,6 +624,8 @@ export class SandboxManager {
           { image: current.image },
         );
         this.operations.cancelQueuedIn(tx, fence, current.placementOperation);
+        if (current.restoreCheckpoint)
+          this.checkpoints.releaseIn(tx, fence, current.placementOperation);
       }
       this.operations.claimIn(tx, fence, id);
       tx.put(this.key(scope), { ...current, phase: "deleted" });

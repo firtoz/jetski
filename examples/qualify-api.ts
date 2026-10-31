@@ -443,7 +443,65 @@ try {
     (await client.request<Sandbox>(`/v1/sandboxes/${id}`)).lease?.assignmentId,
     resumedHeld.lease?.assignmentId,
   );
-  fence.generation = 3;
+  const changed = Buffer.from("2");
+  await client.writeFileStream(
+    id,
+    randomUUID(),
+    {
+      path: "/workspace/api-counter",
+      bytes: 1,
+      sha256: (await import("node:crypto"))
+        .createHash("sha256")
+        .update(changed)
+        .digest("hex"),
+      mode: 0o644,
+    },
+    (async function* () {
+      yield changed;
+    })(),
+  );
+  const newerStop = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/stop`, "POST", {
+    operationId: newerStop,
+  });
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if ((await client.operation(id, newerStop)).phase === "succeeded") break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal((await client.operation(id, newerStop)).phase, "succeeded");
+  assert.notEqual(
+    (await client.checkpoint(id, newerStop)).sha256,
+    (await client.checkpoint(id, stopId)).sha256,
+  );
+  const historicalResume = randomUUID();
+  await client.resume(id, historicalResume, stopId);
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if ((await client.operation(id, historicalResume)).phase === "succeeded")
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(
+    (await client.operation(id, historicalResume)).phase,
+    "succeeded",
+  );
+  assert.equal(
+    Buffer.from(
+      (await client.readFile(id, "/workspace/api-counter")).base64,
+      "base64",
+    ).toString(),
+    "1",
+  );
+  await assert.rejects(client.resume(id, historicalResume, newerStop));
+  assert.equal(
+    (
+      await state.transaction((tx) =>
+        tx.scan(`checkpoint-reference/qualification/${id}/`),
+      )
+    ).length,
+    0,
+  );
+  assert.ok(await client.checkpoint(id, newerStop));
+  fence.generation = 4;
   const deletion = randomUUID();
   await client.request(`/v1/sandboxes/${id}`, "DELETE", {
     operationId: deletion,
@@ -608,6 +666,7 @@ try {
       lostFileWriteAckRecovery: true,
       incompleteUploadAbortedOnStop: true,
       checkpointHistoryAndReplaySafePins: true,
+      historicalCheckpointSelection: true,
       completeLifecycle: false,
     }),
   );

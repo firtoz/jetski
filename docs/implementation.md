@@ -64,22 +64,22 @@ or public hosted-compute service in this implementation.
 
 ## Acceptance matrix
 
-| Gate                       | Required evidence                                                                                                    | Status      |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- |
-| Independent repository     | MIT, clean history, provenance, CI, exports, executable generic example                                              | In progress |
-| Independent vertical slice | SQLite/local storage, SSH-adopted Linux, Podman, server/SDK/CLI shell+file checkpoint/recovery                       | Open        |
-| Boat and S3                | Both host/store adapters pass contracts; R2 and fresh-host recovery                                                  | Open        |
-| Pool lifecycle             | owner exclusivity, one assignment, bounded queue/idle/expiry, restart/fencing                                        | Open        |
-| Durable execution          | replay/lost ACK/restart/uncertainty/cancel/resumable streams                                                         | Open        |
-| Filesystem fidelity        | bytes/modes/symlink/hardlink/Unicode/empty/rename/delete/large/partial transfer                                      | Open        |
-| Incremental checkpoints    | cold/cache hit/miss/corruption/changed frames/fresh replacement                                                      | Open        |
-| Safe GC                    | reader/writer/publication races, complete paginated listings, corrupt metadata, repeated/failed deletion, real grace | Open        |
-| Security                   | cross-owner denial, secrets isolation, process/listener/mount cleanup, unsupported capability rejection              | Open        |
-| Interactive transports     | SSH auth, PTY resize/signals, streams, HTTP/WS previews, binary TCP                                                  | Open        |
-| Server recovery            | SQLite atomicity, restart pending operations, scheduler recovery, local/S3 parity                                    | Open        |
-| Staging integration        | independent client workflow and replacement recovery, pinned dependency                                              | Open        |
-| Matched benchmark          | same durability boundary; starts/sessions/readiness/save/bytes/requests/idle compute, failures retained              | Open        |
-| Release                    | main CI green, test resources cleaned, limitations documented                                                        | Open        |
+| Gate                       | Required evidence                                                                                                    | Status                             |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Independent repository     | MIT, clean history, provenance, CI, exports, executable generic example                                              | In progress                        |
+| Independent vertical slice | SQLite/local storage, SSH-adopted Linux, Podman, server/SDK/CLI shell+file checkpoint/recovery                       | Verified SSH/local; CI 41217621891 |
+| Boat and S3                | Both host/store adapters pass contracts; R2 and fresh-host recovery                                                  | Open                               |
+| Pool lifecycle             | owner exclusivity, one assignment, bounded queue/idle/expiry, restart/fencing                                        | Open                               |
+| Durable execution          | replay/lost ACK/restart/uncertainty/cancel/resumable streams                                                         | Open                               |
+| Filesystem fidelity        | bytes/modes/symlink/hardlink/Unicode/empty/rename/delete/large/partial transfer                                      | Open                               |
+| Incremental checkpoints    | cold/cache hit/miss/corruption/changed frames/fresh replacement                                                      | Open                               |
+| Safe GC                    | reader/writer/publication races, complete paginated listings, corrupt metadata, repeated/failed deletion, real grace | Open                               |
+| Security                   | cross-owner denial, secrets isolation, process/listener/mount cleanup, unsupported capability rejection              | Open                               |
+| Interactive transports     | SSH auth, PTY resize/signals, streams, HTTP/WS previews, binary TCP                                                  | Open                               |
+| Server recovery            | SQLite atomicity, restart pending operations, scheduler recovery, local/S3 parity                                    | Open                               |
+| Staging integration        | independent client workflow and replacement recovery, pinned dependency                                              | Open                               |
+| Matched benchmark          | same durability boundary; starts/sessions/readiness/save/bytes/requests/idle compute, failures retained              | Open                               |
+| Release                    | main CI green, test resources cleaned, limitations documented                                                        | Open                               |
 
 ## Operational boundaries
 
@@ -93,75 +93,54 @@ workload-specific products.
 
 ## Latest continuation status
 
-Current implementation remains a preview, not a completed release. Expiry draining
-is verified at **4c3f2a0917f260e1d13703ff4481edbb5e33abca**, CI **41215226690**:
-all four jobs successful; API logs confirm proactiveExpiryCheckpoint=true. The test
-uses an injected controller clock, not a real provider forced deadline.
+Verified source: **937fc4688ab6a568aa1ed53a1ae31a31534e4699**, CI **41217621891**,
+all four jobs successful; watcher 39879 terminated with exit 0. Local build,
+typecheck, Biome, Ruff and all **74 unit tests** pass (32 TypeScript, 42 Python).
+Real API logs confirm checkpointHistoryAndReplaySafePins=true alongside the prior
+upload, expiry, queue, shutdown, output retention and replacement recovery checks.
+No active CI work remains; disposable hosts/listeners were cleaned by the fixtures.
 
-The next change adds bounded persistent-file read/list host handlers, owner-scoped
-API routes and SDK download iteration. Descriptor-relative traversal refuses links,
-special files and foreign-owned inodes; the final inode is pinned before opening
-for data. Chunk digests/version tokens detect changed/corrupt reads; pagination is
-bounded and fails closed on changed directories. Tests cover binary/Unicode/empty
-files, stale scopes, traversal, FIFO rejection and path-replacement races. All 66
-unit tests, build/typecheck/Biome/Ruff pass. Source **cbc4d7fad695b0ac2784564217add19106c8d487**
-is verified by CI **41215916081**, all four jobs successful; watcher 19876
-terminated with exit 0. Real SSH/API logs confirm boundedFileReadAndList=true
-and preserve all prior recovery results. Disposable resources were cleaned. File writes, dedicated CLI file commands and complete interactive
-transports remain open. Live reads do not promise a filesystem snapshot.
+The independent SSH/Podman + SQLite/local-store vertical slice now executes commands,
+streams bounded files through SDK helpers, admits resumable uploads, checkpoints,
+stops and reconstructs a fresh container. Upload publication has immutable identity,
+chunk fsync receipts, atomic rename and an uncertainty-preserving shutdown barrier.
+Completed outcomes survive generation changes without contacting the old host.
+Tests cover lost import, checkpoint-store, output-store and file-write acknowledgements.
+Replacement qualification uses a fresh container on the same physical SSH host;
+fresh physical-host/remote-store recovery is still unqualified.
 
-Host upload implementation now stages bounded 64 MiB files outside workload mounts,
-with at most 64 upload identities per assignment. Chunk offsets persist only after
-fsync; replays verify already written bytes. Publication journals the staged inode
-and destination directory before atomic rename. A consumed source cannot be replayed
-to overwrite a newer destination: unresolved identity reports uncertainty. Complete
-receipts remain observable after closure; source cleanup removes only this released
-assignment's leftover staging files. Five new Python tests cover exact bytes/modes,
-empty writes, symlink handling, interrupted chunk receipts, pre/post-rename failures,
-replaced destinations and stale/closed leases. A test initially patched an obsolete
-fence instance after restart; the corrected test faults the live instance and passes.
-All 71 unit tests, build/typecheck and linters pass. Real SSH qualification now
-uploads a multi-chunk binary and verifies old-operation replay preserves subsequent
-workload edits. Source **c8cad6fa07d3586ff461b3b12bc310bc7f071148** passed CI
-**41216374190**, all four jobs; watcher 94200 terminated with exit 0. SSH logs
-confirm replaySafeFileUpload=true plus repeated identical checkpoint recovery. Public write API/SDK operation persistence
-and lifecycle coordination are still open: these are private host protocol handlers.
+Checkpoint history/pins are exposed through core, API, SDK and CLI. Pages separate
+filesystem snapshots from retained command outputs. Pin changes and operation outcomes
+commit atomically; replay cannot undo a later change, including across generation
+advance. Owner denial, transaction rollback and pin-protected retirement are tested.
+Inspection is metadata-only, not a storage-integrity audit. Unpinning does not retire
+history or enable collection. Public retirement remains pending. The synthetic test's initial invalid zero-expanded-byte frame was corrected
+without weakening manifest validation; the passing fixture preserves the strict check.
 
-Public uploads now have durable admission and finish intents in the portable core,
-owner-scoped HTTP endpoints, SDK streaming/reconnect helpers and CLI file commands.
-Shutdown settles finish intents before host quiescence; uncertainty preserves source
-and quarantine. Receiving-only uploads are explicitly failed on stop. Completed
-outcomes survive generation advance and replay without host I/O. Two new tests prove
-controller restart/ACK-loss recovery, no duplicate publication, owner isolation,
-aborted incomplete uploads and no quiescence before a pending publication resolves.
-All 73 unit tests, build/typecheck and linters pass. The real API fixture now injects
-a lost file-publication ACK and verifies retained outcomes, incomplete-upload abort,
-exact restored uploaded bytes, cross-generation replay and CLI file reads. Source
-**69c06c8bd3af0b83085dea810b6cbeb87a0064a9** passed CI **41217041964**, all four
-jobs; watcher 46081 terminated with exit 0. API log confirms lostFileWriteAckRecovery
-and incompleteUploadAbortedOnStop, preserving the prior recovery evidence. Resources
-were cleaned; no active CI/host work remains.
+Current bounds: file chunks 256 KiB, uploads 64 MiB/file and 64 identities/assignment,
+listings 256 entries/page with a 10,000-entry scan ceiling, checkpoint pages 100 roots,
+and 128 named pins/root. Live file reads are not snapshots; file publication is host-local
+until checkpointed. Writes atomically replace directory entries, not hardlink groups.
+Expiry testing uses an injected controller clock, not provider forced termination.
 
-Checkpoint history/pins continuation: portable service, API, SDK and CLI now expose
-bounded filesystem-history pages, individual summaries and named retention pins.
-Internal command-output roots are excluded; malformed archive metadata fails closed.
-Pin mutation and operation outcome commit atomically; old-operation replay cannot
-reverse newer pin/unpin changes, including after generation advance. Tests cover
-pagination, owner denial, command-output exclusion, transaction rollback, pin-protected
-retirement and durable replay. The first synthetic manifest used an invalid zero-byte
-expanded frame; corrected to a bounded nonempty frame without relaxing validation.
-All 74 unit tests, build/typecheck and linters pass. Real API qualification now checks
-history and pins across replacement, including old-pin replay after unpin; CI pending.
-Inspection is metadata-only, not a storage integrity proof. Historical selection for
-restore and explicit public retirement remain pending, alongside the full GC gate.
+Historical selection continuation: resume now accepts an explicit retained filesystem
+checkpoint, with immutable operation selection and an internal lifecycle reference.
+The reference blocks retirement/collection while queued or uncertain, survives the
+generation change and cannot be removed through user pin APIs. It is released only
+after runtime readiness or atomic queued cancellation. Missing/non-filesystem roots
+and conflicting operation replays fail before allocation. Unit tests verify these
+cases and preservation of newer history. All 75 tests, build/typecheck and linters
+pass. Real API qualification now writes different newer bytes, saves them, selects
+an older root, and checks older bytes plus retained newer history and reference cleanup.
+CI pending. This remains same-host container replacement, not cloud-host qualification.
 
-Next: observe exact-SHA CI, then complete remaining interactive/API
-scope, unresolved assignment deletion, orphan-reader/multi-controller recovery,
-full GC, Boat/S3/R2, physical replacement, staging integration and matched benchmarks.
-The upload protocol is bounded (64 MiB/file and 64 identities/assignment); a committed
-write is host-local durability, not a checkpoint acknowledgement. Public file writes
-are atomic directory-entry replacement, not in-place mutation of hardlink groups.
-No paid resources or separate GC experiment changes. Full release remains unproven.
+Next: observe exact-SHA CI, then complete remaining interactive/API scope;
+qualify unresolved assignment deletion, orphan-reader/multi-controller recovery;
+finish complete safe GC, Boat/S3/R2 adapters, fresh physical-host recovery, downstream
+staging integration and matched benchmarks. Keep every original acceptance gate.
+No paid host resources, original recovery reservation or separate GC experiment state
+was touched. No production cutover or publication beyond the authorized public source.
+Full release acceptance remains unproven; the goal stays active.
 
 ## Current evidence and next actions
 

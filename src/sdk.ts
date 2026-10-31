@@ -223,6 +223,16 @@ export class JetskiClient {
     if (offset !== spec.bytes) throw Error("Upload source ended early");
     return this.finishUpload(sandbox, id);
   }
+  resume(sandbox: string, operationId: string, checkpointId?: string) {
+    const body: { [key: string]: Json } = { operationId };
+    if (checkpointId !== undefined)
+      body.checkpointId = identifier(checkpointId);
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/resume`,
+      "POST",
+      body,
+    );
+  }
   checkpoints(
     sandbox: string,
     after = "",
