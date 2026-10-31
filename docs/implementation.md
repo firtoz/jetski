@@ -93,6 +93,18 @@ workload-specific products.
 
 ## Latest continuation status
 
+Container session continuation: prior turn made real-browser progress and left a
+verified CI wait. Run41250945239 still live on Boat fixture host setup; preserve
+watcher2136 and re-poll, do not duplicate that run. Added session-cookie HTTP/WS
+qualification through the actual encrypted host-control/runtime path, alongside
+existing bearer modes. It redeems scoped grants over HTTP, verifies exact workload
+payloads and durable closed receipts, then revokes and requires401 before another
+host admission. Local build/typecheck/lint pass; hosted execution still pending.
+This connects session authority to actual container transport, but is not a
+single browser-to-container test or public HTTPS qualification. Those remain next.
+No paid resources, desktop runtime or protected experiment changes.
+
+
 Browser qualification continuation: previous session increment fd810e1 passed all
 five CI jobs (41250520871), so previous turn was verified progress. Added a bounded
 CDP harness that only launches in disposable CI with a fresh profile and explicit
@@ -101,7 +113,18 @@ HttpOnly/Strict cookie acceptance, external script loading, binary HTTP and WS,
 and active revocation. This first browser test uses a socket-backed fixture, not a
 real container; connecting it to host-control/container qualification remains next.
 Local build/typecheck/lint pass; browser intentionally not launched on operator
-host. Current browser CI still pending; preserve first failure if any. No paid
+host. Published fc9ec67ccbc78df03d6615a98624aabad29764b9; browser CI41250945239
+running, watcher2136, log /tmp/jetski-browser-ci.log. Test job124684140056
+passed the real browser check with Chrome/156.0.8078.47; evidence
+/tmp/jetski-browser-test-job.log. Bootstrap navigation, fragment removal, cookie
+flags/HttpOnly isolation, external script, exact binary fetch/WS and active
+revocation passed; owned browser/profile removed. Local104TS/build/typecheck/lint
+pass in /tmp/jetski-browser-local.log. Four jobs passed (test/rootless/SSH/API). Boat fixture job124684140096 remains
+live at Prepare disposable SSH host (started23:04:43UTC); run41250945239 is
+in_progress. Watcher2136 remains live; re-poll it without duplicate rerun.
+This turn made verified browser progress and leaves a verified CI wait. The test
+uses loopback secure-context behavior, not public HTTPS termination. Next qualify
+that boundary plus browser-to-real-container traffic; do not overstate support. No paid
 resources or protected experiment changes.
 
 

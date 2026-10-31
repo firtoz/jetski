@@ -1,9 +1,11 @@
 /** Disposable host qualification for proxy transport, not browser login UX. */
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { request } from "node:http";
 import type { Scope } from "../src/core/contracts.js";
 import type { PortRegistry } from "../src/core/ports.js";
+import type { PreviewSessions } from "../src/core/preview-sessions.js";
 import type { StreamCoordinator } from "../src/core/streams.js";
 import { bearerAuthentication } from "../src/server/http.js";
 import { createPreviewServer } from "../src/server/preview.js";
@@ -13,6 +15,7 @@ export async function qualifyPreview(
   ports: PortRegistry,
   streams: StreamCoordinator,
   websocket: boolean,
+  sessions?: PreviewSessions,
 ) {
   if (process.env.GITHUB_ACTIONS !== "true")
     throw Error("disposable_ci_required");
@@ -40,6 +43,7 @@ export async function qualifyPreview(
     },
     bearerAuthentication([{ owner: scope.owner, token }]),
     {
+      ...(sessions ? { sessions } : {}),
       controlOrigins: ["https://control.example"],
       routes: [
         {
@@ -61,6 +65,38 @@ export async function qualifyPreview(
       authorization: `Bearer ${token}`,
       cookie: "private-control-cookie=1",
     };
+    let grantId: string | undefined;
+    if (sessions) {
+      grantId = randomUUID();
+      const grant = await sessions.mint(scope, grantId, {
+        exposureId: "fixture-port",
+        origin: "https://preview.example",
+      });
+      const redemption = request({
+        host: "127.0.0.1",
+        port: address.port,
+        path: "/.jetski/redeem",
+        method: "POST",
+        headers: {
+          host: "preview.example",
+          origin: "https://preview.example",
+          "content-type": "application/json",
+        },
+      });
+      const ready = once(redemption, "response", {
+        signal: AbortSignal.timeout(15000),
+      });
+      redemption.end(
+        JSON.stringify({ token: grant.token, redemption: randomUUID() }),
+      );
+      const [response] = await ready;
+      response.resume();
+      assert.equal(response.statusCode, 204);
+      const cookie = response.headers["set-cookie"]?.[0]?.split(";")[0];
+      assert.ok(cookie);
+      delete headers.authorization;
+      headers.cookie = cookie;
+    }
     if (websocket)
       Object.assign(headers, {
         connection: "Upgrade",
@@ -123,6 +159,25 @@ export async function qualifyPreview(
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     assert.equal((await streams.inspect(scope, id!)).phase, "closed");
+    if (sessions && grantId) {
+      await sessions.revoke(scope, grantId, randomUUID());
+      const rejected = request({
+        host: "127.0.0.1",
+        port: address.port,
+        path: "/",
+        headers: { host: "preview.example", cookie: headers.cookie! },
+      });
+      const ready = once(rejected, "response", {
+        signal: AbortSignal.timeout(15000),
+      });
+      rejected.end();
+      const [response] = await ready;
+      response.resume();
+      assert.equal(response.statusCode, 401);
+      console.log(
+        `Container preview session ${websocket ? "WS" : "HTTP"}: verified closed receipt and revoked admission`,
+      );
+    }
   } finally {
     await preview.close();
   }

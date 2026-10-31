@@ -9,6 +9,7 @@ import type { Json } from "../src/core/contracts.js";
 import { OperationJournal } from "../src/core/operations.js";
 import type { HostLease } from "../src/core/pool.js";
 import { PortRegistry } from "../src/core/ports.js";
+import { PreviewSessions } from "../src/core/preview-sessions.js";
 import {
   encodeStreamFrame,
   STREAM_MAGIC,
@@ -394,10 +395,19 @@ export async function qualifyHostStream(
         await stopServer(forwardingServer);
       }
     }
-    for (const mode of ["http", "ws"] as const) {
-      const previewServer = await startServer(false, false, mode);
-      await qualifyPreview(scope, ports, coordinator, mode === "ws");
-      await stopServer(previewServer);
+    const previewSessions = new PreviewSessions(state, operations, ports);
+    for (const session of [false, true]) {
+      for (const mode of ["http", "ws"] as const) {
+        const previewServer = await startServer(false, false, mode);
+        await qualifyPreview(
+          scope,
+          ports,
+          coordinator,
+          mode === "ws",
+          session ? previewSessions : undefined,
+        );
+        await stopServer(previewServer);
+      }
     }
     const revokedServer = await startServer(false),
       revokedId = randomUUID();
