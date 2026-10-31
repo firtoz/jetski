@@ -17,3 +17,23 @@ jobs:
       - run: npm test
       - run: npm run lint
       - run: python3 -m unittest discover -s host -v
+  rootless-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare disposable rootless runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session
+          sudo loginctl enable-linger "$USER"
+          sudo systemctl start "user@$(id -u).service"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+      - name: Resolve test fixture image to approved digest
+        run: |
+          podman pull docker.io/library/alpine:3.22
+          image=$(podman image inspect docker.io/library/alpine:3.22 --format '{{index .RepoDigests 0}}')
+          echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
+      - name: Qualify rootless lifecycle and filesystem recovery
+        run: python3 host/qualify_podman.py

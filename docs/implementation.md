@@ -130,3 +130,16 @@ objective; scaffolding alone does not satisfy acceptance.
 Repository published: https://github.com/firtoz/jetski, initial commit
 928c24fd42638f42d15b39dc190716ee6838643c. CI run 41206273440 completed successfully for that commit. Public publication is
 an initial implementation checkpoint, not a qualified release.
+
+
+2026-10-31 continuation: added ordinary Python archive and independent-frame
+compression modules, plus rootless Podman create/quiesce/remove lifecycle adapter.
+Sixteen Python unit tests pass, including independent tree comparison across bytes,
+modes, hardlinks, Unicode and external/dangling symlink targets; rename/delete,
+malformed archives, partial captures and one-frame edits. Runtime unit tests verify
+stale/closed leases, quarantine on uncertain creation, approved image digests and
+observed stop/removal. Runtime networking is currently disabled; full execution,
+transport, bootstrap and server integration remain open. Rootless runtime CI now
+uses a disposable runner, resolves an explicit fixture image to a digest, and tests
+source-deleted filesystem recovery into a fresh container. Its result is pending;
+this is not a replacement-host or remote-store test. No desktop runtime was used.

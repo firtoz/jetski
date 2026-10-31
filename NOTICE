@@ -1,5 +1,5 @@
-Host generation fencing in host/fence.py is adapted from firtoz-authored
-supervisor code, with permission to distribute under this project's MIT license.
+Host generation fencing and filesystem capture/restore principles is adapted from firtoz-authored
+supervisor code in host/fence.py and host/archive.py, with permission to distribute under this project's MIT license.
 Copyright (c) 2026 firtoz and Jetski contributors.
 
 No third-party source has been vendored. Dependencies retain their own licenses
