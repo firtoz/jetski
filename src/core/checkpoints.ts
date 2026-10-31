@@ -11,9 +11,10 @@ import {
   type Transaction,
 } from "./contracts.js";
 
-type Root = {
+export type CheckpointRoot = {
   id: string;
   frames: ObjectInfo[];
+  metadata: Json;
   publishedAt: number;
   retiredAt: number | null;
   pins: string[];
@@ -27,7 +28,7 @@ type Access = {
 type Registry = {
   generation: number;
   accesses: Access[];
-  roots: Root[];
+  roots: CheckpointRoot[];
   collection: string | null;
 };
 
@@ -100,6 +101,7 @@ export class CheckpointRegistry {
     writer: string,
     rootId: string,
     frames: ObjectInfo[],
+    metadata: Json = null,
   ): Promise<void> {
     identifier(rootId);
     if (frames.length > 16384) throw new Error("Manifest bound exceeded");
@@ -139,6 +141,7 @@ export class CheckpointRegistry {
       state.roots.push({
         id: rootId,
         frames: frozen,
+        metadata: structuredClone(metadata),
         publishedAt: this.now(),
         retiredAt: null,
         pins: [],
@@ -236,6 +239,13 @@ export class CheckpointRegistry {
       tx.put(this.key(fence), state);
     });
     return { deleted };
+  }
+  async root(fence: Fence, id: string): Promise<CheckpointRoot | undefined> {
+    return this.state.transaction((tx) =>
+      this.load(tx, fence).roots.find(
+        (root) => root.id === id && root.retiredAt === null,
+      ),
+    );
   }
   async inspect(scope: Scope): Promise<Json | undefined> {
     return this.state.transaction((tx) => tx.get(this.key(scope)));

@@ -64,7 +64,7 @@ def bootstrap(config):
                 continue
             meta = parent.lstat()
             if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
-                raise ValueError("unsafe_install_path")
+                raise ValueError("unsafe_install_path:" + str(parent))
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
         if path.stat().st_uid != 0:
             raise ValueError("unsafe_install_owner")

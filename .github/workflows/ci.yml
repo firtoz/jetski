@@ -57,6 +57,11 @@ jobs:
           image=$(podman image inspect docker.io/library/alpine:3.22 --format '{{index .RepoDigests 0}}')
           echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
           python3 -c 'import json,sys; json.dump(dict(version=1,machineId="ssh-ci",poolId="ci",images=[sys.argv[1]]),open("/tmp/jetski-host.json","w"))' "$image"
+          stat -c '%u %a %n' / /etc /var /var/lib /opt
+          # This disposable runner may grant its user ownership of /opt.
+          # Production bootstrap must continue rejecting writable ancestors.
+          sudo chown root:root /opt
+          sudo chmod 755 /opt
           sudo python3 host/bootstrap.py --config /tmp/jetski-host.json
           mkdir -m 700 "$RUNNER_TEMP/jetski-ssh"
           ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/jetski-ssh/client"

@@ -188,3 +188,18 @@ A new disposable CI job exercises bootstrap and real encrypted SSH control with 
 forced command, correct/wrong host keys and stale-generation rejection. Its result
 must be observed before claiming SSH qualification. No desktop host was modified.
 Full execute/PTY/network/transfer handlers and standalone lifecycle remain open.
+
+SSH CI run 41207434974 stopped at the unsafe-install-path guard before bootstrap
+completion. The disposable fixture now reports ancestor modes and makes /opt
+root-owned/non-writable by other users; production checks remain strict. Exact
+failure path is now included in the bounded bootstrap diagnostic.
+
+Added bounded checkpoint range reads over host control and portable incremental
+publication into the checkpoint registry. Captured manifests validate extents,
+counts, hashes and bounds; immutable objects are read back before root publication.
+Only verified matching frames from a retained previous root are reused. Failed
+transfers retain writer exclusion; repeated successful operation IDs observe the
+persisted root rather than rereading a lost source. Twelve TypeScript tests pass,
+including changed-frame upload, source-independent reconstruction and failed-read
+quarantine. The SSH fixture now attempts real verified local publication over the
+encrypted control transport; qualification remains pending its CI result.

@@ -1,5 +1,7 @@
 """Protocol v1 over authenticated SSH stdin/stdout; installed root-owned."""
 
+import base64
+import hashlib
 import json
 import os
 import stat
@@ -83,7 +85,39 @@ def dispatch(request, config, account, run):
             roots = {
                 name: DATA_ROOT / lease["assignmentId"] / name for name in ("workspace", "home")
             }
-            return capture(roots, ARCHIVE_ROOT / (lease["assignmentId"] + ".tgz"))
+            receipt = capture(roots, ARCHIVE_ROOT / (lease["assignmentId"] + ".tgz"))
+            fence.write({**state, "checkpoint": receipt})
+            return receipt
+    if action == "read-checkpoint":
+        offset, count = payload.get("offset"), payload.get("bytes")
+        if (
+            type(offset) is not int
+            or type(count) is not int
+            or offset < 0
+            or not 1 <= count <= 256 * 1024
+        ):
+            raise ValueError("invalid_checkpoint_range")
+        with fence.locked():
+            state = fence.read()
+            fence.match(state, lease)
+            receipt = state.get("checkpoint")
+            if state["phase"] != "closed" or not receipt or offset + count > receipt["bytes"]:
+                raise ValueError("checkpoint_range_unavailable")
+            path = ARCHIVE_ROOT / (lease["assignmentId"] + ".tgz")
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "rb") as source:
+                if os.fstat(source.fileno()).st_size != receipt["bytes"]:
+                    raise ValueError("checkpoint_size_changed")
+                source.seek(offset)
+                data = source.read(count)
+            if len(data) != count:
+                raise ValueError("short_checkpoint_range")
+            return dict(
+                offset=offset,
+                bytes=count,
+                sha256=hashlib.sha256(data).hexdigest(),
+                base64=base64.b64encode(data).decode("ascii"),
+            )
     # restore/release require durable publication and ownership preparation;
     # unsupported requests fail closed until their handlers are installed.
     raise ValueError("unsupported_host_action")

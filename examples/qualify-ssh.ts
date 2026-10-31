@@ -1,6 +1,16 @@
 /** Disposable-runner qualification; environment paths are ephemeral credentials. */
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  CheckpointRegistry,
+  CheckpointTransfer,
+  parseArchive,
+} from "../src/core/index.js";
+import { SqliteState } from "../src/state/sqlite.js";
+import { LocalCheckpointStore } from "../src/storage/local.js";
 import { SshTransport } from "../src/transport/ssh.js";
 
 const key = process.env.JETSKI_TEST_SSH_KEY;
@@ -82,6 +92,56 @@ try {
       !Array.isArray(checkpoint) &&
       checkpoint.entries === 2,
   );
+  const directory = await mkdtemp(join(tmpdir(), "jetski-ssh-retention-"));
+  const state = new SqliteState(join(directory, "state.sqlite"));
+  try {
+    const store = new LocalCheckpointStore(join(directory, "objects"));
+    const registry = new CheckpointRegistry(state, store);
+    const fence = {
+      owner: lease.owner,
+      sandbox: lease.sandboxId,
+      generation: lease.generation,
+    };
+    await registry.initialize(fence);
+    const manifest = parseArchive(checkpoint);
+    const saved = await new CheckpointTransfer(store, registry).save(
+      fence,
+      randomUUID(),
+      manifest,
+      {
+        read: async (offset, bytes) => {
+          const result = await request("read-checkpoint", {
+            ...payload,
+            offset,
+            bytes,
+          });
+          if (
+            !result ||
+            typeof result !== "object" ||
+            Array.isArray(result) ||
+            typeof result.base64 !== "string"
+          )
+            throw new Error("Invalid transfer response");
+          const decoded = Buffer.from(result.base64, "base64");
+          assert.equal(
+            createHash("sha256").update(decoded).digest("hex"),
+            result.sha256,
+          );
+          return decoded;
+        },
+      },
+    );
+    const recovered: Uint8Array[] = [];
+    for (const frame of saved.root.frames)
+      for await (const part of store.read(frame)) recovered.push(part);
+    assert.equal(
+      createHash("sha256").update(Buffer.concat(recovered)).digest("hex"),
+      manifest.sha256,
+    );
+  } finally {
+    state.close();
+    await rm(directory, { recursive: true, force: true });
+  }
   await request("remove", payload);
   console.log(
     JSON.stringify({
@@ -91,6 +151,7 @@ try {
       createReplay: true,
       staleFenceDenied: true,
       capture: true,
+      verifiedLocalPublication: true,
     }),
   );
 } finally {
