@@ -143,6 +143,35 @@ def bootstrap(config):
     fd = os.open(target_binary.parent, os.O_RDONLY | os.O_DIRECTORY)
     os.fsync(fd)
     os.close(fd)
+    # Dedicated account only: do not inherit another login's runtime directory
+    # from the systemd user manager. Never change the host-wide Podman unit.
+    dropin = pathlib.Path(account.pw_dir) / ".config/systemd/user/podman.service.d"
+    for parent in [pathlib.Path(account.pw_dir), *list(dropin.parents)[:3][::-1], dropin]:
+        if parent.exists():
+            meta = parent.lstat()
+            if not stat.S_ISDIR(meta.st_mode) or meta.st_uid not in (0, account.pw_uid):
+                raise ValueError("unsafe_runtime_unit_path")
+        else:
+            parent.mkdir(mode=0o755)
+    unit = dropin / "10-jetski.conf"
+    if unit.is_symlink():
+        raise ValueError("unsafe_runtime_unit")
+    unit.write_text(
+        "[Service]\n"
+        + f'Environment="HOME={account.pw_dir}" "USER={ACCOUNT}" "LOGNAME={ACCOUNT}" '
+        + f'"XDG_RUNTIME_DIR=/run/user/{account.pw_uid}" '
+        + f'"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{account.pw_uid}/bus"\n'
+        + "UnsetEnvironment=CONTAINER_HOST CONTAINER_CONNECTION "
+        + "_CONTAINERS_USERNS_CONFIGURED _CONTAINERS_ROOTLESS_UID _CONTAINERS_ROOTLESS_GID\n"
+    )
+    os.chmod(unit, 0o644)
+    reload = bounded_command(
+        runtime_argv(account)[:-1] + ["systemctl", "--user", "daemon-reload"],
+        CONTROL_ROOT,
+        timeout=30,
+    )
+    if reload["exitCode"]:
+        raise ValueError("runtime_unit_reload_failed")
     socket_started = bounded_command(
         runtime_argv(account)[:-1] + ["systemctl", "--user", "enable", "--now", "podman.socket"],
         CONTROL_ROOT,
@@ -150,6 +179,11 @@ def bootstrap(config):
     )
     if socket_started["exitCode"]:
         raise ValueError("runtime_socket_unavailable")
+    from podman_exec import ExecApi
+
+    _, api_info = ExecApi(account.pw_uid).request("GET", "/info")
+    if not isinstance(api_info, dict):
+        raise ValueError("runtime_api_unavailable")
     for name in MODULES:
         target = pathlib.Path("/opt/jetski/host") / name
         if target.is_symlink():

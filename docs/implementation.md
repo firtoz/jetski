@@ -93,6 +93,26 @@ workload-specific products.
 
 ## Latest continuation status
 
+CI41226730157 failed SSH/API; dedicated service journal identifies inherited
+XDG_RUNTIME_DIR=/run/user/1001 not owned by its current user. Rootless standalone,
+unit and Boat bootstrap passed. Private receipt /tmp/jetski-runtime-service-ssh.log.
+Candidate fix scopes service environment to the dedicated account with a per-user
+unit drop-in and verifies GET /info during bootstrap before declaring readiness.
+No host-wide unit or desktop changes. Qualification pending; preserve failed runs.
+
+
+Current diagnostic source08f1e44d99fb187715d9af0a0077c4ebb7440c8c,
+CI41226730157 running. Previous41226543801 finished failure: native/runtime,
+unit and Boat bootstrap passed; SSH/API failed. Bounded SSH receipt identifies
+exec-create / ConnectionResetError, before workload launch. Private evidence
+/tmp/jetski-worker-stage-ssh.log; no raw exception/nonce exposed. Next diagnostic
+CI captures only the dedicated disposable account's Podman service journal after
+failure; investigate socket activation/service startup before changing execution.
+56TypeScript and47Python tests pass locally; cancellation SQLite restart and
+lost-ACK test passes. Previous watchers70131/78054 exited1. No paid resources or
+protected experiment changes. Installed command execution is currently unqualified.
+
+
 Candidate dd9ab54697337228085ca21af3bb1fde42163aef, CI41226366001: test,
 rootless-runtime and Boat bootstrap fixture passed; installed SSH command failed
 with uncertain instead of succeeded (job124611239257, private log
