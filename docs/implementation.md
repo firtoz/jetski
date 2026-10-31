@@ -93,7 +93,30 @@ workload-specific products.
 
 ## Latest continuation status
 
-Port permission candidate: portable PortRegistry, shared operation journal,
+Workload-local TCP relay candidate: standalone static Linux source in
+host/native/tcp-relay.c. Fixed127.0.0.1 destination, validated numeric port,
+16KiB bounded framed data, explicit connected/read-FIN/write-FIN, nonblocking
+backpressure,5second connect and1hour lifetime bounds; no subprocesses, DNS,
+credentials or host paths. Disconnect before write-FIN is uncertainty; never
+reconnects/replays. No production bootstrap/runtime wiring yet. Disposable CI
+qualify_tcp.py checks exact1MiB binary echo with paused reader, remote-first FIN
+while upload continues, malformed/truncated input, refusal and invalid targets,
+then HTTP over loopback inside a rootless --network=none container and cleanup.
+Native code only syntax-checked locally; executable qualification pending in CI.
+Local73TS/59Python tests/build/typecheck/lint and Python formatting pass.
+Next wire qualified relay through authenticated host control with durable stream
+admission, lifecycle cleanup and port-registry revocation; TCP/previews still false.
+No paid allocation or desktop native execution; protected GC experiment untouched.
+
+Verified133ac178f4439ccd47498aa19f15e5aa16d85d75 / CI41238408421 all five
+jobs passed, watcher93326 exited0. /tmp/jetski-port-ci.log and
+/tmp/jetski-port-api.log (API job124646942694).73TS/59Python tests plus
+build/typecheck/lint pass. This includes HTTP/SDK port-authority tests and the
+existing real SSH/API/container checkpoint/recovery suite, not actual TCP tunnels.
+Scratchpad-only verification update is uncommitted; source is on main.
+No paid allocations, desktop runtime work or protected real-grace GC changes.
+
+Port permission implementation: portable PortRegistry, shared operation journal,
 manager ownership boundary, HTTP routes/SDK and OpenAPI. Grants/revokes are atomic
 with stable outcomes; grants bind exact assignment/image/generation and running
 state. Revoked or stale grants never become live through replay.64active bound,

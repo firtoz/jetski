@@ -49,6 +49,10 @@ jobs:
           echo "JETSKI_TEST_SUPERVISOR=$RUNNER_TEMP/jetski-supervisor" >> "$GITHUB_ENV"
       - name: Qualify isolated exec sessions
         run: python3 host/qualify_exec.py
+      - name: Build and qualify workload-local TCP relay
+        run: |
+          cc -static -O2 -Wall -Wextra -Werror host/native/tcp-relay.c -o "$RUNNER_TEMP/jetski-tcp-relay"
+          JETSKI_TEST_TCP_RELAY="$RUNNER_TEMP/jetski-tcp-relay" python3 host/qualify_tcp.py
   ssh-control:
     strategy:
       fail-fast: false
