@@ -71,6 +71,36 @@ class TerminalInputTests(unittest.TestCase):
             restarted.dispatch_one(self.lease, self.command, sent.append)
         self.assertEqual(len(sent), 1)
 
+    def test_abandoned_dispatch_is_observed_as_uncertain_without_send(self):
+        identifier = str(uuid.uuid4())
+        self.inputs.admit(self.lease, self.command, identifier, dict(kind="close"))
+        ledger = Fence(self.root / "inputs" / self.lease["assignmentId"] / self.command)
+        with self.fence.locked():
+            entries = ledger.read()
+            entries["ops"][identifier]["phase"] = "dispatched"
+            ledger.write(entries)
+        restarted = TerminalInputs(Fence(self.root / "fence"), self.root / "inputs")
+        self.assertEqual(
+            restarted.status(self.lease, self.command, identifier)["phase"], "uncertain"
+        )
+        self.assertEqual(ledger.read()["ops"][identifier]["phase"], "uncertain")
+        sent = []
+        with self.assertRaisesRegex(ValueError, "delivery_uncertain"):
+            restarted.dispatch_one(self.lease, self.command, sent.append)
+        self.assertEqual(sent, [])
+
+    def test_closed_terminal_settles_unsent_inputs_without_delivery(self):
+        identifier = str(uuid.uuid4())
+        value = dict(kind="stdin", base64="YQ==")
+        self.inputs.admit(self.lease, self.command, identifier, value)
+        self.fence.close(self.lease)
+        observed = self.inputs.status(self.lease, self.command, identifier)
+        self.assertEqual(observed["phase"], "cancelled")
+        self.assertEqual(self.inputs.admit(self.lease, self.command, identifier, value), observed)
+        sent = []
+        self.assertFalse(self.inputs.dispatch_one(self.lease, self.command, sent.append))
+        self.assertEqual(sent, [])
+
     def test_validation_and_closed_fence(self):
         for value in [
             dict(kind="stdin", base64=""),

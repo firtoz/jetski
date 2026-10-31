@@ -62,6 +62,21 @@ class TerminalInputs:
         entries = ledger.read() or {"version": 1, "next": 0, "ops": {}}
         if set(entries) != {"version", "next", "ops"} or entries["version"] != 1:
             raise ValueError("terminal_journal_invalid")
+        interrupted = False
+        closed = state["phase"] != "open" or receipt["phase"] not in ("queued", "running")
+        for item in entries["ops"].values():
+            if item["phase"] == "dispatched":
+                # A live sender holds this same fence until its final receipt.
+                # Observing dispatched under the lock proves that sender exited
+                # without publishing an outcome, not that the bytes were unsent.
+                item["phase"] = "uncertain"
+                interrupted = True
+            elif item["phase"] == "queued" and closed:
+                item["phase"] = "cancelled"
+                del item["frame"]
+                interrupted = True
+        if interrupted:
+            ledger.write(entries)
         return state, receipt, ledger, entries
 
     @staticmethod

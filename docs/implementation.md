@@ -93,6 +93,23 @@ workload-specific products.
 
 ## Latest continuation status
 
+Verified7afef57610bfe67855a6c846fa0c07dfb60c6fe3, CI41229390248 all five
+jobs passed; watcher34605 exited0. SSH job124620185395 confirms durable host
+terminal input, lost admission ACK/reconnect without duplicate bytes, resize,
+foregroundINT, close and owner denial alongside checkpoint/source-deleted restore.
+Private /tmp/jetski-host-terminal-ssh.log. Public terminal API remains disabled.
+
+Final journal continuation: under the shared exclusive fence, observing a persisted
+dispatched record proves its sender no longer holds the lock; mark it uncertain,
+never assume unsent or replay. Queued input after terminal/assignment closure is
+settled cancelled without delivery; payload removed, stable digest/outcome retained.
+Added restart and closure tests;53Python tests pass. Full CI for this final change
+pending. Source control history persists until durable core operation retention
+allows safe cleanup; public terminal lifecycle/core/SDK/gateway integration remains
+required, plus all other provider/client/benchmark gates. No paid/desktop/protected
+experiment changes.
+
+
 Host terminal integration candidate: dedicated input journal keeps bounded queued
 payloads outside public command status/checkpoints, stable IDs/sequences/digests,
 and queued/dispatched/sent/uncertain receipts. Intent is fsynced before attach send;
