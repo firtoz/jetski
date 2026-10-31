@@ -102,7 +102,11 @@ transaction rollback and escaped-handle rejection, owner/path isolation, upload
 integrity, tombstone identity reuse, range reads, retained-root verification,
 reader/writer exclusion and simulated minimum-grace collection. Build and Biome
 lint pass. npm audit reports zero dependency vulnerabilities. No third-party source
-has been copied; existing host Python extraction still needs provenance review.
+has been copied. The author-owned generation fence was reviewed and adapted into
+host/fence.py as ordinary Python, retaining attribution in NOTICE and its header.
+Four Python tests pass: close-before-claim/restart, trusted cleanup/publication
+release gate, owner isolation/generation gaps, and symlink-state rejection. Further
+host runtime and filesystem extraction still needs provenance review.
 
 These are foundation tests, not adapter or hosted qualification. The registry's
 initial collector handles known retired frames only; complete orphan enumeration,
@@ -121,3 +125,8 @@ No adapter or performance claims qualified yet.
 At each continuation read this file, inspect actual git/check state, update closed
 gates with evidence, and pursue all remaining gates. Full implementation is the
 objective; scaffolding alone does not satisfy acceptance.
+
+
+Repository published: https://github.com/firtoz/jetski, initial commit
+928c24fd42638f42d15b39dc190716ee6838643c. CI run 41206273440 completed successfully for that commit. Public publication is
+an initial implementation checkpoint, not a qualified release.

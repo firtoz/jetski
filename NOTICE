@@ -1,3 +1,6 @@
-Current implementation is original project code. No third-party source has
-been vendored. Dependencies retain their own licenses and notices. Any future
-source extraction requires a provenance and license review before inclusion.
+Host generation fencing in host/fence.py is adapted from firtoz-authored
+supervisor code, with permission to distribute under this project's MIT license.
+Copyright (c) 2026 firtoz and Jetski contributors.
+
+No third-party source has been vendored. Dependencies retain their own licenses
+and notices. Further source extraction requires provenance and license review.

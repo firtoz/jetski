@@ -16,3 +16,4 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run lint
+      - run: python3 -m unittest discover -s host -v

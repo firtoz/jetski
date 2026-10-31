@@ -4,3 +4,5 @@ coverage/
 .env*
 *.sqlite*
 .jetski/
+__pycache__/
+*.pyc
