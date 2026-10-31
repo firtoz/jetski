@@ -26,7 +26,15 @@ from supervisor import (
     bounded_command,
 )
 
-MODULES = ("archive.py", "frames.py", "fence.py", "runtime.py", "supervisor.py", "control.py")
+MODULES = (
+    "archive.py",
+    "frames.py",
+    "fence.py",
+    "runtime.py",
+    "supervisor.py",
+    "control.py",
+    "commands.py",
+)
 
 
 def bootstrap(config):
