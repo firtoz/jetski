@@ -5,6 +5,8 @@ import json
 import os
 import pathlib
 import secrets
+import struct
+import time
 import subprocess
 import tempfile
 import threading
@@ -191,6 +193,92 @@ def main():
                 == "true"
             )
             assert run(["exec", container, "/bin/sh", "-c", "printf usable"])["stdout"] == "usable"
+
+            def terminal(argv, exercise):
+                session = create(["/jetski-supervisor", "--jetski-pty-v1", *argv])
+                sessions.append(session)
+                ready = threading.Event()
+                senders = []
+                observed = bytearray()
+                decoder = CompletionDecoder(nonces[session])
+
+                def input_ready(send):
+                    senders.append(send)
+                    ready.set()
+
+                def consume():
+                    for channel, chunk in api.output(
+                        session, timeout=40, initial_input=nonces[session], input_ready=input_ready
+                    ):
+                        if channel == "stderr":
+                            assert decoder.feed(chunk) == b"", "Private control data leaked"
+                        else:
+                            observed.extend(chunk)
+                    return decoder.finish()
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(consume)
+                    assert ready.wait(10), "Terminal attach did not become ready"
+
+                    def wait_for(marker):
+                        deadline = time.monotonic() + 10
+                        while marker not in observed:
+                            if future.done():
+                                future.result()
+                                raise AssertionError("Terminal exited before expected output")
+                            if time.monotonic() >= deadline:
+                                raise AssertionError(
+                                    "Terminal output deadline: " + repr(bytes(observed))
+                                )
+                            time.sleep(0.01)
+
+                    def send(kind, payload=b""):
+                        senders[0](kind + struct.pack(">I", len(payload)) + payload)
+
+                    exercise(wait_for, send)
+                    proof = future.result(timeout=15)
+                    return bytes(observed), proof
+
+            def interaction(wait_for, send):
+                wait_for(b"READY")
+                send(b"R", struct.pack(">HH", 40, 100))
+                send(b"I", b"terminal-input\n")
+                wait_for(b"SIGNAL-READY")
+                send(b"S", bytes([2]))
+
+            rendered, proof = terminal(
+                [
+                    "/bin/sh",
+                    "-ec",
+                    "test -t 0; test -t 1; test -t 2; stty -echo; "
+                    "printf READY; IFS= read -r line; printf 'LINE:%s\\n' \"$line\"; stty size; "
+                    "trap 'printf SIGNAL; exit 0' INT; printf SIGNAL-READY; while :; do sleep 1; done",
+                ],
+                interaction,
+            )
+            assert b"LINE:terminal-input\r\n40 100\r\n" in rendered, rendered
+            assert rendered.endswith(b"SIGNAL"), rendered
+            assert proof == dict(cancelled=False, exitCode=0, descendantsReaped=True), proof
+
+            def binary_input(wait_for, send):
+                wait_for(b"RAW-READY")
+                send(b"I", b"\0\xff\r")
+
+            rendered, proof = terminal(
+                ["/bin/sh", "-ec", "stty raw -echo; printf RAW-READY; dd bs=1 count=3 2>/dev/null"],
+                binary_input,
+            )
+            assert rendered == b"RAW-READY\0\xff\r", rendered
+            assert proof == dict(cancelled=False, exitCode=0, descendantsReaped=True), proof
+
+            def close_terminal(wait_for, send):
+                wait_for(b"CLOSE-READY")
+                send(b"C")
+
+            _, proof = terminal(
+                ["/bin/sh", "-ec", "printf CLOSE-READY; sleep 120 & wait"], close_terminal
+            )
+            assert proof == dict(cancelled=True, exitCode=143, descendantsReaped=True), proof
             print(
                 json.dumps(
                     dict(
@@ -204,6 +292,9 @@ def main():
                         repeatedRemoval=True,
                         sandboxRemainsRunning=True,
                         commandApiIntegrated=False,
+                        nativePtyInputResizeSignalClose=True,
+                        nativePtyBinaryInput=True,
+                        terminalApiIntegrated=False,
                     )
                 ),
                 flush=True,

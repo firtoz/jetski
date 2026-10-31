@@ -131,7 +131,7 @@ class ExecApi:
         if status != 404:
             raise ValueError("exec_removal_unconfirmed")
 
-    def output(self, session, timeout=150, initial_input=b"", on_started=None):
+    def output(self, session, timeout=150, initial_input=b"", on_started=None, input_ready=None):
         """Starts once; yields binary stdout/stderr frames until remote closure.
 
         Do not call again after an exception. EOF is not exit-status evidence;
@@ -157,6 +157,8 @@ class ExecApi:
                 raise ValueError("exec_attach_failed")
             if initial_input:
                 wire.sendall(initial_input)
+            if input_ready is not None:
+                input_ready(wire.sendall)
             if on_started is not None:
                 on_started()
             # HTTP upgrade's body has no Content-Length; use its buffered socket

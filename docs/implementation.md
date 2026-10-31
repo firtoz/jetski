@@ -93,6 +93,39 @@ workload-specific products.
 
 ## Latest continuation status
 
+Native PTY candidate: supervisor optional versioned terminal mode allocates a real
+PTY without requiring a workload language runtime. Private attach stdin carries
+bounded input/resize/foreground-signal/close frames; the workload gets only slave
+terminal descriptors. Completion nonce stays outside that terminal and is erased
+before workload exec. Foreground signals use kernel TIOCSIG, avoiding userspace
+PID lookup/reuse races. Output drains before authenticated completion. Added
+CI-only actual terminal, resize, interrupt, binary input and close/tree-cleanup
+exercises. Local C syntax-only,48Python tests and lint pass; no native workload
+execution on desktop. Hosted fixture pending. Public terminal capability remains
+false until durable host admission/input receipts, core/API/SDK/gateway integration
+and reconnect/security/lifecycle checks are complete. Full goal remains intact.
+
+
+Verified d55d8d5681b3b82fa00a155e943ca61400732db5, CI41228322998 all five
+jobs passed; watcher65962 exited0. API job124617050046 confirms both independently
+targeted publication failures recovered exactly once, with multiCommandOutput-
+AcknowledgementRecovery=true and all existing lifecycle/restore checks. Stop took
+14827ms; prior single-fault replay15623ms. The old15s fixture deadline was too tight
+for this workload;60s bounded deadline plus exact error checks retained. No product
+recovery weakening was needed. Private /tmp/jetski-dual-publication-api.log. Local
+57TypeScript/48Python tests passed; source pushed to main. Full release remains open.
+
+Next: implement/qualify interactive terminal transport (PTY allocation, stdin,
+resize, signals, close and reconnect) through the existing owner/generation and
+uncertain-execution boundaries, then SSH gateway/previews/TCP and remaining full
+provider/client/benchmark gates. A workload must not receive host-control credentials
+or completion nonces; terminal input with uncertain delivery must not blindly replay.
+Do not install/run workload helpers on desktop. Live paid hosts require separate
+allowance; original recovery reservation and real-grace experiment remain untouched.
+Current CI handles are terminal; scratchpad-only verified update follows published
+code. Previous turn made verified progress, not a wait or completion of full goal.
+
+
 Verified0343980ac5541ba9d69678919dc6e5e160ddf4a1, CI41227984607 all five
 jobs passed; watcher67716 exited0. API job124616057194 recovered the original
 multi-output ACK fault in15623ms with exactly the injected error, exceeding the
