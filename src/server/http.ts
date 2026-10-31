@@ -9,6 +9,7 @@ import type { SandboxManager } from "../core/manager.js";
 import {
   DEFAULT_TERMINAL_GEOMETRY,
   type TerminalInput,
+  TerminalInputNotFound,
   terminalGeometry,
 } from "../core/terminal-input.js";
 
@@ -450,11 +451,13 @@ export function createHttpServer(
         }
       }
       send(response, 404, { error: "not_found" });
-    } catch {
+    } catch (error) {
       // Do not expose provider diagnostics, paths, credentials or workload stderr.
-      if (!response.headersSent)
-        send(response, 400, { error: "request_failed" });
-      else response.destroy();
+      if (!response.headersSent) {
+        if (error instanceof TerminalInputNotFound)
+          send(response, 404, { error: "not_found" });
+        else send(response, 400, { error: "request_failed" });
+      } else response.destroy();
     }
   });
   server.requestTimeout = 30_000;

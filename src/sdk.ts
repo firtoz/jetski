@@ -1,3 +1,5 @@
+import { TerminalAttachment } from "./client/terminal.js";
+import { observationDelay } from "./client/wait.js";
 import type {
   CheckpointPage,
   CheckpointSummary,
@@ -8,6 +10,7 @@ import {
   OUTPUT_CHUNK,
   OUTPUT_LIMIT,
 } from "./core/command-output.js";
+import type { StateStore } from "./core/contracts.js";
 import { identifier, type Json, type Operation } from "./core/contracts.js";
 import {
   FILE_CHUNK_BYTES,
@@ -21,6 +24,11 @@ import {
   terminalGeometry,
 } from "./core/terminal-input.js";
 import type { UploadSpec, UploadStatus } from "./core/uploads.js";
+export class JetskiHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`Jetski request failed (${status})`);
+  }
+}
 export class JetskiClient {
   private readonly base: URL;
   constructor(
@@ -61,8 +69,7 @@ export class JetskiClient {
     if (signal) options.signal = signal;
     if (body !== undefined) options.body = JSON.stringify(body);
     const response = await this.transport(new URL(path, this.base), options);
-    if (!response.ok)
-      throw new Error(`Jetski request failed (${response.status})`);
+    if (!response.ok) throw new JetskiHttpError(response.status);
     return (await response.json()) as T;
   }
   startTerminal(
@@ -84,20 +91,26 @@ export class JetskiClient {
     terminal: string,
     id: string,
     input: TerminalInput,
+    signal?: AbortSignal,
   ): Promise<Json> {
     return this.request(
       `/v1/sandboxes/${identifier(sandbox)}/terminals/${identifier(terminal)}/inputs`,
       "POST",
       { id, input },
+      signal,
     );
   }
   terminalInputStatus(
     sandbox: string,
     terminal: string,
     id: string,
+    signal?: AbortSignal,
   ): Promise<Json> {
     return this.request(
       `/v1/sandboxes/${identifier(sandbox)}/terminals/${identifier(terminal)}/inputs/${identifier(id)}`,
+      "GET",
+      undefined,
+      signal,
     );
   }
   terminalStatus(sandbox: string, terminal: string): Promise<Json> {
@@ -166,24 +179,45 @@ export class JetskiClient {
         offset = segment.nextOffset;
       }
       if (segment.terminal) return;
-      if (!bytes.length)
-        await new Promise<void>((resolve, reject) => {
-          const signal = options.signal;
-          const abort = () => {
-            clearTimeout(timer);
-            reject(signal?.reason);
-          };
-          const timer = setTimeout(() => {
-            signal?.removeEventListener("abort", abort);
-            resolve();
-          }, 250);
-          signal?.addEventListener("abort", abort, { once: true });
-          if (signal?.aborted) {
-            signal.removeEventListener("abort", abort);
-            abort();
-          }
-        });
+      if (!bytes.length) await observationDelay(options.signal);
     }
+  }
+  async attachTerminal(
+    state: StateStore,
+    attachmentId: string,
+    sandbox: string,
+    terminal: string,
+  ): Promise<TerminalAttachment> {
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(this.base.origin + "\0" + this.token),
+    );
+    const binding = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    return TerminalAttachment.open(
+      state,
+      attachmentId,
+      { binding, sandbox, terminal },
+      {
+        observe: async (id, signal) => {
+          try {
+            return await this.terminalInputStatus(
+              sandbox,
+              terminal,
+              id,
+              signal,
+            );
+          } catch (error) {
+            if (error instanceof JetskiHttpError && error.status === 404)
+              return undefined;
+            throw error;
+          }
+        },
+        admit: (id, input, signal) =>
+          this.terminalInput(sandbox, terminal, id, input, signal),
+      },
+    );
   }
   closeTerminal(sandbox: string, terminal: string): Promise<Json> {
     return this.request(

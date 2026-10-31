@@ -93,6 +93,35 @@ workload-specific products.
 
 ## Latest continuation status
 
+Durable input attachment continuation: portable client journal/SDK attachTerminal
+persists one bounded input before remote admission, binds server credential
+fingerprint/terminal, observes existing identity on reconnect, and only admits on
+explicit404 absence. API input-not-found now has a typed core error mapped404;
+auth/transport failures never become absence proof. Same-ID lost-ACK recovery and
+uncertain/cancelled blocking persist across SQLite reopen. Cursor acknowledgements
+compare-and-set; server retains history, local journal retains latest input only.
+No raw token stored. Shared abortable polling supports detach without cancellation.
+Unit tests cover absent admission/lost ACK, restart, scope changes, uncertain input,
+and denied observation without POST. Installed fixture now reopens a distinct
+client SQLite journal after real host admission ACK loss and resumes the same input.
+Local final checks and exact-SHA CI pending. Raw-TTY CLI attachment/gateways and
+full remaining provider/client/benchmark gates remain open. No paid, desktop or
+protected experiment changes. Full goal remains active.
+
+Verified SDK/CLI following and API pressure:3617553847402a3ca9e932db2459dd0df0043672,
+CI41234109194 all five jobs passed; watcher9576 exited0. API job124634159936
+reports terminalFollowDetachReconnect and terminalFollowCliWithoutHost true,
+alongside durable pressure receipts (23identities), stop/source-deleted restore
+and existing recovery gates. Evidence /tmp/jetski-terminal-follow-api.log and
+/tmp/jetski-terminal-follow-ci.log.64TypeScript/59Python tests, build/typecheck/lint
+pass. Main source pushed; this verified scratchpad update follows code. Both CI
+watchers from this continuation terminal. No paid, desktop or protected changes.
+Next implement interactive stdin/resize/signal attachment with stable input
+identities and safe detach/reconnect, then SSH/public preview/TCP gateways.
+HTTP cursor polling is not WebSocket streaming. Live provider/storage replacement,
+client staging adoption, cache and matched benchmark/full release gates remain
+open; full goal remains active.
+
 Terminal following continuation: SDK async iterator now pulls validated binary
 output only on consumer demand, supports saved byte-cursor reconnect, and accepts
 AbortSignal to detach without remote cancellation. Read errors surface instead of
@@ -101,7 +130,9 @@ and explicit --offset. Idle follows poll HTTP cursors at250ms; no WebSocket clai
 Added tests for pull/reconnect/exact binary, corrupt cursor/base64 and abort without
 mutation. Installed API fixture now detaches/reconnects a live terminal follower,
 then verifies CLI offset following with host control disabled after release.
-Local64TypeScript tests/build/typecheck/lint pass; installed follower CI pending.
+Local64TypeScript tests/build/typecheck/lint pass. Published3617553847402a3ca9e932db2459dd0df0043672;
+CI41234109194 running, /tmp/jetski-terminal-follow-ci.log. Installed follower
+qualification pending.
 Pressure source6b80d7335a30708b9ca5383cb816aa7f43853b07 /CI41233854846 passed
 all five jobs; watcher55087 exited0. API job124633392417 reports23input identities
 and durable uncertain receipt/replay/status with host control disabled after

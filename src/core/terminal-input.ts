@@ -9,6 +9,11 @@ import {
 } from "./contracts.js";
 import type { HostLease } from "./pool.js";
 
+export class TerminalInputNotFound extends Error {
+  constructor() {
+    super("Terminal input unavailable");
+  }
+}
 export type TerminalGeometry = { rows: number; columns: number };
 export const DEFAULT_TERMINAL_GEOMETRY: Readonly<TerminalGeometry> =
   Object.freeze({ rows: 24, columns: 80 });
@@ -188,7 +193,7 @@ export class TerminalInputJournal {
     const record = await this.state.transaction((tx) =>
       tx.get<InputRecord>(this.key(scope, command, id)),
     );
-    if (!record) throw Error("Terminal input unavailable");
+    if (!record) throw new TerminalInputNotFound();
     return record.outcome ?? { id, phase: "queued" };
   }
   private async drive(record: InputRecord, closing = false): Promise<Json> {

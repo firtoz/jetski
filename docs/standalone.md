@@ -194,3 +194,23 @@ polls every250ms; this is HTTP cursor polling, not a WebSocket stream.
 CLI terminal-follow SANDBOX TERMINAL --offset BYTES writes binary stdout and waits
 for local output drain. It does not persist a cursor automatically. Interactive
 stdin attachment and public gateways remain separate unfinished features.
+
+For durable interactive input, use
+client.attachTerminal(state, attachmentId, sandboxId, terminalId) with an injected
+transactional StateStore (SQLite is available for Node clients). The SDK persists
+one pending input before admission. Call resume() after reopening the same state;
+it first observes the input identity and only admits it if the API confirms absence.
+Lost acknowledgements never cause a new input identity. send(input, signal) accepts
+bounded stdin, resize, signal and close frames and waits for their delivery outcome.
+Serialize sends; a pending input rejects additional admission. Uncertain/cancelled
+outcomes throw TerminalDeliveryError and block that attachment from continuing.
+A sent receipt means transport acceptance, not workload consumption or completion.
+
+The local journal is bound to server origin, credential fingerprint and terminal;
+raw credentials are not stored. Credential rotation requires deliberate recovery,
+not automatic rebinding. Protect the client state directory: pending input may
+contain private text. Server history remains authoritative; the client keeps only
+its latest input and explicit output cursor. cursor()/acknowledgeOutput(from,to)
+support compare-and-set cursor persistence after consumption. Display and local
+cursor writes are not atomic, so a client crash between them may repeat displayed
+output. Raw-TTY CLI attachment and gateways remain unfinished.

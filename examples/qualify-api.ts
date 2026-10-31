@@ -29,6 +29,7 @@ const key = process.env.JETSKI_TEST_SSH_KEY,
 if (!key || !knownHosts || !image) throw new Error("Missing CI configuration");
 const directory = await mkdtemp(join(tmpdir(), "jetski-api-ci-"));
 const state = new SqliteState(join(directory, "state.sqlite"));
+let clientJournal = new SqliteState(join(directory, "client-terminal.sqlite"));
 const transport = new SshTransport([
   {
     id: "ssh-ci",
@@ -275,8 +276,8 @@ try {
     "running",
   );
   const terminalId = randomUUID(),
-    terminalFirst = randomUUID(),
     terminalSecond = randomUUID();
+  let terminalFirst: string;
   const terminalArgv = [
     "/bin/sh",
     "-ec",
@@ -312,9 +313,30 @@ try {
     kind: "stdin" as const,
     base64: Buffer.from("first\n").toString("base64"),
   };
-  await client
-    .terminalInput(id, terminalId, terminalFirst, firstInput)
-    .catch(() => undefined);
+  const attachmentId = randomUUID();
+  let attachment = await client.attachTerminal(
+    clientJournal,
+    attachmentId,
+    id,
+    terminalId,
+  );
+  await attachment.acknowledgeOutput(0, initialTerminalChunk.nextOffset);
+  await assert.rejects(attachment.send(firstInput));
+  clientJournal.close();
+  clientJournal = new SqliteState(join(directory, "client-terminal.sqlite"));
+  attachment = await client.attachTerminal(
+    clientJournal,
+    attachmentId,
+    id,
+    terminalId,
+  );
+  assert.equal(await attachment.cursor(), initialTerminalChunk.nextOffset);
+  const reconnectedInput = (await attachment.resume()) as {
+    id: string;
+    phase: string;
+  };
+  terminalFirst = reconnectedInput.id;
+  assert.equal(reconnectedInput.phase, "sent");
   await waitTerminalText("FIRST:first");
   assert.equal(lostTerminalInputAcks, 1);
   await client.terminalInput(id, terminalId, terminalFirst, firstInput);
@@ -995,6 +1017,7 @@ try {
       standaloneApi: true,
       apiTerminalInputReplay: true,
       terminalFollowDetachReconnect: true,
+      clientAttachmentRestartLostAck: true,
       terminalFollowCliWithoutHost: true,
       terminalOutcomesWithoutHost: true,
       apiTerminalPressureUncertaintyRetained: true,
@@ -1053,6 +1076,7 @@ try {
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   state.close();
+  clientJournal.close();
   await rm(directory, { recursive: true, force: true });
   if (cleanupError) throw cleanupError;
 }
