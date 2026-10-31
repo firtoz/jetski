@@ -108,6 +108,13 @@ jobs:
       - run: npm run build
       - name: Qualify encrypted control and standalone API
         run: npx tsx examples/qualify-${{ matrix.suite }}.ts
+      - name: Diagnose owned runtime service failure
+        if: failure()
+        run: |
+          if id jetski-runtime >/dev/null 2>&1; then
+            runtime_uid=$(id -u jetski-runtime)
+            sudo journalctl --no-pager -n 60 "_UID=$runtime_uid" _SYSTEMD_USER_UNIT=podman.service
+          fi
       - name: Retire disposable listener
         if: always()
         run: |
