@@ -49,9 +49,9 @@ class Files:
         self.fence, self.data_root, self.uid = fence, data_root, uid
 
     @contextlib.contextmanager
-    def opened(self, lease, path, directory=False):
+    def opened(self, lease, path, directory=False, locked=True):
         parts = components(path)
-        with self.fence.locked():
+        with self.fence.locked() if locked else contextlib.nullcontext():
             state = self.fence.read()
             self.fence.match(state, lease)
             if state["phase"] != "open" or state.get("runtime", {}).get("phase") != "running":

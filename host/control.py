@@ -14,9 +14,10 @@ import subprocess
 # root-owned and not group/world writable before enabling the SSH command.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from archive import capture  # noqa: E402
+from archive import capture, sync_dir  # noqa: E402
 from commands import Commands  # noqa: E402
 from files import Files  # noqa: E402
+from file_upload import FileUpload  # noqa: E402
 from import_checkpoint import CheckpointImport  # noqa: E402
 from fence import Fence, identity  # noqa: E402
 from runtime import PodmanRuntime  # noqa: E402
@@ -72,6 +73,28 @@ def dispatch(request, config, account, run, launch=None):
         )
     if action == "import-finish":
         return importer.finish(lease)
+    upload = FileUpload(fence, DATA_ROOT, account)
+    if action == "file-write-begin":
+        return upload.begin(
+            lease,
+            payload.get("uploadId"),
+            payload.get("path"),
+            payload.get("bytes"),
+            payload.get("sha256"),
+            payload.get("mode", 0o644),
+        )
+    if action == "file-write-chunk":
+        return upload.chunk(
+            lease,
+            payload.get("uploadId"),
+            payload.get("offset"),
+            payload.get("base64"),
+            payload.get("sha256"),
+        )
+    if action == "file-write-finish":
+        return upload.finish(lease, payload.get("uploadId"))
+    if action == "file-write-status":
+        return upload.status(lease, payload.get("uploadId"))
     files = Files(fence, DATA_ROOT, account.pw_uid)
     if action == "file-read":
         return files.read(
@@ -158,6 +181,17 @@ def dispatch(request, config, account, run, launch=None):
             fence.match(state, lease)
             if state["phase"] != "released" or not state.get("releaseReceipt"):
                 raise ValueError("source_not_durably_released")
+            # Only unpublished staging for this released assignment is disposable.
+            # IDs came from validated immutable upload receipts, never workload input.
+            for receipt in state.get("uploads", {}).values():
+                upload.receipt(state, receipt["id"])
+                staged = upload.path(receipt)
+                if os.path.lexists(staged):
+                    if staged.is_symlink() or not staged.is_file():
+                        raise ValueError("unsafe_upload_staging")
+                    staged.unlink()
+            if state.get("uploads"):
+                sync_dir(upload.staging())
             destination = DATA_ROOT / lease["assignmentId"]
             if os.path.lexists(destination):
                 if destination.is_symlink() or not destination.is_dir():

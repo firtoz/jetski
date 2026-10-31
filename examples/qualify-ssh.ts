@@ -104,6 +104,57 @@ try {
     }
     throw new Error("Command did not reach a terminal receipt");
   };
+  const uploadId = randomUUID();
+  const uploadBytes = Buffer.alloc(300000);
+  for (let index = 0; index < uploadBytes.length; index++)
+    uploadBytes[index] = index % 256;
+  await request("file-write-begin", {
+    ...payload,
+    uploadId,
+    path: "/workspace/payload",
+    bytes: uploadBytes.length,
+    sha256: createHash("sha256").update(uploadBytes).digest("hex"),
+    mode: 0o640,
+  });
+  for (let offset = 0; offset < uploadBytes.length; offset += 262144) {
+    const part = uploadBytes.subarray(offset, offset + 262144);
+    const chunk = {
+      ...payload,
+      uploadId,
+      offset,
+      base64: part.toString("base64"),
+      sha256: createHash("sha256").update(part).digest("hex"),
+    };
+    const receipt = await request("file-write-chunk", chunk);
+    assert.deepEqual(await request("file-write-chunk", chunk), receipt);
+  }
+  const publishedWrite = await request("file-write-finish", {
+    ...payload,
+    uploadId,
+  });
+  assert.ok(
+    publishedWrite &&
+      typeof publishedWrite === "object" &&
+      !Array.isArray(publishedWrite) &&
+      publishedWrite.phase === "committed",
+  );
+  const readParts: Buffer[] = [];
+  for (let offset = 0; offset < uploadBytes.length; offset += 262144) {
+    const read = await request("file-read", {
+      ...payload,
+      path: "/workspace/payload",
+      offset,
+      bytes: 262144,
+    });
+    assert.ok(
+      read &&
+        typeof read === "object" &&
+        !Array.isArray(read) &&
+        typeof read.base64 === "string",
+    );
+    readParts.push(Buffer.from(read.base64, "base64"));
+  }
+  assert.deepEqual(Buffer.concat(readParts), uploadBytes);
   const commandId = randomUUID();
   const argv = [
     "/bin/sh",
@@ -112,6 +163,27 @@ try {
   ];
   await request("command-start", { ...payload, commandId, argv });
   assert.equal((await waitCommand(commandId)).phase, "succeeded");
+  // An acknowledged upload replay observes history, never overwrites newer workload bytes.
+  assert.deepEqual(
+    await request("file-write-finish", { ...payload, uploadId }),
+    publishedWrite,
+  );
+  const afterReplay = await request("file-read", {
+    ...payload,
+    path: "/workspace/payload",
+    offset: 0,
+    bytes: 262144,
+  });
+  assert.ok(
+    afterReplay &&
+      typeof afterReplay === "object" &&
+      !Array.isArray(afterReplay) &&
+      typeof afterReplay.base64 === "string",
+  );
+  assert.deepEqual(
+    Buffer.from(afterReplay.base64, "base64"),
+    Buffer.from("hello\0world"),
+  );
   const replay = await request("command-start", {
     ...payload,
     commandId,
@@ -286,6 +358,7 @@ try {
   }
   console.log(
     JSON.stringify({
+      replaySafeFileUpload: true,
       sshControl: true,
       bootstrap: true,
       rootlessCreate: true,

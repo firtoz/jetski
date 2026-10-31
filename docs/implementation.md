@@ -104,13 +104,30 @@ special files and foreign-owned inodes; the final inode is pinned before opening
 for data. Chunk digests/version tokens detect changed/corrupt reads; pagination is
 bounded and fails closed on changed directories. Tests cover binary/Unicode/empty
 files, stale scopes, traversal, FIFO rejection and path-replacement races. All 66
-unit tests, build/typecheck/Biome/Ruff pass. Real SSH/API file-read qualification is
-pending CI. File writes, dedicated CLI file commands and complete interactive
+unit tests, build/typecheck/Biome/Ruff pass. Source **cbc4d7fad695b0ac2784564217add19106c8d487**
+is verified by CI **41215916081**, all four jobs successful; watcher 19876
+terminated with exit 0. Real SSH/API logs confirm boundedFileReadAndList=true
+and preserve all prior recovery results. Disposable resources were cleaned. File writes, dedicated CLI file commands and complete interactive
 transports remain open. Live reads do not promise a filesystem snapshot.
 
-Next: observe exact-SHA CI, then complete replay-safe file writes and remaining
-interactive/API scope; preserve the orphan-reader/multi-controller, full GC,
-Boat/S3/R2, physical replacement, staging integration and matched benchmark gates.
+Host upload implementation now stages bounded 64 MiB files outside workload mounts,
+with at most 64 upload identities per assignment. Chunk offsets persist only after
+fsync; replays verify already written bytes. Publication journals the staged inode
+and destination directory before atomic rename. A consumed source cannot be replayed
+to overwrite a newer destination: unresolved identity reports uncertainty. Complete
+receipts remain observable after closure; source cleanup removes only this released
+assignment's leftover staging files. Five new Python tests cover exact bytes/modes,
+empty writes, symlink handling, interrupted chunk receipts, pre/post-rename failures,
+replaced destinations and stale/closed leases. A test initially patched an obsolete
+fence instance after restart; the corrected test faults the live instance and passes.
+All 71 unit tests, build/typecheck and linters pass. Real SSH qualification now
+uploads a multi-chunk binary and verifies old-operation replay preserves subsequent
+workload edits; its CI result is pending. Public write API/SDK operation persistence
+and lifecycle coordination are still open: these are private host protocol handlers.
+
+Next: observe exact-SHA CI, wire persisted public upload operations and SDK/CLI
+streams, then remaining interactive/API scope; preserve orphan-reader/multi-controller,
+full GC, Boat/S3/R2, physical replacement, staging integration and matched benchmarks.
 No paid host resources or separate GC experiment changes occurred. Do not claim
 release completion from the currently green subset.
 

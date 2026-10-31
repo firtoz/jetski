@@ -35,6 +35,7 @@ MODULES = (
     "control.py",
     "commands.py",
     "files.py",
+    "file_upload.py",
     "import_checkpoint.py",
 )
 
