@@ -112,7 +112,22 @@ cleanup also reported uncertain host control. Preserved
 /tmp/jetski-stream-lifecycle-first-failure.log. Exact cause not yet established.
 Follow-up checks both IPv4 and IPv6 listener tables and includes bounded stderr/
 status diagnostics for only the owned fixture commands. Do not infer a runtime
-stop failure from a check that never reached stop. New CI required. No paid resources,
+stop failure from a check that never reached stop. Original run41252756358 ended failure; watcher54455 exited1, other four jobs
+passed. Diagnostic source499c7cc0d298d3e6816b9a17968e87e006fd24f0 published;
+build/typecheck/lint and18focused tests pass, /tmp/jetski-stream-lifecycle-diagnostic-local.log.
+CI41253025787 running, /tmp/jetski-stream-lifecycle-diagnostic-ci.log. Do not claim
+the live stop case passed until this run reaches and proves that boundary.
+Diagnostic run41253025787 now ended failure: readiness passed, then stop remained
+uncertain with Command outcome unresolved. Preserved
+/tmp/jetski-stream-lifecycle-diagnostic-failure.log. This exposed actual ordering:
+control quiesce stopped the container before active supervisors could persist their
+completion receipts. Implemented Commands.prepare_quiesce at the control boundary:
+close admission, persist cancellation intent (queued work becomes never-started),
+release fence while waiting up to10seconds for authenticated terminal worker state,
+then stop runtime. Uncertain or timed-out workers fail closed; emergency worker
+quiescence still uses the immediate runtime path. Tests cover close/replay,
+completion with unlocked fence, lost workers and timeout without invented outcome.
+Python74 tests/build/typecheck/lint and hosted corrected run still to verify. No paid resources,
 desktop workloads, downstream changes or protected experiment changes.
 
 

@@ -3,6 +3,7 @@ import pathlib
 import tempfile
 import unittest
 import uuid
+from unittest.mock import patch
 from commands import Commands, specification, worker_guard
 from fence import Fence
 
@@ -29,6 +30,61 @@ class CommandTests(unittest.TestCase):
         self.launched = []
         self.commands = Commands(self.fence, self.base / "outputs", self.launched.append)
         self.command = str(uuid.uuid4())
+
+    def test_quiesce_closes_admission_and_cancels_unstarted_commands(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        self.commands.prepare_quiesce(self.lease)
+        self.assertEqual(self.fence.read()["phase"], "closed")
+        receipt = self.commands.status(self.lease, self.command)
+        self.assertEqual(receipt["phase"], "cancelled")
+        self.assertTrue(receipt["neverStarted"])
+        with self.assertRaises(ValueError):
+            self.commands.start(self.lease, str(uuid.uuid4()), ["true"])
+        self.commands.prepare_quiesce(self.lease)
+
+    def test_quiesce_waits_without_locking_out_worker_completion(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        with worker_guard(self.fence, self.lease, self.command, create=True):
+            with self.fence.locked():
+                state = self.fence.read()
+                state["commands"][self.command]["phase"] = "running"
+                self.fence.write(state)
+
+            def finish(_delay):
+                with self.fence.locked():
+                    state = self.fence.read()
+                    self.assertEqual(state["phase"], "closed")
+                    self.assertTrue(state["commands"][self.command]["cancelRequested"])
+                    state["commands"][self.command]["phase"] = "cancelled"
+                    self.fence.write(state)
+
+            with patch("commands.time.sleep", side_effect=finish):
+                self.commands.prepare_quiesce(self.lease)
+            self.assertEqual(self.commands.status(self.lease, self.command)["phase"], "cancelled")
+
+    def test_quiesce_timeout_preserves_cancel_intent_without_completion(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        with worker_guard(self.fence, self.lease, self.command, create=True):
+            with self.fence.locked():
+                state = self.fence.read()
+                state["commands"][self.command]["phase"] = "running"
+                self.fence.write(state)
+            with patch("commands.time.monotonic", side_effect=[0, 11]):
+                with self.assertRaisesRegex(RuntimeError, "quiescence_pending"):
+                    self.commands.prepare_quiesce(self.lease)
+            receipt = self.commands.status(self.lease, self.command)
+            self.assertEqual(receipt["phase"], "running")
+            self.assertTrue(receipt["cancelRequested"])
+
+    def test_quiesce_preserves_lost_worker_uncertainty(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        with self.fence.locked():
+            state = self.fence.read()
+            state["commands"][self.command]["phase"] = "running"
+            self.fence.write(state)
+        with self.assertRaisesRegex(RuntimeError, "outcome_unresolved"):
+            self.commands.prepare_quiesce(self.lease)
+        self.assertEqual(self.commands.status(self.lease, self.command)["phase"], "uncertain")
 
     def test_lost_running_worker_quarantines_without_replay(self):
         self.commands.start(self.lease, self.command, ["true"])

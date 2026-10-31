@@ -20,6 +20,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from fence import Fence, identity  # noqa: E402
 
 OUTPUT_BYTES = 16 * 1024 * 1024
+QUIESCE_COMMAND_SECONDS = 10
 
 
 def command_id(value):
@@ -147,6 +148,46 @@ class Commands:
             # A reconnect observes it rather than launching a duplicate worker.
             self.launch(command)
             return receipt
+
+    def prepare_quiesce(self, raw):
+        """Close admission, then let live supervisors finish before stopping their container.
+
+        The fence lock must be released while waiting: workers need it to observe
+        cancellation and persist authenticated completion/output synchronization.
+        Uncertain outcomes never become successful cleanup merely because we wait.
+        """
+        lease = identity(raw)
+        self.fence.close(lease)
+        deadline = time.monotonic() + QUIESCE_COMMAND_SECONDS
+        while True:
+            with self.fence.locked():
+                state = self.fence.read()
+                self.fence.match(state, lease)
+                reconcile_workers_locked(self.fence, state)
+                pending = False
+                unresolved = False
+                for command, receipt in state.get("commands", {}).items():
+                    phase = receipt["phase"]
+                    if phase == "queued":
+                        state["commands"][command] = {
+                            **receipt,
+                            "phase": "cancelled",
+                            "cancelRequested": True,
+                            "neverStarted": True,
+                        }
+                    elif phase == "running":
+                        state["commands"][command] = {**receipt, "cancelRequested": True}
+                        pending = True
+                    elif phase not in ("succeeded", "failed", "cancelled"):
+                        unresolved = True
+                self.fence.write(state)
+                if unresolved:
+                    raise RuntimeError("command_outcome_unresolved_before_quiesce")
+                if not pending:
+                    return
+            if time.monotonic() >= deadline:
+                raise RuntimeError("command_quiescence_pending")
+            time.sleep(0.05)
 
     def status(self, raw, command):
         lease = identity(raw)

@@ -188,6 +188,7 @@ def dispatch(request, config, account, run, launch=None):
                 os.chown(path, account.pw_uid, account.pw_gid, follow_symlinks=False)
         return runtime.create(lease, payload.get("memoryMb", 512), payload.get("cpus", 1))
     if action == "quiesce":
+        commands.prepare_quiesce(lease)
         return runtime.quiesce(lease)
     if action == "remove":
         return runtime.remove(lease)
