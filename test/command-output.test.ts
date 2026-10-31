@@ -32,9 +32,12 @@ for (const failure of [false, true])
       { length: OUTPUT_CHUNK + 37 },
       (_, i) => i % 256,
     );
+    let failReads = failure;
+    const reads: string[] = [];
     const save = () =>
       output.retain(fence, id, status, async (channel, offset, count) => {
-        if (failure && offset) throw Error("connection lost");
+        reads.push(`${channel}:${offset}`);
+        if (failReads && offset) throw Error("connection lost");
         const part =
           channel === "stdout"
             ? data.subarray(offset, offset + count)
@@ -50,9 +53,11 @@ for (const failure of [false, true])
       await assert.rejects(save(), /connection lost/);
       assert.equal(await output.retained(fence, id), undefined);
       await assert.rejects(registry.collect(fence, "collection"), /Active/);
-      return;
-    }
-    await save();
+      failReads = false;
+      reads.length = 0;
+      await save();
+      assert.deepEqual(reads, [`stdout:${OUTPUT_CHUNK}`, "stderr:0"]);
+    } else await save();
     await output.retain(fence, id, status, async () => {
       throw Error("source deleted");
     });
@@ -85,6 +90,45 @@ for (const failure of [false, true])
     await assert.rejects(
       output.read({ ...fence, owner: "bob" }, id, "stdout", 0, 1),
       /generation mismatch/,
+    );
+    const secondId = crypto.randomUUID(),
+      secondStatus = { ...status, id: secondId };
+    const originalPut = store.put.bind(store);
+    let loseAck = true,
+      puts = 0;
+    store.put = async (...args) => {
+      puts++;
+      const stored = await originalPut(...args);
+      if (loseAck) {
+        loseAck = false;
+        throw Error("store ACK lost");
+      }
+      return stored;
+    };
+    const secondRead = async (channel: string) => ({
+      base64: channel === "stdout" ? "AP8=" : "",
+      nextOffset: channel === "stdout" ? 2 : 0,
+      terminal: true,
+    });
+    await assert.rejects(
+      output.retain(fence, secondId, secondStatus, secondRead),
+      /store ACK lost/,
+    );
+    await new CommandOutputStore(
+      store,
+      new CheckpointRegistry(state, store),
+    ).retain(fence, secondId, secondStatus, async (channel) => {
+      assert.equal(
+        channel,
+        "stderr",
+        "committed stdout is recovered without host reread",
+      );
+      return secondRead(channel);
+    });
+    assert.equal(puts, 1, "lost upload ACK does not duplicate output object");
+    assert.equal(
+      (await output.read(fence, secondId, "stdout", 0, 2)).base64,
+      "AP8=",
     );
     const root = await registry.root(fence, `command-${id}`);
     assert.ok(root?.frames[0]);

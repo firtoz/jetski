@@ -254,7 +254,7 @@ export class ShutdownCoordinator {
         if (current && canonical(current) === canonical(record))
           tx.put(key, {
             ...record,
-            blocked: record.stage === "outputs",
+            blocked: false,
           });
         const sandbox = tx.get<Sandbox>(sandboxKey(scope));
         if (

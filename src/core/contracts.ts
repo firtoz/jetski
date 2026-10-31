@@ -26,6 +26,9 @@ export const DEFAULTS = Object.freeze({
   gcGraceMs: 24 * 60 * 60_000,
   frameBytes: 4 * 1024 * 1024,
   maxObjectBytes: 8 * 1024 * 1024,
+  outputChannelBytes: 16 * 1024 * 1024,
+  outputChunkBytes: 256 * 1024,
+  outputJournalParts: 130,
 });
 
 export function identifier(value: string): string {

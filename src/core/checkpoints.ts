@@ -26,6 +26,18 @@ type FrameSave = {
   expected: Array<{ bytes: number; sha256: string }>;
   frames: Record<string, ObjectInfo>;
 };
+export type StreamPart = {
+  bytes: number;
+  sha256: string;
+  nextOffset: number;
+  terminal: boolean;
+  object: ObjectInfo | null;
+};
+type StreamSave = {
+  generation: number;
+  input: Json;
+  parts: Record<string, StreamPart>;
+};
 type Access = {
   id: string;
   kind: "reader" | "writer";
@@ -259,6 +271,105 @@ export class CheckpointRegistry {
         throw Error("Frame journal integrity conflict");
       identifier(object.id);
       journal.frames[String(index)] = object;
+      tx.put(key, journal);
+    });
+  }
+  async beginStreamSave(
+    fence: Fence,
+    id: string,
+    input: Json,
+  ): Promise<Record<string, StreamPart>> {
+    identifier(id);
+    return this.state.transaction((tx) => {
+      const state = this.load(tx, fence),
+        key = `stream-save/${scopeKey(fence)}/${id}`;
+      const previous = tx.get<StreamSave>(key);
+      if (previous) {
+        if (
+          previous.generation !== fence.generation ||
+          canonical(previous.input) !== canonical(input)
+        )
+          throw Error("Stream save identity conflict");
+        if (
+          state.collection ||
+          !state.accesses.some(
+            (access) => access.id === id && access.kind === "writer",
+          )
+        )
+          throw Error("Stream writer no longer admitted");
+        return previous.parts;
+      }
+      const used = `checkpoint-access/${scopeKey(fence)}/${id}`;
+      if (state.collection || tx.get(used) || state.accesses.length >= 64)
+        throw Error("Stream writer cannot be admitted");
+      tx.put(used, true);
+      state.accesses.push({
+        id,
+        kind: "writer",
+        root: null,
+        generation: fence.generation,
+      });
+      tx.put(this.key(fence), state);
+      tx.put(key, { generation: fence.generation, input, parts: {} });
+      return {};
+    });
+  }
+  async planStreamPart(
+    fence: Fence,
+    id: string,
+    partId: string,
+    part: StreamPart,
+  ): Promise<void> {
+    identifier(partId);
+    if (
+      !Number.isSafeInteger(part.bytes) ||
+      part.bytes < 0 ||
+      part.bytes > DEFAULTS.outputChunkBytes ||
+      !Number.isSafeInteger(part.nextOffset) ||
+      part.nextOffset < part.bytes ||
+      part.nextOffset > DEFAULTS.outputChannelBytes ||
+      typeof part.terminal !== "boolean" ||
+      !/^[a-f0-9]{64}$/.test(part.sha256)
+    )
+      throw Error("Invalid stream part");
+    if (part.object) {
+      identifier(part.object.id);
+      if (
+        part.object.owner !== fence.owner ||
+        part.object.sandbox !== fence.sandbox ||
+        part.object.bytes !== part.bytes ||
+        part.object.sha256 !== part.sha256 ||
+        part.bytes === 0
+      )
+        throw Error("Invalid stream object");
+    } else if (part.bytes !== 0 || !part.terminal)
+      throw Error("Missing stream object");
+    await this.state.transaction((tx) => {
+      const state = this.load(tx, fence),
+        key = `stream-save/${scopeKey(fence)}/${id}`;
+      const journal = tx.get<StreamSave>(key);
+      if (
+        !journal ||
+        journal.generation !== fence.generation ||
+        state.collection ||
+        !state.accesses.some(
+          (access) => access.id === id && access.kind === "writer",
+        )
+      )
+        throw Error("Stream writer not admitted");
+      const prior = journal.parts[partId];
+      if (
+        prior &&
+        canonical({ ...prior, object: null }) !==
+          canonical({ ...part, object: null })
+      )
+        throw Error("Stream content changed");
+      if (
+        !prior &&
+        Object.keys(journal.parts).length >= DEFAULTS.outputJournalParts
+      )
+        throw Error("Stream journal bound");
+      journal.parts[partId] = part;
       tx.put(key, journal);
     });
   }

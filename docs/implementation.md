@@ -531,3 +531,28 @@ an actual committed object, then must recover before continuing source-deleted
 restore, held resume and deletion. CI is pending. Output-retention recovery and
 orphan reader admissions after process death remain incomplete; retain all other
 release gates and operational boundaries. No paid hosts or original GC state touched.
+
+Verified resumable-save source: **778f0b802f26bd4b35d51667fe29cf453e756358**,
+CI **41213913626**, all four jobs successful; watcher 90765 terminal0. Real API
+log confirms lostCheckpointStoreAcknowledgementRecovery=true and subsequent import
+ACK recovery, with identical final archive hashes. This verifies local-store upload
+ACK-loss recovery, not S3 consistency or abrupt process-kill/multi-controller
+qualification. All 57 unit tests pass. Next: output-retention journaling and orphan
+reader recovery, unresolved placement cancellation and active expiry, then complete
+storage/provider/interactive/client/benchmark qualification. Full acceptance remains
+unproven. No paid allocation or prior GC-test changes; test jobs terminal/cleaned.
+
+Output-retention recovery continuation: command output now uses a durable stream
+journal bound to the command's terminal outcome and generation. Each binary segment
+records its channel cursor, digest, terminal marker and immutable object identity
+before upload. Retrying verifies/reuses committed segments without rereading the
+host, rejects changed segment content, and preserves writer exclusion until full
+publication. Shutdown can now recover output retention instead of permanently
+blocking its output stage. Tests cover interrupted reads, lost upload ACK across a
+new output-store instance, one upload/no reread for committed stdout, exact binary
+reconstruction and retained-source independence. All 57 unit tests, build/typecheck
+and linters pass. Real API qualification now injects a committed output-upload ACK
+loss in addition to checkpoint/import ACK loss, requiring recovery before its next
+checkpoint and deletion. Await CI. Orphan reader/controller-lease recovery, unresolved
+placement cancellation, active expiry and the remaining full release gates stay
+open. No paid resources or original GC experiment state changed.

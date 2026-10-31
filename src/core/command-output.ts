@@ -1,14 +1,19 @@
-import type { CheckpointRegistry, CheckpointRoot } from "./checkpoints.js";
+import type {
+  CheckpointRegistry,
+  CheckpointRoot,
+  StreamPart,
+} from "./checkpoints.js";
 import {
   type CheckpointStore,
   canonical,
+  DEFAULTS,
   type Fence,
   type Json,
   type ObjectInfo,
 } from "./contracts.js";
 
-export const OUTPUT_LIMIT = 16 * 1024 * 1024;
-export const OUTPUT_CHUNK = 256 * 1024;
+export const OUTPUT_LIMIT = DEFAULTS.outputChannelBytes;
+export const OUTPUT_CHUNK = DEFAULTS.outputChunkBytes;
 export const OUTPUT_CHANNELS = ["stdout", "stderr"] as const;
 export type OutputChannel = (typeof OUTPUT_CHANNELS)[number];
 export type OutputSegment = {
@@ -109,47 +114,87 @@ export class CommandOutputStore {
       !["succeeded", "failed", "cancelled"].includes(String(status.phase))
     )
       throw new Error("Command outcome unresolved");
-    await this.registry.admit(fence, rootId, "writer");
+    const parts = await this.registry.beginStreamSave(fence, rootId, {
+      commandId: id,
+      status,
+    });
     const frames: ObjectInfo[] = [],
       channels: Record<OutputChannel, number[]> = { stdout: [], stderr: [] };
     for (const channel of OUTPUT_CHANNELS) {
       let offset = 0;
       while (true) {
-        const value = await read(channel, offset, OUTPUT_CHUNK);
-        if (
-          !value ||
-          typeof value !== "object" ||
-          Array.isArray(value) ||
-          typeof value.base64 !== "string" ||
-          typeof value.terminal !== "boolean"
-        )
-          throw new Error("Invalid command output segment");
-        const bytes = decodeBase64(value.base64);
-        if (
-          value.nextOffset !== offset + bytes.length ||
-          offset + bytes.length > OUTPUT_LIMIT ||
-          (!bytes.length && !value.terminal)
-        )
-          throw new Error("Invalid output cursor progress");
-        if (bytes.length) {
-          if (channels[channel].length >= 64)
-            throw new Error("Output frame limit");
-          const object = await this.objects.put(
-            {
-              owner: fence.owner,
-              sandbox: fence.sandbox,
-              id: crypto.randomUUID(),
-            },
-            (async function* () {
-              yield bytes;
-            })(),
-            { bytes: bytes.length, sha256: await sha(bytes) },
-          );
-          channels[channel].push(frames.length);
-          frames.push(object);
+        const key = `${channel}_${offset}`;
+        let part: StreamPart | undefined = parts[key];
+        const verified = part?.object
+          ? await this.objects.head(part.object)
+          : undefined;
+        const reusable =
+          part &&
+          (!part.object ||
+            (verified?.sha256 === part.sha256 &&
+              verified.bytes === part.bytes &&
+              verified.owner === fence.owner &&
+              verified.sandbox === fence.sandbox));
+        if (!reusable) {
+          const value = await read(channel, offset, OUTPUT_CHUNK);
+          if (
+            !value ||
+            typeof value !== "object" ||
+            Array.isArray(value) ||
+            typeof value.base64 !== "string" ||
+            typeof value.terminal !== "boolean"
+          )
+            throw Error("Invalid command output segment");
+          const bytes = decodeBase64(value.base64);
+          if (
+            value.nextOffset !== offset + bytes.length ||
+            offset + bytes.length > OUTPUT_LIMIT ||
+            (!bytes.length && !value.terminal)
+          )
+            throw Error("Invalid output cursor progress");
+          const digest = await sha(bytes);
+          const object = bytes.length
+            ? {
+                owner: fence.owner,
+                sandbox: fence.sandbox,
+                id: crypto.randomUUID(),
+                bytes: bytes.length,
+                sha256: digest,
+              }
+            : null;
+          part = {
+            bytes: bytes.length,
+            sha256: digest,
+            nextOffset: offset + bytes.length,
+            terminal: value.terminal,
+            object,
+          };
+          await this.registry.planStreamPart(fence, rootId, key, part);
+          if (object) {
+            const stored = await this.objects.put(
+              object,
+              (async function* () {
+                yield bytes;
+              })(),
+              { bytes: bytes.length, sha256: digest },
+            );
+            if (canonical(stored) !== canonical(object))
+              throw Error("Output upload receipt mismatch");
+          }
         }
-        offset += bytes.length;
-        if (value.terminal) break;
+        if (
+          !part ||
+          part.nextOffset !== offset + part.bytes ||
+          part.nextOffset > OUTPUT_LIMIT
+        )
+          throw Error("Invalid retained output segment");
+        if (part.object) {
+          if (channels[channel].length >= 64) throw Error("Output frame limit");
+          channels[channel].push(frames.length);
+          frames.push(part.object);
+        }
+        offset = part.nextOffset;
+        if (part.terminal) break;
       }
     }
     await this.registry.publish(fence, rootId, rootId, frames, {

@@ -39,11 +39,18 @@ const transport = new SshTransport([
   },
 ]);
 const objects = new LocalCheckpointStore(join(directory, "objects"));
+let loseOutputAck = false,
+  lostOutputAcks = 0;
 let loseSaveAck = false,
   lostSaveAcks = 0;
 const objectPut = objects.put.bind(objects);
 objects.put = async (...args) => {
   const committed = await objectPut(...args);
+  if (loseOutputAck) {
+    loseOutputAck = false;
+    lostOutputAcks++;
+    throw Error("Injected output store acknowledgement loss");
+  }
   if (loseSaveAck) {
     loseSaveAck = false;
     lostSaveAcks++;
@@ -253,6 +260,7 @@ try {
     ).phase,
     "succeeded",
   );
+  loseOutputAck = true;
   const secondStop = randomUUID();
   await client.request(`/v1/sandboxes/${id}/checkpoint`, "POST", {
     operationId: secondStop,
@@ -260,10 +268,11 @@ try {
   for (let attempt = 0; attempt < 150; attempt++) {
     const operation = await client.operation(id, secondStop);
     if (operation.phase === "succeeded") break;
-    if (operation.phase === "uncertain") throw Error("Repeated stop uncertain");
+    // The worker must recover output retention before publishing the checkpoint.
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal((await client.operation(id, secondStop)).phase, "succeeded");
+  assert.equal(lostOutputAcks, 1);
   const registry = new CheckpointRegistry(state, objects),
     fence = { owner: "qualification", sandbox: id, generation: 2 };
   const firstRoot = await registry.root(fence, stopId),
@@ -382,6 +391,7 @@ try {
       heldCheckpointResume: true,
       lostImportAcknowledgementRecovery: true,
       lostCheckpointStoreAcknowledgementRecovery: true,
+      lostOutputStoreAcknowledgementRecovery: true,
       assignedDeletion: true,
       completeLifecycle: false,
     }),
