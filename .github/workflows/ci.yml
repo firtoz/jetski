@@ -23,6 +23,18 @@ jobs:
         run: node --import tsx examples/qualify-storage.ts
       - name: Qualify source-deleted filesystem storage recovery
         run: node --import tsx examples/qualify-filesystem-storage.ts
+      - name: Qualify real-grace early refusal without advancing clocks
+        run: |
+          fixture_parent="$RUNNER_TEMP/jetski-real-grace"
+          mkdir -m 700 "$fixture_parent"
+          printf '%s' '{"kind":"local"}' > "$fixture_parent/storage.json"
+          JETSKI_QUALIFICATION_STATE_DIRECTORY="$fixture_parent" node --import tsx examples/qualify-filesystem-storage.ts "$fixture_parent/storage.json" --prepare-gc > "$fixture_parent/prepared.json"
+          fixture_path=$(node -e 'console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).retainedStateDirectory)' "$fixture_parent/prepared.json")
+          node --import tsx examples/qualify-filesystem-gc.ts "$fixture_path" > "$fixture_parent/early.json"
+          node -e 'const r=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));require("node:assert/strict").equal(r.waiting,true);require("node:assert/strict").equal(r.deleted,0)' "$fixture_parent/early.json"
+      - name: Remove owned local grace fixture
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/jetski-real-grace"
       - name: Qualify checkpoint storage recovery
         run: node --import tsx examples/qualify-checkpoint-storage.ts
       - run: npm run lint

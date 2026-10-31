@@ -60,6 +60,15 @@ speedups. This test allocates no execution host and does not prove physical VM
 replacement or real-grace garbage collection. CI runs the local storage path;
 private receipts retain the live R2 evidence.
 
+## Real-grace R2 collection
+
+An independent fixture was prepared with real wall-clock retirement and an intact,
+pinned second filesystem version. Early collection deleted zero objects; the resume
+helper also refused early collection. Eligible after **November 1, 2026, 23:51:52 UTC**.
+Deletion, replay and exact retained-root recovery remain pending. The helper is
+`examples/qualify-filesystem-gc.ts`; private state identifies the owned objects.
+This does not alter the separate protected 12:20 UTC experiment, and no VM is held.
+
 ## Other consequential failures retained
 
 - [41252044899](https://github.com/firtoz/jetski/actions/runs/41252044899): combined

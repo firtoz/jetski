@@ -2,7 +2,14 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, open, readFile, rm } from "node:fs/promises";
+import {
+  lstat,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -10,6 +17,7 @@ import {
   CheckpointRegistry,
   type CheckpointStore,
   CheckpointTransfer,
+  DEFAULTS,
   type ObjectAddress,
   parseArchive,
 } from "../src/core/index.js";
@@ -19,7 +27,23 @@ import {
 } from "../src/server/storage.js";
 import { SqliteState } from "../src/state/sqlite.js";
 
-const directory = await mkdtemp(join(tmpdir(), "jetski-filesystem-store-"));
+const prepareGc = process.argv[3] === "--prepare-gc";
+const parent = prepareGc
+  ? process.env.JETSKI_QUALIFICATION_STATE_DIRECTORY
+  : tmpdir();
+assert.ok(parent, "Persistent private state directory required for real grace");
+if (prepareGc) {
+  const meta = await lstat(parent);
+  assert.ok(
+    meta.isDirectory() &&
+      !meta.isSymbolicLink() &&
+      meta.uid === process.getuid?.() &&
+      (meta.mode & 0o077) === 0,
+  );
+}
+const directory = await mkdtemp(join(parent, "jetski-filesystem-store-"));
+let retainForGrace = false;
+let notBefore: number | undefined;
 const fence = {
   owner: `qualification-${randomUUID()}`,
   sandbox: "filesystem",
@@ -150,14 +174,44 @@ try {
     const result = await fixture("restore", directory, String(version));
     assert.equal(result.exact, true);
   }
+  if (prepareGc) {
+    const first = await reopened.root(fence, "version-1"),
+      second = await reopened.root(fence, "version-2");
+    assert.ok(first && second);
+    const retiredFrames = first.frames.filter(
+      (frame) => !second.frames.some((live) => live.id === frame.id),
+    );
+    assert.ok(retiredFrames.length > 0);
+    await reopened.pin(fence, "version-1", "fixture", false);
+    await reopened.retire(fence, "version-1");
+    notBefore = Date.now() + DEFAULTS.gcGraceMs;
+    assert.deepEqual(await reopened.collect(fence, "before-real-grace"), {
+      deleted: 0,
+    });
+    for (const frame of first.frames)
+      assert.ok(await session.store.head(frame));
+    await writeFile(
+      join(directory, "real-grace.json"),
+      JSON.stringify({
+        version: 1,
+        fence,
+        config,
+        addresses,
+        retiredFrames,
+        notBefore,
+      }),
+      { flag: "wx", mode: 0o600 },
+    );
+    retainForGrace = true;
+  }
   passed = true;
-  phase = "complete";
+  phase = retainForGrace ? "waiting-real-grace" : "complete";
 } catch {
   process.exitCode = 1;
 } finally {
   cleanup = !!session;
   if (session) {
-    for (const address of addresses)
+    for (const address of retainForGrace ? [] : addresses)
       try {
         await session.store.delete(address);
         assert.equal(await session.store.head(address), undefined);
@@ -193,14 +247,17 @@ try {
             "sqlite-storage-reopen",
           ]
         : [],
+      realGrace: { pending: retainForGrace, notBefore: notBefore ?? null },
       cleanup: {
-        complete: cleanup,
+        complete: cleanup && !retainForGrace,
         objects: addresses,
         reservationMarkersRetained: true,
       },
-      retainedStateDirectory: passed && cleanup ? null : directory,
+      retainedStateDirectory:
+        passed && cleanup && !retainForGrace ? null : directory,
     }),
   );
-  if (passed && cleanup) await rm(directory, { recursive: true, force: true });
-  else process.exitCode = 1;
+  if (passed && cleanup && !retainForGrace)
+    await rm(directory, { recursive: true, force: true });
+  if (!passed || !cleanup) process.exitCode = 1;
 }
