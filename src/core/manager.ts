@@ -148,7 +148,8 @@ export class SandboxManager {
       objects,
       transfer: new CheckpointTransfer(objects, this.checkpoints),
       request: (lease, action, payload) => this.request(lease, action, payload),
-      retainCommands: async (scope) => {
+      retainCommands: async (scope, lease) => {
+        await this.streams?.settleStopped(scope, lease);
         await this.terminalInputs.settle(scope);
         const commands = await state.transaction((tx) =>
           tx

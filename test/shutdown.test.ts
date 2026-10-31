@@ -47,6 +47,7 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       ],
     };
     const actions: string[] = [];
+    let quiesced = false;
     const imported: Buffer[] = [];
     let importReceipt:
       | {
@@ -86,6 +87,14 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       request: async (_host, request) => {
         actions.push(request.action);
         let result: Json = null;
+        if (request.action === "quiesce") quiesced = true;
+        if (request.action === "stream-status")
+          result = {
+            id: request.id,
+            port: 8080,
+            phase: quiesced ? "cancelled" : "uncertain",
+            delivery: "unknown",
+          };
         if (request.action === "capture") result = manifest;
         if (request.action === "import-begin") {
           const input = request.payload as {
@@ -137,7 +146,16 @@ for (const failure of ["release-ack", "upload", "none"] as const)
         return { version: 1, id: request.id, result };
       },
     };
-    const options = { poolId: "pool", approvedImages: [image], now: () => now },
+    const options = {
+        poolId: "pool",
+        approvedImages: [image],
+        now: () => now,
+        streamTransport: {
+          async open(): Promise<never> {
+            throw Error("uncertain stream dispatch");
+          },
+        },
+      },
       id = randomUUID(),
       scope = { owner: "alice", sandbox: id };
     let manager = new SandboxManager(
@@ -149,6 +167,12 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     );
     await manager.create("alice", id, image, randomUUID());
     await manager.reconcile("alice");
+    const streamId = randomUUID();
+    await manager.ports.expose(scope, "port", 8080);
+    await assert.rejects(
+      manager.streams!.open(scope, "port", streamId),
+      /uncertain stream/,
+    );
     const stopId = randomUUID();
     await manager.stop(
       scope,
@@ -176,6 +200,12 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     await manager.reconcile("alice");
     assert.equal((await manager.operation(scope, stopId))?.phase, "succeeded");
     assert.equal((await manager.get(scope))?.phase, "stopped");
+    assert.equal(
+      (await manager.streams!.status(scope, streamId)).phase,
+      "cancelled",
+    );
+    assert.ok(actions.indexOf("quiesce") < actions.indexOf("stream-status"));
+    assert.ok(actions.indexOf("stream-status") < actions.indexOf("capture"));
     if (failure === "none") {
       assert.ok((await manager.get(scope))?.lease, "checkpoint retains host");
       assert.equal(actions.includes("remove"), false);

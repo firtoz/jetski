@@ -93,6 +93,43 @@ workload-specific products.
 
 ## Latest continuation status
 
+Missing-admission recovery candidate: after a status request fails for an inactive,
+expired or uncertain stream, the coordinator durably records cancellation and
+attempts the exact fenced host cancellation. This can install a tombstone even
+when no admission exists remotely. It retains the observation failure and does
+not infer cleanup from cancellation ACK; a subsequent independent status receipt
+must prove cancellation. Both failures are retained when the provider is down.
+Local tests cover SQLite reopen, no replay, tombstone observation and outage
+uncertainty. Installed SSH fixture adds pre-dispatch interruption, real absent
+status, cancellation observation and refusal of a delayed original stream request.
+Shutdown additionally inspects every unresolved stream from the exact stopped
+assignment before capture/release. Trusted terminal receipts are required; failed
+proof retains the source. Unit shutdown/restart/publication fixtures verify stream
+settlement occurs after quiescence and before capture. Real shutdown integration
+through the eventual public network gateway remains an acceptance requirement.
+Final checks/CI pending. Previous turn was verified progress; full goal remains
+active. No paid hosts, desktop workload or protected experiment changes.
+Next settle core stream records from verified runtime stop before host release,
+then public network gateways and Boat streaming/provider qualification.
+
+
+Current source30abce10fcdbffb7c76690e9d7d6ff58e932213a, CI41243952871,
+All five jobs passed; watcher80148 exited0. /tmp/jetski-stream-drain-ci.log,
+/tmp/jetski-stream-drain-ssh.log (job124663400273) and
+/tmp/jetski-stream-drain-api.log (job124663400380) preserve qualification evidence.
+Local88TS/70Python checks plus build/typecheck/lint pass. Hosted fixture verified
+host completion with unread client output, reconciliation preserving the live
+stream, exact response bytes, and lost-completion-ACK recovery through a separate
+SQLite connection. Source is published; this verified scratchpad update is
+uncommitted. Full gateway/provider/client/benchmark/release acceptance remains open.
+Previous43faeb9 / CI41243652847 passed all five jobs, watcher4360 exited0,
+/tmp/jetski-stream-recovery-ci.log. It lacks the live-buffer preservation fix;
+do not use its green status as final evidence for30abce1.
+Remaining priority: missing-host-record cancellation tombstones, settlement from
+verified runtime shutdown, then public network gateways and Boat SSH qualification.
+No paid allocations or protected experiment changes. Full goal remains active.
+
+
 Follow-up correctness fix: recovery must not settle a valid live controller's
 stream from host completion while response bytes remain buffered locally. It now
 leaves valid active leases untouched; regression verifies another controller sees

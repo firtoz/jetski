@@ -12,9 +12,11 @@ import type {
   HostStreamTransport,
 } from "./host-stream.js";
 import type { OperationJournal } from "./operations.js";
+import type { HostLease } from "./pool.js";
 import type { PortRegistry } from "./ports.js";
 import {
   HOST_PROTOCOL_VERSION,
+  type HostResponse,
   type HostTransport,
   HostTransportError,
 } from "./transport.js";
@@ -105,12 +107,27 @@ export class StreamCoordinator {
       (await this.state.transaction((tx) => this.allowed(tx, scope, record)))
     )
       return record;
-    const response = await this.control.request(record.lease.machineId, {
-      version: HOST_PROTOCOL_VERSION,
-      id,
-      action: "stream-status",
-      payload: { lease: record.lease, image: record.image, streamId: id },
-    });
+    let response: HostResponse;
+    try {
+      response = await this.control.request(record.lease.machineId, {
+        version: HOST_PROTOCOL_VERSION,
+        id,
+        action: "stream-status",
+        payload: { lease: record.lease, image: record.image, streamId: id },
+      });
+    } catch (observationError) {
+      // The record may never have reached the host. Install a fenced tombstone
+      // even when status is unavailable; never infer absence or cleanup from it.
+      try {
+        await this.cancel(scope, id);
+      } catch (cancellationError) {
+        throw new AggregateError(
+          [observationError, cancellationError],
+          "Stream observation and cancellation unresolved",
+        );
+      }
+      throw observationError;
+    }
     const receipt = response.result;
     if (
       response.version !== HOST_PROTOCOL_VERSION ||
@@ -145,6 +162,31 @@ export class StreamCoordinator {
         await this.cancel(scope, id);
     }
     return this.status(scope, id);
+  }
+  /** Called after quiescence, before source release. Every unresolved stream
+   * still requires its own trusted terminal receipt; callers supply no proof. */
+  async settleStopped(scope: Scope, lease: HostLease): Promise<void> {
+    const records = await this.state.transaction((tx) =>
+      tx
+        .scan<StreamRecord>(`stream/${scopeKey(scope)}/`)
+        .map((row) => row.value)
+        .filter(
+          (record) =>
+            canonical(record.lease) === canonical(lease) &&
+            record.phase !== "closed" &&
+            record.phase !== "cancelled",
+        ),
+    );
+    for (const record of records) {
+      let observed: StreamRecord;
+      try {
+        observed = await this.reconcile(scope, record.streamId);
+      } catch {
+        observed = await this.reconcile(scope, record.streamId);
+      }
+      if (observed.phase !== "closed" && observed.phase !== "cancelled")
+        throw Error("Stream termination unverified; retain source");
+    }
   }
   async reconcileOwner(owner: string): Promise<void> {
     identifier(owner);

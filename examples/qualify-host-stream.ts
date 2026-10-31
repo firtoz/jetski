@@ -357,6 +357,26 @@ export async function qualifyHostStream(
       reopened.close();
     }
     await stopServer(recoveryServer);
+    const missingId = randomUUID();
+    const missing = new StreamCoordinator(state, ports, operations, control, {
+      async open() {
+        throw Error("Injected pre-dispatch transport interruption");
+      },
+    });
+    await assert.rejects(
+      missing.open(scope, "fixture-port", missingId),
+      /pre-dispatch/,
+    );
+    await assert.rejects(missing.reconcile(scope, missingId));
+    assert.equal((await missing.status(scope, missingId)).phase, "uncertain");
+    assert.equal(
+      (await missing.reconcile(scope, missingId)).phase,
+      "cancelled",
+    );
+    // A delayed original request must be refused by the real host tombstone.
+    await assert.rejects(
+      transport.open(host.id, { ...payload, streamId: missingId, port: 18080 }),
+    );
     const revokedServer = await startServer(false),
       revokedId = randomUUID();
     const revoked = await coordinator.open(scope, "fixture-port", revokedId);

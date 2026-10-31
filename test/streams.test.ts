@@ -72,6 +72,7 @@ async function fixture(t: TestContext) {
     operations,
     ports,
     context,
+    control,
     build,
     setNow(value: number) {
       now = value;
@@ -288,4 +289,78 @@ test("host completion cannot discard bytes still buffered by a live controller",
   assert.deepEqual(received, [1, 0, 255]);
   assert.equal((await first.status(scope, id)).phase, "closed");
   assert.equal(source.aborted, 0);
+});
+
+test("missing host admission installs a tombstone and waits for independent observation", async (t) => {
+  const f = await fixture(t),
+    id = randomUUID();
+  const coordinator = f.build(async () => {
+    throw Error("request never reached host");
+  });
+  await assert.rejects(coordinator.open(scope, "port", id));
+  let tombstone = false,
+    cancellations = 0;
+  f.control.request = async (_host, request) => {
+    if (request.action === "stream-cancel") {
+      cancellations++;
+      tombstone = true;
+    } else if (!tombstone) throw Error("host stream absent");
+    return {
+      version: 1,
+      id: request.id,
+      result: { id, port: null, phase: "cancelled", delivery: "unknown" },
+    };
+  };
+  await assert.rejects(coordinator.reconcile(scope, id), /host stream absent/);
+  assert.equal(cancellations, 1);
+  const pending = await coordinator.status(scope, id);
+  assert.equal(pending.cancelRequested, true);
+  assert.equal(pending.phase, "uncertain");
+  const reopened = new SqliteState(f.path);
+  t.after(() => reopened.close());
+  const next = f.build(async () => {
+    throw Error("must not reopen");
+  }, reopened);
+  assert.equal((await next.reconcile(scope, id)).phase, "cancelled");
+  await assert.rejects(next.open(scope, "port", id), /already admitted/);
+  assert.equal(f.opens, 1);
+});
+test("outage keeps durable cancellation intent without claiming cleanup", async (t) => {
+  const f = await fixture(t),
+    id = randomUUID();
+  const coordinator = f.build(async () => {
+    throw Error("uncertain");
+  });
+  await assert.rejects(coordinator.open(scope, "port", id));
+  f.control.request = async () => {
+    throw Error("provider unavailable");
+  };
+  await assert.rejects(coordinator.reconcile(scope, id), AggregateError);
+  assert.equal((await coordinator.status(scope, id)).cancelRequested, true);
+  assert.equal((await coordinator.status(scope, id)).phase, "uncertain");
+  assert.equal((await f.operations.get(scope, id))?.phase, "uncertain");
+});
+
+test("shutdown requires terminal stream proof and leaves other assignments untouched", async (t) => {
+  const f = await fixture(t),
+    id = randomUUID();
+  const coordinator = f.build(async () => {
+    throw Error("uncertain");
+  });
+  await assert.rejects(coordinator.open(scope, "port", id));
+  f.context.running = false;
+  await assert.rejects(
+    coordinator.settleStopped(scope, f.context.lease!),
+    /termination unverified/,
+  );
+  assert.equal((await coordinator.status(scope, id)).phase, "uncertain");
+  f.setObserved({ phase: "cancelled", delivery: "unknown" });
+  await coordinator.settleStopped(scope, {
+    ...f.context.lease!,
+    assignmentId: "another",
+  });
+  assert.equal((await coordinator.status(scope, id)).phase, "uncertain");
+  await coordinator.settleStopped(scope, f.context.lease!);
+  assert.equal((await coordinator.status(scope, id)).phase, "cancelled");
+  assert.equal((await f.operations.get(scope, id))?.phase, "uncertain");
 });

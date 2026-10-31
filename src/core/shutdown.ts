@@ -52,7 +52,7 @@ type Dependencies = {
   objects: CheckpointStore;
   transfer: CheckpointTransfer;
   request: (lease: HostLease, action: string, payload: Json) => Promise<Json>;
-  retainCommands: (scope: Scope) => Promise<boolean>;
+  retainCommands: (scope: Scope, lease: HostLease) => Promise<boolean>;
   settleUploads: (scope: Scope) => Promise<void>;
 };
 const sandboxKey = (scope: Scope) => `sandbox/${scopeKey(scope)}`;
@@ -145,7 +145,7 @@ export class ShutdownCoordinator {
         record = await this.advance(record, "outputs");
       }
       if (record.stage === "outputs") {
-        if (!(await retainCommands(scope))) return;
+        if (!(await retainCommands(scope, record.lease))) return;
         record = await this.advance(record, "capture");
       }
       if (record.stage === "capture") {
