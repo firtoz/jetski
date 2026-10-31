@@ -93,6 +93,33 @@ workload-specific products.
 
 ## Latest continuation status
 
+Slow-output continuation: native PTY output uses a fixed16KiB nonblocking buffer,
+services private input/cancellation while the outer writer is full, and retains
+all buffered output until drained before completion proof. Post-reap drain now
+sleeps instead of busy-spinning. Disposable native fixture pauses attach reading,
+checks exact1MiB zero-byte output after resume, and separately checks child process
+absence while the reader is still paused during cancellation, then drains output
+and requires authenticated cleanup. Candidate only; local checks and CI pending.
+No desktop workload execution, paid resources or protected experiment changes.
+Full goal remains active; installed API pressure and full interactive/gateway/
+provider/client/benchmark gates still required.
+
+Verified pressure recovery:cf7b44bd052a40dea6aceacb7e477eb2fbeccab7,
+CI41232915635 all five jobs passed; watcher41649 exited0. Native job124630642504
+passed the exact256KiB multi-frame SHA256 check and nonreading PTY test:360448
+bytes accepted before a send timeout at5.007seconds, followed by authenticated
+cancellation/descendant cleanup. These are one disposable Linux runtime's values,
+not universal buffering limits or hosted-provider benchmarks. Installed SSH/API
+and existing worker-loss/recovery regressions also passed. Private evidence:
+/tmp/jetski-pressure-drain-native.log and /tmp/jetski-pressure-drain-ci.log.
+59Python/61TypeScript tests and build/typecheck/lint/C syntax pass. Source pushed;
+this verified scratchpad update follows code. All earlier pressure watchers terminal.
+Next: qualify pressure through installed host/API journaling (native-only pressure
+test is not that evidence), slow-output consumers (native write_all still blocks),
+then full interactive attachment/reconnect and gateways. Remaining live-provider,
+client, cache, benchmark and release gates stay open. No paid resources, desktop
+runtime execution or protected experiment changes. Full goal active.
+
 Pressure recovery candidate: third native run f2944b9 /41232619239 failed with
 ConnectionResetError on attach after force cancellation, not a successful receipt.
 Private /tmp/jetski-pressure-tail-native.log. Observations support unread private
@@ -103,7 +130,10 @@ Close-frame and independent force-cancel paths use the same handshake. Completio
 decoder now rejects bytes after its nonce-bound marker without returning private
 marker bytes (all split boundaries tested). This is a candidate pending actual
 native qualification, not an established fix. Prior failed runs retained.
-Second diagnostic watcher7117 exited1; third watcher30119 still observed.
+Second diagnostic watcher7117 and third watcher30119 exited1; failed native
+runs preserved. Drain candidatecf7b44bd052a40dea6aceacb7e477eb2fbeccab7 pushed;
+CI41232915635 running, /tmp/jetski-pressure-drain-ci.log.59Python tests and
+build/typecheck/lint/C syntax pass; live cancellation proof still pending.
 
 Pressure diagnostic update:639f839 / CI41232455572 native job124629294702
 also failed; the non-tail bytes begin with the authenticated completion prefix

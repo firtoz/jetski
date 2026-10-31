@@ -350,6 +350,92 @@ def main():
                 ["/bin/sh", "-ec", "printf CLOSE-READY; sleep 120 & wait"], close_terminal
             )
             assert proof == dict(cancelled=True, exitCode=143, descendantsReaped=True), proof
+
+            def slow_output(cancelled):
+                session = create(
+                    [
+                        "/jetski-supervisor",
+                        "--jetski-pty-v1",
+                        "/bin/sh",
+                        "-ec",
+                        "stty raw -echo; echo $$ > /workspace/slow-output-child; "
+                        + (
+                            "head -c 16777216 /dev/zero; sleep 120"
+                            if cancelled
+                            else "head -c 1048576 /dev/zero"
+                        ),
+                    ]
+                )
+                sessions.append(session)
+                paused, resume = threading.Event(), threading.Event()
+                closers = []
+                decoder = CompletionDecoder(nonces[session])
+                count = 0
+                digest = hashlib.sha256()
+
+                def consume():
+                    nonlocal count
+                    for channel, chunk in api.output(
+                        session,
+                        timeout=40,
+                        initial_input=nonces[session],
+                        input_close_ready=closers.append,
+                    ):
+                        if channel == "stderr":
+                            assert decoder.feed(chunk) == b""
+                        else:
+                            count += len(chunk)
+                            assert count <= 16777216, "Unexpected output growth"
+                            digest.update(chunk)
+                            if not paused.is_set():
+                                paused.set()
+                                assert resume.wait(15), "Reader pause was not released"
+                    return decoder.finish()
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    stream = executor.submit(consume)
+                    removal = None
+                    try:
+                        assert paused.wait(10), "No output to stall"
+                        time.sleep(0.5)
+                        if cancelled:
+                            closers[0]()
+                            removal = executor.submit(api.remove, session)
+                            # Verify tree cleanup while the attach reader is STILL paused.
+                            deadline = time.monotonic() + 5
+                            while True:
+                                check = run(
+                                    [
+                                        "exec",
+                                        container,
+                                        "/bin/sh",
+                                        "-ec",
+                                        "test ! -e /proc/$(cat /workspace/slow-output-child)/stat",
+                                    ]
+                                )
+                                if check["exitCode"] == 0:
+                                    break
+                                assert time.monotonic() < deadline, (
+                                    "Slow reader blocked child cleanup"
+                                )
+                                time.sleep(0.05)
+                        resume.set()
+                        proof = stream.result(timeout=20)
+                        if removal is not None:
+                            removal.result(timeout=10)
+                    finally:
+                        resume.set()
+                assert proof == dict(
+                    cancelled=cancelled, exitCode=143 if cancelled else 0, descendantsReaped=True
+                ), proof
+                if not cancelled:
+                    assert count == 1048576
+                    assert digest.digest() == hashlib.sha256(bytes(1048576)).digest()
+                return count
+
+            slow_output_bytes = slow_output(False)
+            stalled_cancel_bytes = slow_output(True)
+            assert 0 < stalled_cancel_bytes < 16777216, "Fixture did not pressure the output path"
             print(
                 json.dumps(
                     dict(
@@ -366,6 +452,8 @@ def main():
                         nativePtyInputResizeSignalClose=True,
                         nativePtyBinaryInput=True,
                         nativePtyMultiFrameIntegrity=True,
+                        slowReaderExactBytes=slow_output_bytes,
+                        stalledReaderCancellationBytes=stalled_cancel_bytes,
                         nativePtyBackpressureCancellation=pressure,
                         terminalApiIntegrated=False,
                     )

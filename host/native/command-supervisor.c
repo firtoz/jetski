@@ -61,27 +61,28 @@ struct terminal {
     size_t have;
     unsigned char pending[65536];
     size_t used, sent;
+    unsigned char output[16384];
+    size_t output_used, output_sent;
 };
 
-static int write_all(int fd, const unsigned char *bytes, size_t size) {
-    while (size) {
-        ssize_t n = write(fd, bytes, size);
-        if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) return -1;
-        bytes += n;
-        size -= (size_t)n;
-    }
-    return 0;
-}
-
 static int terminal_pump(struct terminal *term) {
-    unsigned char output[16384];
-    /* Bounded per iteration so a noisy workload cannot starve cancellation. */
-    for (int i = 0; i < 16 && !term->eof; i++) {
-        ssize_t n = read(term->master, output, sizeof(output));
-        if (n > 0) {
-            if (write_all(STDOUT_FILENO, output, (size_t)n)) return -1;
-        } else if (n == 0 || (n < 0 && errno == EIO)) term->eof = 1;
+    /* Keep a bounded output buffer and service cancellation/input even when the
+     * outer reader is stalled. Never discard buffered output on cancellation.
+     */
+    for (int i = 0; i < 16; i++) {
+        if (term->output_sent < term->output_used) {
+            ssize_t n = write(STDOUT_FILENO, term->output + term->output_sent,
+                term->output_used - term->output_sent);
+            if (n > 0) term->output_sent += (size_t)n;
+            else if (n < 0 && (errno == EAGAIN || errno == EINTR)) break;
+            else return -1;
+            if (term->output_sent < term->output_used) break;
+            term->output_used = term->output_sent = 0;
+        }
+        if (term->eof) break;
+        ssize_t n = read(term->master, term->output, sizeof(term->output));
+        if (n > 0) term->output_used = (size_t)n;
+        else if (n == 0 || (n < 0 && errno == EIO)) term->eof = 1;
         else if (errno == EAGAIN || errno == EINTR) break;
         else return -1;
     }
@@ -223,6 +224,7 @@ int main(int argc, char **argv) {
     }
     if (interactive) close(slave);
     if (interactive && fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL) | O_NONBLOCK)) return 125;
+    if (interactive && fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK)) return 125;
     int leader_result = 125;
     for (;;) {
         if (interactive && terminal_pump(&term)) return 125;
@@ -243,7 +245,12 @@ int main(int argc, char **argv) {
             }
         }
         if (child < 0 && errno == ECHILD) {
-            if (interactive && (!term.eof || (cancelling && !term.input_eof))) continue;
+            if (interactive && (!term.eof || term.output_sent < term.output_used ||
+                    (cancelling && !term.input_eof))) {
+                struct timespec drain_delay = {0, 10000000};
+                nanosleep(&drain_delay, NULL);
+                continue;
+            }
             if (interactive) close(term.master);
             /* The nonce arrived only after dumpability was disabled, via the
              * private attach input, and was erased from the child before exec.
