@@ -93,6 +93,16 @@ workload-specific products.
 
 ## Latest continuation status
 
+ea4389d4faa364fcb97a90aa38d38b93b1a96ff3 / CI41239068959 rootless job
+124648943938 failed container_listener_unavailable. Native byte/half-close/error
+checks completed before the failing container check. Preserve
+/tmp/jetski-tcp-relay-failed.log; do not claim container forwarding qualified.
+The image-provided HTTP listener dependency is replaced by an ordinary-source,
+static one-request CI fixture. It binds only workload loopback, exposes readiness
+and completion markers and keeps PID1 alive while the relay drains its final bytes.
+Bounded failure diagnostics added; the earlier failure did not record enough evidence
+to identify why the image-specific listener was unavailable. Relay code unchanged.
+
 Workload-local TCP relay candidate: standalone static Linux source in
 host/native/tcp-relay.c. Fixed127.0.0.1 destination, validated numeric port,
 16KiB bounded framed data, explicit connected/read-FIN/write-FIN, nonblocking

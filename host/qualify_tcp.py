@@ -177,6 +177,8 @@ def local_checks(binary):
 
 def container_check(binary):
     image = os.environ["JETSKI_TEST_IMAGE"]
+    fixture = pathlib.Path(os.environ["JETSKI_TEST_HTTP_FIXTURE"]).resolve()
+    assert fixture.is_file()
     name = "jetski-tcp-" + str(uuid.uuid4())
     subprocess.run(
         [
@@ -192,10 +194,10 @@ def container_check(binary):
             "1000:1000",
             "--mount",
             f"type=bind,src={binary},dst=/jetski-relay,ro",
+            "--mount",
+            f"type=bind,src={fixture},dst=/jetski-http-fixture,ro",
             image,
-            "/bin/sh",
-            "-ec",
-            "mkdir /tmp/web; printf relay-container > /tmp/web/index.html; exec busybox httpd -f -p 18080 -h /tmp/web",
+            "/jetski-http-fixture",
         ],
         check=True,
         capture_output=True,
@@ -209,9 +211,9 @@ def container_check(binary):
                     "podman",
                     "exec",
                     name,
-                    "/bin/sh",
-                    "-c",
-                    "grep -q ':46A0 .* 0A ' /proc/net/tcp /proc/net/tcp6",
+                    "test",
+                    "-f",
+                    "/tmp/jetski-http-ready",
                 ],
                 capture_output=True,
                 timeout=5,
@@ -220,7 +222,11 @@ def container_check(binary):
                 break
             time.sleep(0.1)
         else:
-            raise AssertionError("container_listener_unavailable")
+            logs = subprocess.run(["podman", "logs", name], capture_output=True, timeout=5)
+            raise AssertionError(
+                "container_listener_unavailable: "
+                + logs.stderr[:2048].decode("utf8", errors="replace")
+            )
         process = subprocess.Popen(
             ["podman", "exec", "-i", name, "/jetski-relay", "--jetski-tcp-v1", "18080"],
             stdin=subprocess.PIPE,
@@ -243,6 +249,12 @@ def container_check(binary):
         assert stream.read() == b""
         assert bytes(response).startswith(b"HTTP/1.0 200")
         assert bytes(response).endswith(b"relay-container")
+        subprocess.run(
+            ["podman", "exec", name, "test", "-f", "/tmp/jetski-http-complete"],
+            capture_output=True,
+            timeout=5,
+            check=True,
+        )
     finally:
         if process:
             cleanup(process)
@@ -257,6 +269,7 @@ if __name__ == "__main__":
     binary = pathlib.Path(os.environ["JETSKI_TEST_TCP_RELAY"]).resolve()
     assert binary.is_file()
     local_checks(binary)
+    print("TCP native checks passed", flush=True)
     container_check(binary)
     print(
         "TCP relay verified: exact binary bytes, both half-closes, malformed frames, isolated loopback, cleanup"

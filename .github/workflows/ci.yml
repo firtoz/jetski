@@ -52,7 +52,8 @@ jobs:
       - name: Build and qualify workload-local TCP relay
         run: |
           cc -static -O2 -Wall -Wextra -Werror host/native/tcp-relay.c -o "$RUNNER_TEMP/jetski-tcp-relay"
-          JETSKI_TEST_TCP_RELAY="$RUNNER_TEMP/jetski-tcp-relay" python3 host/qualify_tcp.py
+          cc -static -O2 -Wall -Wextra -Werror host/fixtures/http-server.c -o "$RUNNER_TEMP/jetski-http-fixture"
+          JETSKI_TEST_TCP_RELAY="$RUNNER_TEMP/jetski-tcp-relay" JETSKI_TEST_HTTP_FIXTURE="$RUNNER_TEMP/jetski-http-fixture" python3 host/qualify_tcp.py
   ssh-control:
     strategy:
       fail-fast: false
