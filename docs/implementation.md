@@ -93,7 +93,19 @@ workload-specific products.
 
 ## Latest continuation status
 
-Preview session continuation (unpublished): added durable generation/owner/origin
+Browser qualification continuation: previous session increment fd810e1 passed all
+five CI jobs (41250520871), so previous turn was verified progress. Added a bounded
+CDP harness that only launches in disposable CI with a fresh profile and explicit
+Chrome executable. CI will test real bootstrap navigation, hash removal, Secure/
+HttpOnly/Strict cookie acceptance, external script loading, binary HTTP and WS,
+and active revocation. This first browser test uses a socket-backed fixture, not a
+real container; connecting it to host-control/container qualification remains next.
+Local build/typecheck/lint pass; browser intentionally not launched on operator
+host. Current browser CI still pending; preserve first failure if any. No paid
+resources or protected experiment changes.
+
+
+Preview session continuation: added durable generation/owner/origin
 scoped grants with fixed 60-second bootstrap and 15-minute session expiry;
 one-use redemption with stable lost-ACK recovery; private-state credentials,
 redacted public receipts; bootstrap fragment removal and Secure/HttpOnly cookie;
@@ -105,7 +117,13 @@ Adding peer EOF handling to that fixture resolved cleanup; focused rerun passed
 in /tmp/jetski-preview-browser-protocol-fixed.log. API grant tests and OpenAPI docs
 added afterward. Full104TS/70Python tests, build, typecheck, Biome, Ruff and
 C syntax-only checks pass; /tmp/jetski-sessions-full.log and
-/tmp/jetski-sessions-python.log retain evidence. Exact-SHA CI pending. Real browser
+/tmp/jetski-sessions-python.log retain evidence. Published fd810e1b0e928b3b4b04bf3e47f44b96c041efe2. Exact-SHA
+CI41250520871 passed all five jobs; watcher44313 exited0;
+/tmp/jetski-sessions-ci.log retains evidence. Owned CI fixture cleanup passed.
+Current turn is verified progress, not full release qualification. Next run a
+disposable CI browser to qualify fragment clearing, CSP execution, Secure cookie
+acceptance, navigation/assets/fetch/WS and revocation; connect that proof to the
+real isolated workload fixture. Real browser
 navigation/CSP/cookie acceptance and real-container session tests remain open.
 No paid allocation, desktop runtime or protected experiment changes.
 

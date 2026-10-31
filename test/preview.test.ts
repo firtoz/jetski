@@ -7,6 +7,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fixtureBrowser } from "../examples/fixture-browser.js";
 import { OperationJournal } from "../src/core/operations.js";
 import { PortRegistry } from "../src/core/ports.js";
 import { PreviewSessions } from "../src/core/preview-sessions.js";
@@ -54,7 +55,7 @@ async function previewFetch(
 }
 
 test("HTTP and WebSocket previews isolate origins, strip credentials and preserve binary bytes", {
-  timeout: 15000,
+  timeout: 60000,
 }, async (t) => {
   const requests: {
     path: string | undefined;
@@ -66,6 +67,17 @@ test("HTTP and WebSocket previews isolate origins, strip credentials and preserv
     for await (const part of req) chunks.push(Buffer.from(part));
     const bytes = Buffer.concat(chunks);
     requests.push({ path: req.url, headers: req.headers, bytes });
+    if (req.url === "/" || req.url === "/asset.js") {
+      res.writeHead(200, {
+        "content-type": req.url === "/" ? "text/html" : "text/javascript",
+      });
+      res.end(
+        req.url === "/"
+          ? '<!doctype html><title>Fixture</title><script src="/asset.js"></script>'
+          : "window.fixtureAsset = true;",
+      );
+      return;
+    }
     res.writeHead(200, {
       "content-type": "application/octet-stream",
       "set-cookie": "evil=1; Domain=localhost",
@@ -244,7 +256,11 @@ test("HTTP and WebSocket previews isolate origins, strip credentials and preserv
     controlOrigins: ["http://localhost:8788"],
   });
   await new Promise<void>((resolve) =>
-    preview.server.listen(0, "127.0.0.1", resolve),
+    preview.server.listen(
+      process.env.JETSKI_BROWSER_QUALIFY === "1" ? 9001 : 0,
+      "127.0.0.1",
+      resolve,
+    ),
   );
   const listener = preview.server.address();
   assert.ok(listener && typeof listener !== "string");
@@ -466,6 +482,93 @@ test("HTTP and WebSocket previews isolate origins, strip credentials and preserv
     (await previewFetch(url, { headers: sessionHeaders })).status,
     401,
   );
+  if (process.env.JETSKI_BROWSER_QUALIFY === "1") {
+    const browser = await fixtureBrowser();
+    try {
+      const browserGrant = await sessions.mint(scope, "real-browser", {
+        exposureId: "http",
+        origin: route.origin,
+      });
+      await browser.call("Page.navigate", {
+        url: `${route.origin}/.jetski/bootstrap#${browserGrant.token}`,
+      });
+      let ready = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        try {
+          ready =
+            (await browser.evaluate(
+              "location.pathname === '/' && window.fixtureAsset === true",
+            )) === true;
+        } catch {
+          /* navigation destroys the old context */
+        }
+        if (ready) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.equal(
+        ready,
+        true,
+        "bootstrap must navigate and load authenticated script",
+      );
+      assert.equal(await browser.evaluate("location.hash"), "");
+      assert.equal(await browser.evaluate("document.cookie"), "");
+      const cookies = await browser.call("Network.getCookies", {
+        urls: [route.origin],
+      });
+      const reserved = (cookies.cookies as Array<Record<string, unknown>>).find(
+        (item) => item.name === "__Host-jetski-preview",
+      );
+      assert.ok(reserved);
+      assert.equal(reserved.httpOnly, true);
+      assert.equal(reserved.secure, true);
+      assert.equal(reserved.sameSite, "Strict");
+      assert.equal(reserved.domain, "127.0.0.1");
+      assert.deepEqual(
+        await browser.evaluate(`(async()=>{
+        const response=await fetch('/binary',{method:'POST',body:new Uint8Array([0,255,128,1,2,3])});
+        if(response.status!==200)throw Error('fetch failed');
+        return [...new Uint8Array(await response.arrayBuffer())];
+      })()`),
+        [0, 255, 128, 1, 2, 3],
+      );
+      assert.deepEqual(
+        await browser.evaluate(`new Promise((resolve,reject)=>{
+        const ws=new WebSocket(location.origin.replace('http:','ws:')+'/binary');
+        ws.binaryType='arraybuffer'; ws.onopen=()=>ws.send(new Uint8Array([0,255,128,1,2,3]));
+        ws.onmessage=e=>resolve([...new Uint8Array(e.data)]); ws.onerror=()=>reject(Error('WS failed'));
+      })`),
+        [0, 255, 128, 1, 2, 3],
+      );
+      await browser.evaluate(`new Promise((resolve,reject)=>{
+        window.fixtureSocket=new WebSocket(location.origin.replace('http:','ws:')+'/idle');
+        window.fixtureSocket.onopen=()=>resolve(true); window.fixtureSocket.onerror=()=>reject(Error('WS failed'));
+      })`);
+      await sessions.revoke(scope, "real-browser", "revoke-real-browser");
+      assert.equal(
+        await browser.evaluate(`new Promise(resolve=>{
+        const socket=window.fixtureSocket;
+        if(socket.readyState===3)resolve(true);else socket.onclose=()=>resolve(true);
+      })`),
+        true,
+      );
+      assert.equal(
+        await browser.evaluate(
+          "fetch('/binary').then(response=>response.status)",
+        ),
+        401,
+      );
+      for (const entry of requests) {
+        assert.equal(entry.headers.authorization, undefined);
+        assert.equal(entry.headers.cookie, undefined);
+        assert.equal(entry.path?.includes(browserGrant.token), false);
+      }
+      console.log(
+        "Browser preview: bootstrap, cookie isolation, script, binary fetch/WS and revocation passed",
+      );
+    } finally {
+      await browser.close();
+    }
+  }
   const priorOpens = opens;
   let started!: () => void;
   const authenticating = new Promise<void>((resolve) => {

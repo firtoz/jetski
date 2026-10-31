@@ -15,6 +15,10 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
+      - name: Qualify isolated browser preview sessions
+        run: |
+          export JETSKI_TEST_CHROME="$(command -v google-chrome)"
+          JETSKI_BROWSER_QUALIFY=1 node --import tsx --test test/preview.test.ts
       - name: Qualify standalone local storage example
         run: node --import tsx examples/qualify-storage.ts
       - name: Qualify checkpoint storage recovery
