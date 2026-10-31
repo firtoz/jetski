@@ -19,7 +19,8 @@
     "./storage/s3": "./dist/storage/s3.js",
     "./server/storage": "./dist/server/storage.js",
     "./testing/storage": "./dist/testing/storage.js",
-    "./providers/boat": "./dist/providers/boat.js"
+    "./providers/boat": "./dist/providers/boat.js",
+    "./transport/boat": "./dist/transport/boat.js"
   },
   "files": [
     "dist",

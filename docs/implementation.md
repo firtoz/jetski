@@ -93,11 +93,21 @@ workload-specific products.
 
 ## Latest continuation status
 
-Current source: **5234d11259626910c0be1b2aad09c14f041e1d7a**, CI **41221713515**.
-Watcher **84585** is live. Poll this exact handle/run first on continuation; do not
-restart on observation timeout. Local build/typecheck/lint and all48TypeScript tests
-pass. Rootless-runtime CI passed; unit/SSH/API status still requires terminal
-observation. Prior source2e97b87 passed all4jobs inCI41221469787; watcher93674 exited0.
+Current source: **e221820da5a8968a91ae75dcaa1031ca8c1f9607**, CI **41222088859**.
+Watcher **79933** is live. First poll exact handle/run; do not restart on timeout.
+Unit/build/typecheck/lint job passed with51TypeScript+42Python tests. Runtime/SSH/API
+qualification is still running. Prior5234d11 passed all4jobs inCI41221713515;
+watcher84585 exited0 and disposable resources were cleaned.
+
+Boat allocation/inspection/retirement implementation now exists behind its own
+subpath. HTTP fixture tests qualify frozen create replay acrossSQLite reopen,
+expired uncertain request refusal, ownership/readiness/deletion fences and bounded
+responses. No live Boat calls or paid machines were used. The adapter requires a
+separately installed host agent and transport; automatic bootstrap, control-channel
+integration and standalone configuration are still unfinished. Next implement that
+usable host path, then interactive transports, keeping paid qualification separate.
+Official provider contract sources are linked in docs/boat.md; idempotency is24h,
+while adapter refuses creation retries beyond its requested<=1hlifetime.
 
 Two SQLite controller connections now qualify superseded inventory fencing,
 competing ID and reader/writer exclusion, retained-object preservation, and result
@@ -803,3 +813,17 @@ is HTTPS-only, no redirects/retries, bounded1MiB/30s. Official provider docs rev
 Tests use HTTP fixtures, not hosted allocation. Boat bootstrap/transport discovery
 and standalone wiring remain required before useful live-host qualification. No
 paid host/remote storage/protected experiment changes. Local final suite/CI pending.
+
+Boat control continuation: previousCI41222088859 ate221820 passed all4jobs;
+watcher79933 exited0. Added owned-host protocol transport through Boat commands,
+strict receipts/bounds/uncertainty semantics and cancellation propagation. Large
+requests cannot safely occupy shell argv: above48KiB they use an exclusively
+created private directory, provider file upload, full length/SHA verification and
+nonrecursive ownership/symlink-checked cleanup. Protocol ceiling1MiB, response2MiB,
+provider JSON envelope8MiB.53TypeScript tests/build/typecheck/lint pass. Tests cover
+payload metacharacters/Unicode/binary encoding, no unowned/retired dispatch, lost
+responses/no retry, cancellation, truncation, mismatch, large inputs and bad upload
+receipts. These are wire fixtures; actual script execution and bootstrap/configuration
+are still required. No paid VM or remote storage changes. Next qualify on disposable
+CI Linux, then wire automatic Boat bootstrap and standalone configuration. Main CI
+pending; all remaining interactive/client/provider/benchmark gates stay open.

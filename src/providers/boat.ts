@@ -13,7 +13,7 @@ import {
 
 export const BOAT_MACHINE_TYPES = ["small", "default", "large"] as const;
 export type BoatMachineType = (typeof BOAT_MACHINE_TYPES)[number];
-type Allocation = {
+export type BoatAllocation = {
   owner: string;
   operationId: string;
   expiresAt: number;
@@ -37,13 +37,35 @@ export class BoatApi {
     method = "GET",
     body?: Json,
     headers: Record<string, string> = {},
+    options: {
+      maxBytes?: number;
+      timeoutMs?: number;
+      signal?: AbortSignal;
+    } = {},
   ): Promise<Reply> {
-    if (!/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+)?$/.test(path))
+    if (
+      !/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+(?:\/(?:commands|files))?)?$/.test(
+        path,
+      )
+    )
       throw Error("Unsupported Boat route");
+    const maxBytes = options.maxBytes ?? 1024 * 1024;
+    const timeoutMs = options.timeoutMs ?? 30_000;
+    if (
+      !Number.isSafeInteger(maxBytes) ||
+      maxBytes < 1 ||
+      maxBytes > 8 * 1024 * 1024 ||
+      !Number.isSafeInteger(timeoutMs) ||
+      timeoutMs < 1 ||
+      timeoutMs > 665_000
+    )
+      throw Error("Invalid Boat HTTP bounds");
+    const signals = [AbortSignal.timeout(timeoutMs)];
+    if (options.signal) signals.push(options.signal);
     const response = await this.request(`https://boat.dev/api/v1${path}`, {
       method,
       redirect: "error",
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.any(signals),
       headers: {
         ...headers,
         Authorization: `Bearer ${this.token}`,
@@ -60,7 +82,7 @@ export class BoatApi {
         const chunk = await reader.read();
         if (chunk.done) break;
         bytes += chunk.value.length;
-        if (bytes > 1024 * 1024) throw Error("Boat response bound exceeded");
+        if (bytes > maxBytes) throw Error("Boat response bound exceeded");
         chunks.push(chunk.value);
       }
     } finally {
@@ -130,7 +152,7 @@ export class BoatHostProvider implements HostProvider {
     identifier(input.operationId);
     const key = `boat-allocation/${input.owner}/${input.operationId}`;
     const allocation = await this.state.transaction((tx) => {
-      const prior = tx.get<Allocation>(key);
+      const prior = tx.get<BoatAllocation>(key);
       if (prior) {
         if (prior.expiresAt !== input.expiresAt)
           throw Error("Boat allocation identity conflict");
@@ -143,7 +165,7 @@ export class BoatHostProvider implements HostProvider {
         ttlSeconds > DEFAULTS.hostLifetimeMs / 1000
       )
         throw Error("Boat allocation lifetime must be within one hour");
-      const row: Allocation = {
+      const row: BoatAllocation = {
         ...input,
         key: crypto.randomUUID(),
         id: null,
@@ -172,7 +194,7 @@ export class BoatHostProvider implements HostProvider {
       }),
     );
     await this.state.transaction((tx) => {
-      const current = tx.get<Allocation>(key);
+      const current = tx.get<BoatAllocation>(key);
       if (
         !current ||
         current.key !== allocation.key ||
@@ -189,11 +211,11 @@ export class BoatHostProvider implements HostProvider {
   }
   private async owned(
     id: string,
-  ): Promise<{ key: string; allocation: Allocation }> {
+  ): Promise<{ key: string; allocation: BoatAllocation }> {
     identifier(id);
     return this.state.transaction((tx) => {
       const key = tx.get<string>(`boat-host/${id}`);
-      const allocation = key ? tx.get<Allocation>(key) : undefined;
+      const allocation = key ? tx.get<BoatAllocation>(key) : undefined;
       if (!key || !allocation || allocation.id !== id)
         throw Error("Boat host not owned by this controller");
       return { key, allocation };
@@ -256,7 +278,7 @@ export class BoatHostProvider implements HostProvider {
     if (observed.status !== 404)
       throw Error("Boat deletion still pending or uncertain");
     await this.state.transaction((tx) => {
-      const current = tx.get<Allocation>(key);
+      const current = tx.get<BoatAllocation>(key);
       if (!current || current.id !== id || current.operationId !== allocationId)
         throw Error("Boat retirement fenced");
       tx.put(key, { ...current, retired: true });
