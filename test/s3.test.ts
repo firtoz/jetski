@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { S3Client } from "@aws-sdk/client-s3";
+import {
+  CheckpointRegistry,
+  CheckpointTransfer,
+  DEFAULTS,
+} from "../src/core/index.js";
+import { SqliteState } from "../src/state/sqlite.js";
 import { S3CheckpointStore } from "../src/storage/s3.js";
 import { qualifyStorage } from "../src/testing/storage.js";
 
@@ -239,6 +249,117 @@ test("S3 wire contract: immutable reservation, loss, ranges, pagination and corr
   assert.equal(qualification.passed, true);
   assert.equal(qualification.cleanup.complete, true);
   assert.equal(qualification.checks.length, 12);
+
+  await t.test(
+    "checkpoint publication survives lost wire ACK and SQLite reopen",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "jetski-s3-recovery-"));
+      let state = new SqliteState(join(dir, "state.sqlite"));
+      let now = 1000;
+      const fence = { owner: "recovery", sandbox: "fixture", generation: 1 };
+      let registry = new CheckpointRegistry(state, store, () => now);
+      const raw = Buffer.from([0, 255, 128, 10, 0]);
+      const compressed = gzipSync(raw);
+      const manifest = {
+        version: 1,
+        sha256: sha(compressed),
+        bytes: compressed.length,
+        expandedBytes: raw.length,
+        entries: 2,
+        frames: [
+          {
+            offset: 0,
+            bytes: compressed.length,
+            expandedBytes: raw.length,
+            sha256: sha(compressed),
+            expandedSha256: sha(raw),
+          },
+        ],
+      };
+      try {
+        await registry.initialize(fence);
+        losePut = true;
+        await assert.rejects(
+          new CheckpointTransfer(store, registry).save(
+            fence,
+            "first",
+            manifest,
+            {
+              read: async (offset, count) =>
+                compressed.subarray(offset, offset + count),
+            },
+          ),
+        );
+        assert.equal(await registry.root(fence, "first"), undefined);
+        await assert.rejects(registry.collect(fence, "blocked"), /Active/);
+        const uploadCount = () =>
+          requests.filter(
+            (r) =>
+              r.method === "PUT" &&
+              r.path.includes("/recovery/fixture/objects/"),
+          ).length;
+        assert.equal(uploadCount(), 1);
+        state.close();
+        state = new SqliteState(join(dir, "state.sqlite"));
+        registry = new CheckpointRegistry(state, store, () => now);
+        const absentSource = {
+          read: async (): Promise<Uint8Array> => {
+            throw Error("source removed");
+          },
+        };
+        const first = await new CheckpointTransfer(store, registry).save(
+          fence,
+          "first",
+          manifest,
+          absentSource,
+        );
+        assert.equal(first.uploadedBytes, 0);
+        assert.equal(first.reusedBytes, compressed.length);
+        assert.equal(
+          uploadCount(),
+          1,
+          "lost acknowledgement must not resend committed frame",
+        );
+        const second = await new CheckpointTransfer(store, registry).save(
+          fence,
+          "second",
+          manifest,
+          absentSource,
+          "first",
+        );
+        assert.deepEqual(second.root.frames, first.root.frames);
+        assert.equal(second.uploadedBytes, 0);
+        await registry.retire(fence, "first");
+        now += DEFAULTS.gcGraceMs;
+        assert.deepEqual(await registry.collect(fence, "shared-frame"), {
+          deleted: 0,
+        });
+        const restored: Uint8Array[] = [];
+        for (const frame of second.root.frames)
+          for await (const chunk of store.read(frame)) restored.push(chunk);
+        assert.deepEqual(gunzipSync(Buffer.concat(restored)), raw);
+        assert.equal(sha(Buffer.concat(restored)), manifest.sha256);
+        await registry.admit(fence, "reader", "reader", "second");
+        await assert.rejects(
+          registry.collect(fence, "reader-blocked"),
+          /Active/,
+        );
+        await registry.close(fence, "reader");
+        await registry.retire(fence, "second");
+        assert.deepEqual(await registry.collect(fence, "too-early"), {
+          deleted: 0,
+        });
+        now += DEFAULTS.gcGraceMs;
+        assert.deepEqual(await registry.collect(fence, "retired-frame"), {
+          deleted: 1,
+        });
+        assert.equal(await store.head(second.root.frames[0]!), undefined);
+      } finally {
+        state.close();
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 test("standalone storage validates explicit credentials and HTTPS without network allocation", async () => {

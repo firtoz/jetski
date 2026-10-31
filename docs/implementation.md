@@ -93,9 +93,9 @@ workload-specific products.
 
 ## Latest continuation status
 
-Verified source: **e2dc5e8dcc40e442b28d974bca55993d9421b733**, CI **41219011312**,
-all four jobs successful; watcher 33852 terminated with exit 0. Local build,
-typecheck, Biome, Ruff and all **77 unit tests** pass (35 TypeScript, 42 Python).
+Verified source: **dea458a79213019c512d1029542d3911b8133c6e**, CI **41219691405**,
+all four jobs successful; watcher 12089 terminated with exit 0. Local build,
+typecheck, Biome, Ruff and all **80 unit tests** pass (38 TypeScript, 42 Python).
 Real API logs confirm checkpointHistoryAndReplaySafePins=true alongside the prior
 upload, expiry, queue, shutdown, output retention and replacement recovery checks.
 No active CI work remains; disposable hosts/listeners were cleaned by the fixtures.
@@ -691,3 +691,13 @@ outage qualification: five minutes cannot guarantee completion for every workloa
 or provider failure. Starting/quarantined deletion, orphan-reader/multi-controller
 recovery and all remaining adapter/storage/interactive/client/benchmark gates remain.
 No paid resources or original GC experiment clock/state changed.
+
+S3 core recovery continuation: live-provider credentials are pending; no remote
+objects or hosts allocated. Added SDK wire-fixture coverage combining persisted
+SQLite reopening with a committed object PUT whose HTTP acknowledgement is lost.
+Retry must publish without rereading the absent source or uploading the frame again.
+A second root reuses the immutable frame; retirement/collection must preserve it
+while retained or read, then allow deletion only after the final retirement grace.
+Reconstruction checks exact compressed hash and decompressed binary bytes. Grace
+uses an injected clock; this is not the separate real-time qualification. Await
+local checks and exact-SHA CI. Full release gates remain open.
