@@ -52,10 +52,26 @@ class ExecProtocolTests(unittest.TestCase):
             b"",
             marker[:-1],
             marker.replace(b":143", b":000"),
-            marker + b"unexpected",
             marker.replace(b"000102", b"ffffff"),
         ):
             decoder = CompletionDecoder(nonce)
             decoder.feed(tail)
+            with self.assertRaises(ValueError):
+                decoder.finish()
+
+
+class CompletionPrivacyTests(unittest.TestCase):
+    def test_trailing_data_never_exposes_private_completion(self):
+        nonce = bytes(range(32))
+        marker = b"\0jetski-complete-v1:" + nonce.hex().encode() + b":1:143\0"
+        for split in range(1, len(marker) + 10):
+            decoder = CompletionDecoder(nonce)
+            received = b""
+            data = b"workload" + marker + b"unexpected"
+            with self.assertRaisesRegex(ValueError, "unexpected_completion_trailer"):
+                for offset in range(0, len(data), split):
+                    received += decoder.feed(data[offset : offset + split])
+            self.assertTrue(b"workload".startswith(received))
+            self.assertNotIn(nonce.hex().encode(), received)
             with self.assertRaises(ValueError):
                 decoder.finish()

@@ -93,6 +93,18 @@ workload-specific products.
 
 ## Latest continuation status
 
+Pressure recovery candidate: third native run f2944b9 /41232619239 failed with
+ConnectionResetError on attach after force cancellation, not a successful receipt.
+Private /tmp/jetski-pressure-tail-native.log. Observations support unread private
+input at supervisor exit causing reset/trailing provider diagnostics. Implemented
+a cancellation input-drain handshake: half-close host writer, native drains accepted
+private bytes until EOF while reaping descendants/draining output, then emits proof.
+Close-frame and independent force-cancel paths use the same handshake. Completion
+decoder now rejects bytes after its nonce-bound marker without returning private
+marker bytes (all split boundaries tested). This is a candidate pending actual
+native qualification, not an established fix. Prior failed runs retained.
+Second diagnostic watcher7117 exited1; third watcher30119 still observed.
+
 Pressure diagnostic update:639f839 / CI41232455572 native job124629294702
 also failed; the non-tail bytes begin with the authenticated completion prefix
 (redacted), so investigate trailing provider bytes or duplicate framing. Evidence

@@ -56,6 +56,7 @@ static int kill_children(void) {
 struct terminal {
     int master;
     int eof;
+    int input_eof;
     unsigned char frame[65541];
     size_t have;
     unsigned char pending[65536];
@@ -90,6 +91,16 @@ static int terminal_pump(struct terminal *term) {
      */
     if (cancelling) {
         term->have = term->used = term->sent = 0;
+        /* Drain accepted private transport bytes after the host half-closes its
+         * writer. Exiting with unread bytes can reset the attach connection and
+         * discard the authenticated completion receipt.
+         */
+        for (int i = 0; i < 16 && !term->input_eof; i++) {
+            ssize_t n = read(STDIN_FILENO, term->frame, sizeof(term->frame));
+            if (n == 0) term->input_eof = 1;
+            else if (n < 0 && (errno == EAGAIN || errno == EINTR)) break;
+            else if (n < 0) return -1;
+        }
         return 0;
     }
     if (term->sent < term->used) {
@@ -232,7 +243,7 @@ int main(int argc, char **argv) {
             }
         }
         if (child < 0 && errno == ECHILD) {
-            if (interactive && !term.eof) continue;
+            if (interactive && (!term.eof || (cancelling && !term.input_eof))) continue;
             if (interactive) close(term.master);
             /* The nonce arrived only after dumpability was disabled, via the
              * private attach input, and was erased from the child before exec.

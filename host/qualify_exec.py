@@ -204,7 +204,7 @@ def main():
                 session = create(["/jetski-supervisor", "--jetski-pty-v1", *argv])
                 sessions.append(session)
                 ready = threading.Event()
-                senders = []
+                senders, closers = [], []
                 observed = bytearray()
                 decoder = CompletionDecoder(nonces[session])
 
@@ -214,7 +214,11 @@ def main():
 
                 def consume():
                     for channel, chunk in api.output(
-                        session, timeout=40, initial_input=nonces[session], input_ready=input_ready
+                        session,
+                        timeout=40,
+                        initial_input=nonces[session],
+                        input_ready=input_ready,
+                        input_close_ready=closers.append,
                     ):
                         if channel == "stderr":
                             diagnostic = decoder.feed(chunk)
@@ -250,8 +254,14 @@ def main():
 
                     def send(kind, payload=b""):
                         senders[0](kind + struct.pack(">I", len(payload)) + payload)
+                        if kind == b"C":
+                            closers[0]()
 
-                    exercise(wait_for, send, lambda: api.remove(session))
+                    def cancel_session():
+                        closers[0]()
+                        api.remove(session)
+
+                    exercise(wait_for, send, cancel_session)
                     proof = future.result(timeout=15)
                     return bytes(observed), proof
 

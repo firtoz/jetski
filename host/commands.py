@@ -277,7 +277,7 @@ def run_worker(command, expected_lease, fence):
     stop_reason = []
     failure_stage, failure_type = "prepare", None
     terminal_inputs = TerminalInputs(fence, CONTROL_ROOT / "terminal-input")
-    input_sender = []
+    input_sender, input_closer = [], []
     try:
         root.mkdir(parents=True, mode=0o700, exist_ok=False)
         nonce = secrets.token_bytes(32)
@@ -330,6 +330,8 @@ def run_worker(command, expected_lease, fence):
                     if requested or time.monotonic() >= deadline or stop_reason:
                         if not stop_reason:
                             stop_reason.append("cancelled" if requested else "timeout")
+                        if input_closer:
+                            input_closer[0]()
                         api.remove(session)
                         return
                     if spec["terminal"] and input_sender:
@@ -339,6 +341,8 @@ def run_worker(command, expected_lease, fence):
                 if not stop_reason:
                     stop_reason.append("terminal_input_uncertain")
                 try:
+                    if input_closer:
+                        input_closer[0]()
                     api.remove(session)
                 except BaseException:
                     pass
@@ -358,6 +362,7 @@ def run_worker(command, expected_lease, fence):
                 initial_input=nonce,
                 on_started=started.set,
                 input_ready=input_sender.append if spec["terminal"] else None,
+                input_close_ready=input_closer.append if spec["terminal"] else None,
             ):
                 if channel == "stderr":
                     data = decoder.feed(data)

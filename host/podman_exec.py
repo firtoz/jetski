@@ -5,6 +5,7 @@ and start intent before dispatch, and never replay an uncertain start.
 """
 
 import http.client
+import errno
 import json
 import os
 import pathlib
@@ -132,7 +133,15 @@ class ExecApi:
         if status != 404:
             raise ValueError("exec_removal_unconfirmed")
 
-    def output(self, session, timeout=150, initial_input=b"", on_started=None, input_ready=None):
+    def output(
+        self,
+        session,
+        timeout=150,
+        initial_input=b"",
+        on_started=None,
+        input_ready=None,
+        input_close_ready=None,
+    ):
         """Starts once; yields binary stdout/stderr frames until remote closure.
 
         Do not call again after an exception. EOF is not exit-status evidence;
@@ -159,12 +168,23 @@ class ExecApi:
                 raise ValueError("exec_attach_failed")
             if initial_input:
                 wire.sendall(initial_input)
-            if input_ready is not None:
+            if input_ready is not None or input_close_ready is not None:
                 # Both socket objects use nonblocking fds internally, but each
                 # Python object has an independent timeout for select/poll.
                 input_socket = socket.socket(fileno=os.dup(wire.fileno()))
                 input_socket.settimeout(5)
-                input_ready(input_socket.sendall)
+                if input_ready is not None:
+                    input_ready(input_socket.sendall)
+                if input_close_ready is not None:
+
+                    def close_input():
+                        try:
+                            input_socket.shutdown(socket.SHUT_WR)
+                        except OSError as error:
+                            if error.errno not in (errno.ENOTCONN, errno.EBADF):
+                                raise
+
+                    input_close_ready(close_input)
             if on_started is not None:
                 on_started()
             # HTTP upgrade's body has no Content-Length; use its buffered socket
@@ -197,6 +217,14 @@ class CompletionDecoder:
         if self.done or not isinstance(data, bytes):
             raise ValueError("invalid_completion_stream")
         full = self.tail + data
+        position = full.find(self.prefix)
+        if position >= 0:
+            if len(full) - position > self.extent:
+                self.done = True
+                self.tail = b""
+                raise ValueError("unexpected_completion_trailer")
+            self.tail = full[position:]
+            return full[:position]
         boundary = max(0, len(full) - self.extent)
         self.tail = full[boundary:]
         return full[:boundary]
