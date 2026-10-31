@@ -142,7 +142,7 @@ export function createHttpServer(
         parts[3] === "operations" &&
         request.method === "GET"
       ) {
-        const operation = await manager.operations.get(scope, string(parts[4]));
+        const operation = await manager.operation(scope, string(parts[4]));
         send(
           response,
           operation ? 200 : 404,

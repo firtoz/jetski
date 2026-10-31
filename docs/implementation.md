@@ -298,3 +298,19 @@ maintenance and interactive gateways remain open. The manager currently preserve
 unknown operations in quarantine instead of automatically resuming them. Existing
 transport-level full save/import/recovery evidence remains valid and separate.
 No Boat spending, desktop workload or original GC-experiment change occurred.
+
+
+Verified standalone entry point: CI **41209889581** passed on
+**6af4a9ba929eee26b8b71a2969206e8ded0f525f**. The real API fixture reports owner
+isolation, server-owned progress, command execution, SDK and CLI success, and
+explicitly reports completeLifecycle=false. Direct SSH source-deleted recovery
+and repeated-checkpoint equality also continue to pass. No paid host was used.
+
+Follow-up recovery now observes a fenced existing running container after a lost
+create ACK and finalizes its original operation after controller restart, without
+another allocation or create RPC. A regression test asserts the recovered sandbox
+is running and both physical allocation/create counts remain one. Unobserved or
+ambiguous effects still remain quarantined; full interrupted-stage recovery is
+not yet complete. API fixture cleanup closes its local server even when remote
+cleanup fails, while surfacing that failure. Next: stop/checkpoint/resume/delete
+coordinator paths and durable output retention, then full standalone recovery.

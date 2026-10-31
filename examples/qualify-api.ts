@@ -130,19 +130,25 @@ try {
   );
 } finally {
   await stopWorker();
-  const sandbox = await manager.get({ owner: "qualification", sandbox: id });
-  if (sandbox?.lease) {
-    const payload = { lease: sandbox.lease, image };
-    for (const action of ["quiesce", "remove"])
-      await transport.request("ssh-ci", {
-        version: 1,
-        id: randomUUID(),
-        action,
-        payload,
-      });
+  let cleanupError: unknown;
+  try {
+    const sandbox = await manager.get({ owner: "qualification", sandbox: id });
+    if (sandbox?.lease) {
+      const payload = { lease: sandbox.lease, image };
+      for (const action of ["quiesce", "remove"])
+        await transport.request("ssh-ci", {
+          version: 1,
+          id: randomUUID(),
+          action,
+          payload,
+        });
+    }
+  } catch (error) {
+    cleanupError = error;
   }
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   state.close();
   await rm(directory, { recursive: true, force: true });
+  if (cleanupError) throw cleanupError;
 }

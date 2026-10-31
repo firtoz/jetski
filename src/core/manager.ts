@@ -39,9 +39,9 @@ export type ManagerOptions = {
 /** Portable lifecycle coordinator; all principal scope is supplied by the caller's
  * identity boundary. Private host-control methods are never public API routes. */
 export class SandboxManager {
-  readonly pool: PoolJournal;
-  readonly operations: OperationJournal;
-  readonly checkpoints: CheckpointRegistry;
+  private readonly pool: PoolJournal;
+  private readonly operations: OperationJournal;
+  private readonly checkpoints: CheckpointRegistry;
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
   constructor(
@@ -126,6 +126,9 @@ export class SandboxManager {
       tx.scan<Sandbox>(`sandbox/${owner}/`).map((row) => row.value),
     );
   }
+  async operation(scope: Scope, id: string) {
+    return this.operations.get(scope, id);
+  }
   async owners(): Promise<string[]> {
     return this.state.transaction((tx) => [
       ...new Set(tx.scan<Sandbox>("sandbox/").map((row) => row.value.owner)),
@@ -145,12 +148,69 @@ export class SandboxManager {
       })
     ).result;
   }
+  private async recoverObservedCreates(owner: string): Promise<void> {
+    for (const slot of await this.pool.inspect(owner)) {
+      const lease = slot.lease;
+      if (!lease || !["assigned", "active", "quarantined"].includes(slot.phase))
+        continue;
+      const scope = { owner, sandbox: lease.sandboxId };
+      const sandbox = await this.get(scope);
+      if (!sandbox?.lease || canonical(sandbox.lease) !== canonical(lease))
+        continue;
+      const operation = await this.operations.get(
+        scope,
+        sandbox.createOperation,
+      );
+      if (!operation || ["succeeded", "failed"].includes(operation.phase))
+        continue;
+      let observed: Json;
+      try {
+        observed = await this.request(lease, "inspect", { lease });
+      } catch {
+        continue;
+      }
+      if (
+        !observed ||
+        typeof observed !== "object" ||
+        Array.isArray(observed) ||
+        observed.phase !== "open" ||
+        !observed.lease ||
+        canonical(observed.lease) !== canonical(lease)
+      )
+        continue;
+      const runtime = observed.runtime;
+      if (
+        !runtime ||
+        typeof runtime !== "object" ||
+        Array.isArray(runtime) ||
+        runtime.phase !== "running" ||
+        runtime.image !== sandbox.image
+      )
+        continue;
+      const fence = await this.operations.generation(scope);
+      if (operation.phase === "queued")
+        await this.operations.claim(fence, operation.id);
+      await this.pool.transition(lease, "active");
+      await this.state.transaction((tx) => {
+        const current = tx.get<Sandbox>(this.key(scope));
+        if (!current?.lease || canonical(current.lease) !== canonical(lease))
+          throw new Error("Recovery assignment changed");
+        tx.put(this.key(scope), { ...current, phase: "running" });
+      });
+      await this.operations.finish(fence, operation.id, {
+        phase: "succeeded",
+        result: { sandboxId: sandbox.id },
+        error: null,
+      });
+    }
+  }
   /** Pending placement and running receipts survive restarts. Unknown remote
    * effects quarantine the source; they never trigger a second allocation. */
   async reconcile(owner: string): Promise<void> {
     if (this.activeOwners.has(owner)) return;
     this.activeOwners.add(owner);
     try {
+      await this.recoverObservedCreates(owner);
       // Repair admission interrupted between the sandbox and queue transactions.
       for (const sandbox of await this.list(owner))
         if (sandbox.phase === "queued")

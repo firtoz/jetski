@@ -263,7 +263,11 @@ export class PoolJournal {
     return this.state.transaction((tx) => {
       const slot = this.exact(tx, lease);
       if (slot.phase === to) return slot;
-      if (to === "active" && slot.phase !== "assigned")
+      if (
+        to === "active" &&
+        slot.phase !== "assigned" &&
+        slot.phase !== "quarantined"
+      )
         throw new Error("Invalid active transition");
       if (to === "quiescing" && slot.phase !== "active")
         throw new Error("Invalid stop transition");

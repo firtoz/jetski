@@ -162,6 +162,22 @@ test("uncertain create retains assignment and does not allocate or execute twice
         creations++;
         throw Error("lost ACK");
       }
+      if (
+        request.action === "inspect" &&
+        creations &&
+        request.payload &&
+        typeof request.payload === "object" &&
+        !Array.isArray(request.payload)
+      )
+        return {
+          version: 1,
+          id: request.id,
+          result: {
+            phase: "open",
+            lease: request.payload.lease ?? null,
+            runtime: { phase: "running", image },
+          },
+        };
       return { version: 1, id: request.id, result: null };
     },
   };
@@ -190,4 +206,8 @@ test("uncertain create retains assignment and does not allocate or execute twice
   ).reconcile("alice");
   assert.equal(allocations, 1);
   assert.equal(creations, 1);
+  assert.equal(
+    (await manager.get({ owner: "alice", sandbox: id }))?.phase,
+    "running",
+  );
 });
