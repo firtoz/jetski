@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { test } from "node:test";
 import { S3Client } from "@aws-sdk/client-s3";
 import { S3CheckpointStore } from "../src/storage/s3.js";
+import { qualifyStorage } from "../src/testing/storage.js";
 
 const sha = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -216,6 +217,28 @@ test("S3 wire contract: immutable reservation, loss, ranges, pagination and corr
   );
   assert.ok(objects.has("/bucket/test/v1/owner/box/reservations/a"));
   assert.ok(objects.has("/bucket/test/v1/other/box/objects/foreign"));
+  const qualification = await qualifyStorage(async () => {
+    const fresh = new S3Client({
+      endpoint: `http://127.0.0.1:${address.port}`,
+      region: "auto",
+      forcePathStyle: true,
+      maxAttempts: 1,
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
+      credentials: { accessKeyId: "fixture", secretAccessKey: "fixture" },
+    });
+    return {
+      store: new S3CheckpointStore(fresh, {
+        bucket: "bucket",
+        prefix: "test/v1",
+        listPageSize: 1,
+      }),
+      close: () => fresh.destroy(),
+    };
+  });
+  assert.equal(qualification.passed, true);
+  assert.equal(qualification.cleanup.complete, true);
+  assert.equal(qualification.checks.length, 12);
 });
 
 test("standalone storage validates explicit credentials and HTTPS without network allocation", async () => {

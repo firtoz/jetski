@@ -11,6 +11,7 @@ export type StorageConfig =
       accessKeyEnv: string;
       secretKeyEnv: string;
       sessionTokenEnv?: string;
+      listPageSize?: number;
     };
 export async function standaloneStorage(
   directory: string,

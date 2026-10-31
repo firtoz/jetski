@@ -63,3 +63,39 @@ by its full independent qualification.
 Dependency provenance: `@aws-sdk/client-s3` is pinned to 3.1161.0 in the lockfile and
 retains its Apache-2.0 license; no SDK source is vendored. Optional adapter code is
 loaded through explicit subpaths or the selected standalone configuration.
+
+## Shared conformance runner
+
+`jetski/testing/storage` exports `qualifyStorage(openSession)`. It runs the same
+bounded checks against a supplied adapter factory, closes and reopens the client,
+and returns a report with individual checks, adapter-call counts and cleanup status.
+Call counts are adapter methods, not billable provider requests. Elapsed time is a
+diagnostic, not a matched performance benchmark.
+
+From the source checkout on the supported Node runtime:
+
+```sh
+node --import tsx examples/qualify-storage.ts
+node --import tsx examples/qualify-storage.ts /private/storage-config.json
+```
+
+Without a configuration file it tests a fresh temporary local directory. A file
+contains the storage configuration object itself (`kind`, `bucket`, `prefix`, and
+so on), using credential environment variable names as above. Specifying a remote
+configuration performs real object operations in that existing namespace; it does
+not provision resources. Every run generates fresh random owner scopes and checks
+they are empty before writing. Fixtures use at most seven identities and 65,539
+bytes per object. The runner never deletes objects discovered outside its own
+explicit fixture address list.
+
+It attempts fixture blob cleanup on success and failure and verifies empty scoped
+inventories. Permanent identity reservation markers remain by design. A failed
+cleanup is a failed qualification, with scope identifiers preserved in the report
+for recovery. These disposable, unpublished blobs are cleaned directly; this is
+not a 24-hour-grace collector test and must not be represented as one. A successful
+run proves the listed functional checks only, not outage durability or physical-host
+replacement. Protocol fault-injection tests remain a separate part of the suite.
+
+The executable S3 qualification forces one-entry list pages, exercising continuation
+tokens with a small fixture. Normal standalone operation defaults to 1,000 entries
+per page; `listPageSize` can set a smaller bound.

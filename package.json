@@ -17,7 +17,8 @@
     "./transport/ssh": "./dist/transport/ssh.js",
     "./server": "./dist/server/http.js",
     "./storage/s3": "./dist/storage/s3.js",
-    "./server/storage": "./dist/server/storage.js"
+    "./server/storage": "./dist/server/storage.js",
+    "./testing/storage": "./dist/testing/storage.js"
   },
   "files": [
     "dist",

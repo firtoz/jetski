@@ -93,9 +93,9 @@ workload-specific products.
 
 ## Latest continuation status
 
-Verified source: **2f6e706024dc5ea5352bffbf76d2258fb3c8933a**, CI **41218243748**,
-all four jobs successful; watcher 63038 terminated with exit 0. Local build,
-typecheck, Biome, Ruff and all **75 unit tests** pass (33 TypeScript, 42 Python).
+Verified source: **e2dc5e8dcc40e442b28d974bca55993d9421b733**, CI **41219011312**,
+all four jobs successful; watcher 33852 terminated with exit 0. Local build,
+typecheck, Biome, Ruff and all **77 unit tests** pass (35 TypeScript, 42 Python).
 Real API logs confirm checkpointHistoryAndReplaySafePins=true alongside the prior
 upload, expiry, queue, shutdown, output retention and replacement recovery checks.
 No active CI work remains; disposable hosts/listeners were cleaned by the fixtures.
@@ -147,9 +147,28 @@ All 77 unit tests, build/typecheck and linters pass; npm audit reports zero find
 See docs/storage.md for provenance, upstream contract sources and limitations.
 These are protocol-fixture tests, not live S3/R2 conformance or cloud recovery proof.
 Live storage qualification and complete orphan GC remain open. No cloud requests or
-paid resources were used. CI pending for the new dependency and standalone wiring.
+paid resources were used. CI **41219011312** passed all four jobs at
+**e2dc5e8dcc40e442b28d974bca55993d9421b733**, including SDK HTTP-fixture tests and
+the full existing SSH/local-store API recovery fixture. Watcher 33852 exited 0;
+disposable resources were cleaned. Live S3/R2 remains unqualified.
 
-Next: observe exact-SHA CI; qualify S3/R2 adapter parity and replacement recovery,
+Storage conformance continuation: added one exported functional runner shared by
+local storage and the S3 adapter through the actual SDK HTTP fixture. It checks
+binary/range/empty reads, isolation, immutable and concurrent creation, interrupted
+and corrupt input, fresh-client reopening, exact scoped inventory, idempotent deletion
+and permanent identity reservation. Cleanup only targets explicitly admitted fresh
+fixture addresses and records failure; reservation markers intentionally remain.
+A deliberately broken adapter test proves failure reporting and cleanup. The generic
+executable example defaults to temporary local storage and accepts explicit remote
+configuration without provisioning resources. Adapter calls are not billable-request
+counts; elapsed time is not a matched benchmark. All 80 unit tests pass, plus
+build/typecheck/linters. No live R2 or paid-host operations occurred; live provider
+qualification remains open. The standalone local example passed all 12 contract checks
+with 6 fixture identities and verified blob cleanup (20 ms diagnostic duration, not
+a performance comparison). Cleanup-failure tests retain failed object addresses and
+still attempt every deletion. Remote examples force single-entry pages. Await CI.
+
+Next: observe exact-SHA CI, then qualify S3/R2 adapter parity and replacement recovery,
 then complete remaining interactive/API scope and machine-provider adapters;
 qualify unresolved assignment deletion, orphan-reader/multi-controller recovery;
 finish complete safe GC, Boat/S3/R2 adapters, fresh physical-host recovery, downstream

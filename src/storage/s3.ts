@@ -22,6 +22,7 @@ export type S3StoreOptions = {
   prefix: string;
   maxBytes?: number;
   timeoutMs?: number;
+  listPageSize?: number;
 };
 /** Dedicated namespace; credentials belong only to the controller. Reservations
  * are permanent and must never be removed by bucket lifecycle rules or collection.
@@ -29,6 +30,7 @@ export type S3StoreOptions = {
 export class S3CheckpointStore implements CheckpointStore {
   private maxBytes: number;
   private timeoutMs: number;
+  private listPageSize: number;
   constructor(
     private client: Pick<S3Client, "send">,
     private options: S3StoreOptions,
@@ -45,6 +47,13 @@ export class S3CheckpointStore implements CheckpointStore {
       throw Error("Explicit safe namespace prefix required");
     this.maxBytes = options.maxBytes ?? DEFAULTS.maxObjectBytes;
     this.timeoutMs = options.timeoutMs ?? 30000;
+    this.listPageSize = options.listPageSize ?? 1000;
+    if (
+      !Number.isSafeInteger(this.listPageSize) ||
+      this.listPageSize < 1 ||
+      this.listPageSize > 1000
+    )
+      throw Error("Invalid listing page bound");
     if (
       !Number.isSafeInteger(this.maxBytes) ||
       this.maxBytes < 1 ||
@@ -225,7 +234,7 @@ export class S3CheckpointStore implements CheckpointStore {
         new ListObjectsV2Command({
           Bucket: this.options.bucket,
           Prefix: prefix,
-          MaxKeys: 1000,
+          MaxKeys: this.listPageSize,
           ContinuationToken: token,
         }),
         this.signal(),
@@ -236,7 +245,7 @@ export class S3CheckpointStore implements CheckpointStore {
         (result.CommonPrefixes?.length ?? 0) !== 0 ||
         !Number.isSafeInteger(result.KeyCount) ||
         result.KeyCount !== (result.Contents?.length ?? 0) ||
-        (result.KeyCount ?? 0) > 1000
+        (result.KeyCount ?? 0) > this.listPageSize
       )
         throw Error("Incomplete or ambiguous listing");
       for (const item of result.Contents ?? []) {
