@@ -152,3 +152,21 @@ reaped. An unrelated command can continue; missing cleanup proof quarantines the
 assignment and reports uncertainty. A naturally completed command retains its
 original outcome. Host bootstrap requires a C compiler and static libc development
 files to build the supervisor, and enables the private rootless Podman socket.
+
+Terminal sessions use `POST /v1/sandboxes/{sandbox}/terminals` with the same
+`id`, `argv`, `cwd`, `timeout` fields as commands. Their `output` endpoint exposes
+merged PTY bytes through reconnectable cursors. `POST .../terminals/{id}/inputs`
+takes `{id, input}`; input is stdin (`base64`, at most16KiB), resize (`rows`,
+`columns`,1–4096), signal (`INT`, `QUIT`, `TSTP`) or close. Reuse the input ID to
+observe its existing outcome; changed contents under that ID are rejected.
+`GET .../inputs/{inputId}` observes the durable controller receipt. Sent means
+accepted by the private attach transport, not consumed by the workload. Uncertain
+sends are never automatically replayed. Shutdown retains outcomes before releasing
+the host; proved absent inputs on a closed host settle as cancelled.
+
+The SDK exposes startTerminal, terminalInput, terminalInputStatus, terminalStatus,
+terminalOutput and closeTerminal. Thin CLI commands use the same terminal names;
+terminal-input reads bounded JSON from stdin with `--id` for replay identity.
+Full interactive attach, worker-loss qualification, initial geometry and gateways
+remain under development. These endpoints are experimental; releaseQualified and
+PTY qualification remain false until the remaining terminal checks pass.

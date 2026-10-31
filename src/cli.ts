@@ -178,6 +178,50 @@ if (command === "serve") {
         image: required(values.image, "--image"),
       });
       break;
+    case "terminal-start":
+      result = await client.startTerminal(
+        required(positionals[1], "sandbox ID"),
+        required(values.id, "--id"),
+        positionals.slice(2),
+        values.cwd ?? "/workspace",
+      );
+      break;
+    case "terminal-status":
+      result = await client.terminalStatus(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "terminal ID"),
+      );
+      break;
+    case "terminal-close":
+      result = await client.closeTerminal(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "terminal ID"),
+      );
+      break;
+    case "terminal-input-status":
+      result = await client.terminalInputStatus(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "terminal ID"),
+        required(values.id, "--id"),
+      );
+      break;
+    case "terminal-input": {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of process.stdin) {
+        const bytes = Buffer.from(chunk);
+        size += bytes.length;
+        if (size > 32768) throw Error("Terminal input JSON exceeds bound");
+        chunks.push(bytes);
+      }
+      result = await client.terminalInput(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "terminal ID"),
+        required(values.id, "--id"),
+        JSON.parse(Buffer.concat(chunks).toString("utf8")),
+      );
+      break;
+    }
     case "cancel":
       result = await client.cancelCommand(
         required(positionals[1], "sandbox ID"),

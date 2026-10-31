@@ -10,6 +10,7 @@ import {
   type FileListing,
   persistentPath,
 } from "./core/files.js";
+import type { TerminalInput } from "./core/terminal-input.js";
 import type { UploadSpec, UploadStatus } from "./core/uploads.js";
 export class JetskiClient {
   private readonly base: URL;
@@ -47,6 +48,62 @@ export class JetskiClient {
     if (!response.ok)
       throw new Error(`Jetski request failed (${response.status})`);
     return (await response.json()) as T;
+  }
+  startTerminal(
+    sandbox: string,
+    id: string,
+    argv: string[],
+    cwd = "/workspace",
+    timeout = 120,
+  ): Promise<Json> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/terminals`,
+      "POST",
+      { id, argv, cwd, timeout },
+    );
+  }
+  terminalInput(
+    sandbox: string,
+    terminal: string,
+    id: string,
+    input: TerminalInput,
+  ): Promise<Json> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/terminals/${identifier(terminal)}/inputs`,
+      "POST",
+      { id, input },
+    );
+  }
+  terminalInputStatus(
+    sandbox: string,
+    terminal: string,
+    id: string,
+  ): Promise<Json> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/terminals/${identifier(terminal)}/inputs/${identifier(id)}`,
+    );
+  }
+  terminalStatus(sandbox: string, terminal: string): Promise<Json> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/terminals/${identifier(terminal)}`,
+    );
+  }
+  terminalOutput(
+    sandbox: string,
+    terminal: string,
+    offset = 0,
+    bytes = 65536,
+  ): Promise<{ base64: string; nextOffset: number; terminal: boolean }> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/terminals/${identifier(terminal)}/output?offset=${offset}&bytes=${bytes}`,
+    );
+  }
+  closeTerminal(sandbox: string, terminal: string): Promise<Json> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/terminals/${identifier(terminal)}/close`,
+      "POST",
+      {},
+    );
   }
   cancelCommand(sandbox: string, command: string): Promise<Json> {
     return this.request(

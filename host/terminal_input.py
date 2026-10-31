@@ -119,10 +119,11 @@ class TerminalInputs:
     def status(self, raw, command, identifier):
         lease, identifier = identity(raw), operation_id(identifier)
         with self.fence.locked():
-            _, _, _, entries = self.context(lease, command)
+            state, terminal, _, entries = self.context(lease, command)
             receipt = entries["ops"].get(identifier)
             if receipt is None:
-                raise ValueError("terminal_input_unavailable")
+                closed = state["phase"] != "open" or terminal["phase"] not in ("queued", "running")
+                return dict(id=identifier, phase="absent", closed=closed)
             return self.public(receipt)
 
     def dispatch_one(self, raw, command, send):

@@ -93,6 +93,43 @@ workload-specific products.
 
 ## Latest continuation status
 
+Core/API terminal candidate: portable TerminalInputJournal freezes identity/payload,
+validates bounded host-wire hashes/receipts, reconciles stable admission IDs and
+retains sent/uncertain/cancelled outcomes in transactional state. Host status now
+supplies explicit authorized absent/closed proof. Shutdown settles all input outcomes
+after quiescence and before output publication/host release; pending/invalid receipts
+block cleanup. Core startTerminal/input/status plus experimental HTTP/SDK/thin CLI
+and OpenAPI added. Public PTY qualification remains false: initial geometry,
+worker-loss/backpressure, full attach/gateway and other terminal gates stay open.
+Local59TypeScript/53Python tests, build/typecheck/lint pass. Unit test reopens SQLite
+following lost admission ACK and observes outcomes after host retirement; exact
+frame/owner/conflict/closure checks included. Real API fixture now drops terminal
+admission ACK, verifies replay without duplicate bytes, and reads retained input
+receipts/output (SDK and CLI) with host access disabled after stop. CI pending.
+No paid host, desktop runtime or protected experiment changes. Next qualify this
+installed integration, repair failures, then complete outstanding terminal/gateway
+and full provider/client/benchmark requirements without reducing scope.
+
+
+Verified5ba71f46aa07d4e537e60a33e7ed1bad158d4e79, CI41229624974 all five
+jobs passed; watcher59788 exited0. Final host input journal changes retain installed
+SSH terminal and full API recovery success. Local57TypeScript/53Python tests passed.
+Source is pushed; scratchpad verification update follows code. No paid/desktop/
+protected experiment changes. Previous turn was verified progress; full goal active.
+
+Next core integration must persist terminal/input identities and outcomes, reconcile
+admission with stable IDs, and retain input receipts before source/host release.
+Input sent means transport acceptance, not application consumption. Missing outcomes
+must stay uncertain; never infer unsent merely from network failure. Host absent-ID
+queries may need an explicit authorized absence receipt to distinguish absence from
+transport failure, and queued unsent inputs must settle cancelled on closure.
+Keep journals/payloads out of public command status and filesystem checkpoints;
+clean host input history only after core durable retention. Add initial terminal
+geometry and worker-loss/backpressure qualification, then public API/SDK/CLI and
+SSH gateway/previews/TCP, full live-provider/R2 physical replacement, staging client
+and matched benchmark gates. Public terminal capability still false until qualified.
+
+
 Verified7afef57610bfe67855a6c846fa0c07dfb60c6fe3, CI41229390248 all five
 jobs passed; watcher34605 exited0. SSH job124620185395 confirms durable host
 terminal input, lost admission ACK/reconnect without duplicate bytes, resize,

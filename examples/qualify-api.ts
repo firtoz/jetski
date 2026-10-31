@@ -69,6 +69,8 @@ objects.put = async (...args) => {
 };
 let loseCancelAck = false,
   lostCancelAcks = 0;
+let loseTerminalInputAck = true,
+  lostTerminalInputAcks = 0;
 let controlUnavailable = false;
 let loseWriteAck = true;
 let lostWriteAcks = 0;
@@ -82,6 +84,11 @@ const manager = new SandboxManager(
     request: async (host, request) => {
       if (controlUnavailable) throw Error("Control transport unavailable");
       const response = await transport.request(host, request);
+      if (request.action === "terminal-input" && loseTerminalInputAck) {
+        loseTerminalInputAck = false;
+        lostTerminalInputAcks++;
+        throw Error("Injected terminal admission acknowledgement loss");
+      }
       if (request.action === "read-checkpoint" && armCheckpointFault) {
         armCheckpointFault = false;
         loseSaveAck = true;
@@ -267,6 +274,65 @@ try {
     (await client.request<Sandbox>(`/v1/sandboxes/${id}`)).phase,
     "running",
   );
+  const terminalId = randomUUID(),
+    terminalFirst = randomUUID(),
+    terminalSecond = randomUUID();
+  await client.startTerminal(id, terminalId, [
+    "/bin/sh",
+    "-ec",
+    'test -t 0; stty -echo; printf READY; IFS= read -r first; printf "FIRST:%s\\n" "$first"; IFS= read -r second; test "$second" = second; printf TERMINAL-DONE',
+  ]);
+  const waitTerminalText = async (marker: string) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const output = await client.terminalOutput(id, terminalId);
+      const text = Buffer.from(output.base64, "base64").toString();
+      if (text.includes(marker)) return text;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw Error("API terminal output deadline");
+  };
+  await waitTerminalText("READY");
+  const firstInput = {
+    kind: "stdin" as const,
+    base64: Buffer.from("first\n").toString("base64"),
+  };
+  await client
+    .terminalInput(id, terminalId, terminalFirst, firstInput)
+    .catch(() => undefined);
+  await waitTerminalText("FIRST:first");
+  assert.equal(lostTerminalInputAcks, 1);
+  await client.terminalInput(id, terminalId, terminalFirst, firstInput);
+  await assert.rejects(
+    new JetskiClient(url, foreignToken).terminalInput(
+      id,
+      terminalId,
+      randomUUID(),
+      firstInput,
+    ),
+  );
+  await client.terminalInput(id, terminalId, terminalSecond, {
+    kind: "stdin",
+    base64: Buffer.from("second\n").toString("base64"),
+  });
+  const terminalText = await waitTerminalText("TERMINAL-DONE");
+  assert.equal(terminalText.split("FIRST:first").length, 2);
+  await waitPhase(terminalId, "succeeded");
+  const terminalOutcomes: Json[] = [];
+  for (const inputId of [terminalFirst, terminalSecond]) {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const outcome = (await client.terminalInputStatus(
+        id,
+        terminalId,
+        inputId,
+      )) as { phase: string };
+      if (outcome.phase === "sent") {
+        terminalOutcomes.push(outcome);
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  assert.equal(terminalOutcomes.length, 2);
   const commandId = randomUUID();
   const request = {
     id: commandId,
@@ -414,6 +480,35 @@ try {
     new JetskiClient(url, foreignToken).checkpoint(id, stopped.checkpoint),
   );
   controlUnavailable = true;
+  const terminalCli = await promisify(execFile)(
+    process.execPath,
+    [
+      "dist/cli.js",
+      "terminal-input-status",
+      id,
+      terminalId,
+      "--id",
+      terminalFirst,
+    ],
+    { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
+  );
+  assert.deepEqual(JSON.parse(terminalCli.stdout), terminalOutcomes[0]);
+  assert.deepEqual(
+    await client.terminalInputStatus(id, terminalId, terminalFirst),
+    terminalOutcomes[0],
+  );
+  assert.deepEqual(
+    await client.terminalInputStatus(id, terminalId, terminalSecond),
+    terminalOutcomes[1],
+  );
+  assert.equal(
+    Buffer.from(
+      (await client.terminalOutput(id, terminalId)).base64,
+      "base64",
+    ).toString(),
+    terminalText,
+  );
+
   assert.deepEqual(
     await client.request(`/v1/sandboxes/${id}/commands/${commandId}`),
     command,
@@ -761,6 +856,8 @@ try {
   console.log(
     JSON.stringify({
       standaloneApi: true,
+      apiTerminalInputReplay: true,
+      terminalOutcomesWithoutHost: true,
       ownerIsolation: true,
       serverProgress: true,
       commandExecution: true,

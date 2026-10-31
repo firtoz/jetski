@@ -6,6 +6,7 @@ import {
 } from "node:http";
 import { identifier } from "../core/contracts.js";
 import type { SandboxManager } from "../core/manager.js";
+import type { TerminalInput } from "../core/terminal-input.js";
 
 export type Principal = { owner: string };
 export type Authenticate = (
@@ -335,7 +336,8 @@ export function createHttpServer(
           return;
         }
       }
-      if (parts[3] === "commands") {
+      if (parts[3] === "commands" || parts[3] === "terminals") {
+        const terminal = parts[3] === "terminals";
         if (parts.length === 4 && request.method === "POST") {
           const input = await body(request);
           fields(input, ["id", "argv", "cwd", "timeout"]);
@@ -355,14 +357,41 @@ export function createHttpServer(
               input.argv,
               string(input.cwd ?? "/workspace"),
               timeout,
+              terminal,
             ),
           );
           return;
         }
         const id = string(parts[4]);
+        if (terminal) await manager.requireTerminal(scope, id);
+        if (terminal && parts[5] === "inputs") {
+          if (parts.length === 6 && request.method === "POST") {
+            const input = await body(request);
+            fields(input, ["id", "input"]);
+            send(
+              response,
+              202,
+              await manager.terminalInput(
+                scope,
+                id,
+                string(input.id),
+                input.input as TerminalInput,
+              ),
+            );
+            return;
+          }
+          if (parts.length === 7 && request.method === "GET") {
+            send(
+              response,
+              200,
+              await manager.terminalInputStatus(scope, id, string(parts[6])),
+            );
+            return;
+          }
+        }
         if (
           parts.length === 6 &&
-          parts[5] === "cancel" &&
+          (parts[5] === "cancel" || (terminal && parts[5] === "close")) &&
           request.method === "POST"
         ) {
           fields(await body(request), []);

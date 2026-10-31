@@ -1104,6 +1104,405 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{sandboxId}/terminals": {
+      "post": {
+        "summary": "Experimental PTY: Admit a command with a caller-selected stable ID",
+        "responses": {
+          "202": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or rejected request"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "description": "Resource not found in principal scope"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "argv"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "argv": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "maxItems": 256
+                  },
+                  "cwd": {
+                    "type": "string",
+                    "default": "/workspace"
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3600,
+                    "default": 120
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "sandboxId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/v1/sandboxes/{sandboxId}/terminals/{terminalId}": {
+      "get": {
+        "summary": "Experimental PTY: Observe host command status",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or rejected request"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "description": "Resource not found in principal scope"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "sandboxId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "terminalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/v1/sandboxes/{sandboxId}/terminals/{terminalId}/output": {
+      "get": {
+        "summary": "Experimental PTY: Read a bounded stdout or stderr cursor segment",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or rejected request"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "description": "Resource not found in principal scope"
+          }
+        },
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["stdout", "stderr"],
+              "default": "stdout"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "bytes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 262144,
+              "default": 65536
+            }
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "sandboxId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "terminalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/v1/sandboxes/{sandboxId}/terminals/{terminalId}/close": {
+      "parameters": [
+        {
+          "name": "sandboxId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "terminalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Experimental PTY: Persist a command-scoped cancellation intent; retries observe the same command",
+        "description": "Queued commands never start. Running commands require authenticated descendant-cleanup proof; uncertain completion quarantines the assignment. Other commands continue on successful cancellation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Cancellation requested or retained terminal outcome"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "404": {
+            "description": "Command unavailable in owner scope"
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{sandboxId}/terminals/{terminalId}/inputs": {
+      "parameters": [
+        {
+          "name": "sandboxId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "terminalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Admit terminal input with a stable replay identity",
+        "description": "Experimental. Sent means attach transport acceptance, not workload consumption. Uncertain input is never replayed automatically.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id", "input"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "input": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "stdin"
+                          },
+                          "base64": {
+                            "type": "string",
+                            "maxLength": 21848
+                          }
+                        },
+                        "required": ["kind", "base64"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "resize"
+                          },
+                          "rows": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4096
+                          },
+                          "columns": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4096
+                          }
+                        },
+                        "required": ["kind", "rows", "columns"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "signal"
+                          },
+                          "signal": {
+                            "type": "string",
+                            "enum": ["INT", "QUIT", "TSTP"]
+                          }
+                        },
+                        "required": ["kind", "signal"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "close"
+                          }
+                        },
+                        "required": ["kind"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Queued or retained delivery outcome"
+          },
+          "400": {
+            "description": "Invalid or conflicting input"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "404": {
+            "description": "Terminal not in principal scope"
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{sandboxId}/terminals/{terminalId}/inputs/{inputId}": {
+      "parameters": [
+        {
+          "name": "sandboxId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "terminalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "inputId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Observe durable terminal input outcome, including after host release",
+        "responses": {
+          "200": {
+            "description": "Queued, sent, uncertain or cancelled"
+          },
+          "404": {
+            "description": "Input unavailable in principal scope"
+          }
+        }
+      }
     }
   },
   "components": {

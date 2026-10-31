@@ -17,6 +17,7 @@ import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
 import { restoreCheckpoint } from "./restore.js";
 import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
+import { type TerminalInput, TerminalInputJournal } from "./terminal-input.js";
 import { CheckpointTransfer, parseArchive } from "./transfer.js";
 import { HOST_PROTOCOL_VERSION, type HostTransport } from "./transport.js";
 import { UploadCoordinator } from "./uploads.js";
@@ -48,6 +49,7 @@ type ResumeRecord = {
   placed: boolean;
 };
 type CommandRecord = {
+  terminal?: boolean;
   id: string;
   lease: HostLease;
   image: string;
@@ -72,6 +74,7 @@ export class SandboxManager {
   private readonly images: Set<string>;
   readonly history: CheckpointHistory;
   readonly uploads: UploadCoordinator;
+  private readonly terminalInputs: TerminalInputJournal;
   private readonly shutdown: ShutdownCoordinator;
   private readonly now: () => number;
   constructor(
@@ -102,6 +105,10 @@ export class SandboxManager {
       this.operations,
       (lease, action, payload) => this.request(lease, action, payload),
     );
+    this.terminalInputs = new TerminalInputJournal(
+      state,
+      (lease, action, payload) => this.request(lease, action, payload),
+    );
     this.shutdown = new ShutdownCoordinator({
       settleUploads: (scope) => this.uploads.settle(scope),
       state,
@@ -112,6 +119,7 @@ export class SandboxManager {
       transfer: new CheckpointTransfer(objects, this.checkpoints),
       request: (lease, action, payload) => this.request(lease, action, payload),
       retainCommands: async (scope) => {
+        await this.terminalInputs.settle(scope);
         const commands = await state.transaction((tx) =>
           tx
             .scan<CommandRecord>(`command/${scopeKey(scope)}/`)
@@ -380,6 +388,7 @@ export class SandboxManager {
             { owner: cancel.owner, sandbox: cancel.sandbox },
             cancel.id,
           );
+      await this.terminalInputs.reconcile(owner);
       await this.recoverObservedCreates(owner);
       await this.drainExpiringHosts(owner);
       await this.shutdown.reconcile(owner);
@@ -661,14 +670,19 @@ export class SandboxManager {
     argv: string[],
     cwd = "/workspace",
     timeout = 120,
+    terminal = false,
   ): Promise<Json> {
     this.uuid(id);
+    if (typeof terminal !== "boolean") throw Error("Invalid terminal mode");
     const spec = { argv, cwd, timeout };
     const admission = await this.state.transaction((tx) => {
       const key = `command/${scopeKey(scope)}/${id}`;
       const prior = tx.get<CommandRecord>(key);
       if (prior) {
-        if (canonical(prior.spec) !== canonical(spec))
+        if (
+          canonical(prior.spec) !== canonical(spec) ||
+          (prior.terminal === true) !== terminal
+        )
           throw new Error("Command identity conflict");
         return { record: prior, fresh: false };
       }
@@ -676,6 +690,7 @@ export class SandboxManager {
       if (!sandbox?.lease || sandbox.phase !== "running")
         throw new Error("Sandbox not running");
       const record: CommandRecord = {
+        terminal,
         id,
         lease: sandbox.lease,
         image: sandbox.image,
@@ -687,12 +702,68 @@ export class SandboxManager {
     // Persist before crossing the host boundary. Even a controller crash before
     // dispatch is uncertain: reconnect observes this ID and never reexecutes it.
     if (!admission.fresh) return this.commandStatus(scope, id);
-    return this.request(admission.record.lease, "command-start", {
-      lease: admission.record.lease,
-      image: admission.record.image,
-      commandId: id,
-      ...spec,
-    });
+    return this.request(
+      admission.record.lease,
+      terminal ? "terminal-start" : "command-start",
+      {
+        lease: admission.record.lease,
+        image: admission.record.image,
+        commandId: id,
+        ...spec,
+      },
+    );
+  }
+  async startTerminal(
+    scope: Scope,
+    id: string,
+    argv: string[],
+    cwd = "/workspace",
+    timeout = 120,
+  ): Promise<Json> {
+    return this.startCommand(scope, id, argv, cwd, timeout, true);
+  }
+  async requireTerminal(scope: Scope, id: string): Promise<void> {
+    if (!(await this.command(scope, id)).terminal)
+      throw Error("Terminal unavailable");
+  }
+  async terminalInput(
+    scope: Scope,
+    commandId: string,
+    id: string,
+    input: TerminalInput,
+  ): Promise<Json> {
+    this.uuid(id);
+    const command = await this.command(scope, commandId);
+    if (!command.terminal) throw Error("Terminal unavailable");
+    return this.terminalInputs.admit(
+      {
+        ...scope,
+        command: commandId,
+        id,
+        lease: command.lease,
+        image: command.image,
+      },
+      input,
+      (tx) => {
+        const sandbox = tx.get<Sandbox>(this.key(scope));
+        if (
+          !sandbox ||
+          sandbox.phase !== "running" ||
+          canonical(sandbox.lease) !== canonical(command.lease)
+        )
+          throw Error("Terminal not running");
+      },
+    );
+  }
+  async terminalInputStatus(
+    scope: Scope,
+    commandId: string,
+    id: string,
+  ): Promise<Json> {
+    this.uuid(id);
+    const command = await this.command(scope, commandId);
+    if (!command.terminal) throw Error("Terminal unavailable");
+    return this.terminalInputs.status(scope, commandId, id);
   }
   async readFile(
     scope: Scope,
