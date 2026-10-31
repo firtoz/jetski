@@ -88,6 +88,9 @@ export class SandboxManager {
   private readonly terminalInputs: TerminalInputJournal;
   private readonly shutdown: ShutdownCoordinator;
   private readonly now: () => number;
+  hostCapabilities() {
+    return this.provider.capabilities();
+  }
   constructor(
     private readonly state: StateStore,
     private readonly provider: HostProvider,

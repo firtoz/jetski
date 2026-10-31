@@ -93,6 +93,27 @@ workload-specific products.
 
 ## Latest continuation status
 
+Stream API continuation: previous turn was verified progress at aaf9ad7, all five
+CI jobs green. Added owner-scoped GET/DELETE stream routes, SDK and CLI status/
+cancel commands. Public projection excludes host lease, image, controller and
+expiry internals. GET is read-only; DELETE preserves cancellation intent, targets
+the stable stream UUID, and never claims ACK proves cleanup. Terminal cancellation
+replay now avoids host contact, including after source retirement. Missing scoped
+streams return404, absent stream adapter501. Capability reporting exposes provider
+capabilities, implemented PTY support and configured stream/gateway features;
+tcpForwarding requires both adapter and gateway, releaseQualified remains false.
+Local route tests cover privacy, cross-owner denial, no GET dispatch, malformed
+requests, cancellation uncertainty, terminal replay and capability combinations.
+Initial fixture used non-UUID sandbox IDs; corrected to match real contracts.
+Focused13tests and final95TS/70Python/build/typecheck/lint pass.
+/tmp/jetski-stream-api-final.log preserves final local test evidence.
+Hosted API fixture now opens a refused workload port, inspects/cancels its durable
+identity via HTTP, then requires cancelled after verified shutdown. This hosted
+case is pending; do not infer success from local fixtures. No paid hosts, desktop
+runtime changes or protected experiment changes. Next finish exact-SHA CI and
+then authenticated HTTP/WebSocket previews and broader lifecycle/provider/client
+qualification; the full goal remains active.
+
 CLI forwarding continuation: previous turn was verified progress (16a05ee and
 five green CI jobs). Added optional jetski/client/forward Node module and
 jetski forward SANDBOX EXPOSURE --config PATH. Exact operator-supplied host-key
@@ -123,7 +144,17 @@ generation with Node crypto plus fixed-width OpenSSH serialization; all runtime
 key parsers remain strict and unchanged. Added deterministic leading-zero fixture
 with parse/public-private equality/signature verification.94TS/build/typecheck/lint
 pass (/tmp/jetski-cli-key-fix-tests.log); prior70Python checks passed unchanged.
-Next publish key fixture fix and observe exactCI before proceeding.
+Publishedaaf9ad7c476d57f0e5dc0085a42604d5e6b0a770;
+CI41247216332 passed all5jobs; watcher28134 exited0.
+/tmp/jetski-cli-key-fix-ci.log and /tmp/jetski-cli-key-fix-hosted-ssh.log
+preserve final evidence. SSH job124673032836 qualified both raw gateway and Node
+loopback-helper half-close orders on a real disposable installed host/container;
+API job124673032823 passed. Owned fixture cleanup completed. Local94TS/70Python
+checks/build/typecheck/lint pass; actual CLI config/SIGTERM tested against encrypted
+local fixture, not the live Boat service. Current turn is verified progress.
+Next implement accurate capability reporting and owner-scoped stream inspection/
+cancellation, then authenticated HTTP/WebSocket previews and broader lifecycle,
+provider/client/benchmark gates. The full goal remains active.
 Capability discovery, HTTP/WS previews,
 full gateway lifecycle and remaining provider/client/benchmark gates remain open.
 No paid hosts, operator runtime changes or protected experiment changes.

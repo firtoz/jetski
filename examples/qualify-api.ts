@@ -116,6 +116,7 @@ const manager = new SandboxManager(
   objects,
   {
     poolId: "ci",
+    streamTransport: transport,
     approvedImages: [image],
     now: () => Date.now() + clockOffset,
   },
@@ -138,6 +139,7 @@ const errors: unknown[] = [];
 const stopWorker = startWorker(manager, (error) => errors.push(error), 20);
 let cleanupId: string;
 const id = randomUUID(),
+  refusedStream = randomUUID(),
   operationId = randomUUID();
 cleanupId = id;
 let qualificationError: unknown;
@@ -153,6 +155,34 @@ try {
   }
   assert.equal(sandbox?.phase, "running");
   assert.equal(errors.length, 0);
+  const capabilities = await client.capabilities();
+  assert.equal(capabilities.hostStreams, true);
+  assert.equal(
+    capabilities.tcpForwarding,
+    false,
+    "No SSH gateway configured for this API",
+  );
+  assert.equal(capabilities.releaseQualified, false);
+  const refusedExposure = randomUUID();
+  await client.exposePort(id, refusedExposure, 18081);
+  // No service listens here. Admission failure must remain observable without
+  // reopening or hiding the connection identity; cleanup follows host evidence.
+  await assert.rejects(
+    manager.streams!.open(
+      { owner: "qualification", sandbox: id },
+      refusedExposure,
+      refusedStream,
+    ),
+  );
+  const receipt = await client.streamStatus(id, refusedStream);
+  assert.ok(["uncertain", "cancelled"].includes(receipt.phase));
+  assert.equal("lease" in receipt, false);
+  assert.equal("controller" in receipt, false);
+  await assert.rejects(
+    new JetskiClient(url, foreignToken).streamStatus(id, refusedStream),
+  );
+  await client.cancelStream(id, refusedStream);
+
   assert.equal((await client.operation(id, operationId)).phase, "succeeded");
   await assert.rejects(
     new JetskiClient(url, foreignToken).request(`/v1/sandboxes/${id}`),
@@ -652,6 +682,14 @@ try {
   assert.equal(lostSaveAcks, 1);
   const stopped = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
   assert.equal(stopped.phase, "stopped");
+  assert.equal(
+    (await client.streamStatus(id, refusedStream)).phase,
+    "cancelled",
+  );
+  assert.equal(
+    (await client.cancelStream(id, refusedStream)).phase,
+    "cancelled",
+  );
   assert.equal(stopped.lease, null);
   assert.ok(stopped.checkpoint);
   const historyPage = await client.checkpoints(id);

@@ -172,8 +172,8 @@ terminal-input reads bounded JSON from stdin with `--id` for replay identity.
 Initial rows/columns default to 24/80 (each 1–4096); they are applied before the
 workload starts and bound to terminal identity. CLI terminal-start accepts
 --rows and --columns. Broader host-restart qualification and public gateways
-remain under development. These endpoints are experimental; releaseQualified and
-PTY qualification remain false until the remaining terminal checks pass.
+remain under development. These endpoints are experimental: pty reports implemented
+API support, while releaseQualified stays false until the full release gates pass.
 
 
 Host workers hold private lifetime locks before publishing running receipts.
@@ -361,3 +361,29 @@ and preserves uncertain delivery/cleanup until reconciled. Arbitrary IP addresse
 Unix sockets, remote listeners and host ports remain unavailable. Boat streaming,
 authenticated HTTP/WebSocket previews, full gateway stop/replacement qualification
 and broader release gates remain open; see the implementation matrix.
+
+
+## Stream inspection and cancellation
+
+`streamStatus(sandbox, streamId)` reads the persisted receipt using
+`GET /v1/sandboxes/:sandbox/streams/:stream`. It never contacts the host or drives
+reconciliation. The response contains only stream/exposure IDs, port, generation,
+phase and cancelRequested; host leases and controller identities stay private.
+`cancelStream` sends DELETE with an empty JSON object to the same resource. The
+stream UUID is the stable cancellation identity. Repeating it targets the same
+stream; it never reopens a connection. A202acknowledgement means cancellation was
+requested, not that the workload stopped. Poll the persisted receipt; the worker
+independently reconciles cleanup. Terminal cancellation replay does not need the
+old host. Missing/foreign resources return404; a server without stream transport
+returns501. The CLI provides `stream-status SANDBOX STREAM` and
+`stream-cancel SANDBOX STREAM`. Use `operation SANDBOX --id STREAM` for the durable
+admission outcome. None of these receipts promises application-level processing.
+
+`capabilities()` / `jetski capabilities` reports configured API support separately
+from releaseQualified (still false). PTY endpoints are implemented; host reports
+the provider's machine-host/platform/runtime capabilities. hostStreams and stream
+inspection/cancellation require a configured stream transport. tcpForwarding also
+requires an explicitly configured SSH gateway; an embedded HTTP server defaults
+that declaration to false. These are feature declarations, not host health,
+per-owner authorization or per-sandbox readiness. Boat currently lacks its stream
+adapter, so it does not advertise TCP forwarding. Previews remain false.

@@ -32,6 +32,20 @@ export type StreamRecord = HostStreamRequest & {
   controller: string;
   validUntil: number;
 };
+export type StreamStatus = Pick<
+  StreamRecord,
+  | "streamId"
+  | "exposureId"
+  | "port"
+  | "generation"
+  | "phase"
+  | "cancelRequested"
+>;
+export class StreamNotFound extends Error {
+  constructor() {
+    super("Stream unavailable");
+  }
+}
 /** Durable control-plane connection identity. A new controller observes/cancels;
  * it never reopens an already dispatched connection or replays network bytes. */
 export class StreamCoordinator {
@@ -72,21 +86,37 @@ export class StreamCoordinator {
   async status(scope: Scope, id: string): Promise<StreamRecord> {
     return this.state.transaction((tx) => {
       const record = tx.get<StreamRecord>(this.key(scope, id));
-      if (!record) throw Error("Stream unavailable");
+      if (!record) throw new StreamNotFound();
       return record;
     });
+  }
+  async inspect(scope: Scope, id: string): Promise<StreamStatus> {
+    const record = await this.status(scope, id);
+    return {
+      streamId: record.streamId,
+      exposureId: record.exposureId,
+      port: record.port,
+      generation: record.generation,
+      phase: record.phase,
+      cancelRequested: record.cancelRequested,
+    };
   }
   async cancel(scope: Scope, id: string): Promise<void> {
     const record = await this.state.transaction((tx) => {
       const record = tx.get<StreamRecord>(this.key(scope, id));
-      if (!record) throw Error("Stream unavailable");
+      if (!record) throw new StreamNotFound();
       if (record.phase === "closed" || record.phase === "cancelled")
         return record;
       const next = { ...record, cancelRequested: true };
       tx.put(this.key(scope, id), next);
       return next;
     });
-    if (!record.cancelRequested) return;
+    if (
+      record.phase === "closed" ||
+      record.phase === "cancelled" ||
+      !record.cancelRequested
+    )
+      return;
     await this.control.request(record.lease.machineId, {
       version: HOST_PROTOCOL_VERSION,
       id,
@@ -416,7 +446,7 @@ export class StreamCoordinator {
     return this.state.transaction((tx) => {
       const key = this.key(scope, id),
         record = tx.get<StreamRecord>(key);
-      if (!record) throw Error("Stream unavailable");
+      if (!record) throw new StreamNotFound();
       if (record.phase === "closed" || record.phase === "cancelled")
         return record.phase;
       let phase: StreamRecord["phase"] = "uncertain";

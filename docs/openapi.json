@@ -19,7 +19,9 @@
             "description": "Successful response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ApiCapabilities"
+                }
               }
             }
           },
@@ -1655,6 +1657,93 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{sandbox}/streams/{stream}": {
+      "parameters": [
+        {
+          "name": "sandbox",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "stream",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Inspect owner-scoped persisted stream receipt",
+        "responses": {
+          "200": {
+            "description": "Persisted stream receipt; no host contact or reconciliation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID or request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No sandbox or stream in owner scope"
+          },
+          "501": {
+            "description": "Stream transport not configured"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Request idempotent cancellation of this exact stream; never replay bytes",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid UUID or request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "No sandbox or stream in owner scope"
+          },
+          "501": {
+            "description": "Stream transport not configured"
+          },
+          "202": {
+            "description": "Cancellation requested; acknowledgement is not termination proof. Observe until cancelled or closed. Target stream ID is stable cancellation identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamStatus"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1692,6 +1781,134 @@
             ]
           }
         }
+      },
+      "StreamStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "streamId",
+          "exposureId",
+          "port",
+          "generation",
+          "phase",
+          "cancelRequested"
+        ],
+        "properties": {
+          "streamId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "exposureId": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "phase": {
+            "enum": ["dispatched", "open", "closed", "uncertain", "cancelled"]
+          },
+          "cancelRequested": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiCapabilities": {
+        "type": "object",
+        "properties": {
+          "releaseQualified": {
+            "type": "boolean"
+          },
+          "commands": {
+            "type": "boolean"
+          },
+          "outputCursors": {
+            "type": "boolean"
+          },
+          "fileRead": {
+            "type": "boolean"
+          },
+          "fileList": {
+            "type": "boolean"
+          },
+          "fileWrite": {
+            "type": "boolean"
+          },
+          "checkpointHistory": {
+            "type": "boolean"
+          },
+          "retentionPins": {
+            "type": "boolean"
+          },
+          "pty": {
+            "type": "boolean"
+          },
+          "previews": {
+            "type": "boolean"
+          },
+          "hostStreams": {
+            "type": "boolean"
+          },
+          "streamInspection": {
+            "type": "boolean"
+          },
+          "streamCancellation": {
+            "type": "boolean"
+          },
+          "sshGateway": {
+            "type": "boolean"
+          },
+          "tcpForwarding": {
+            "type": "boolean"
+          },
+          "version": {
+            "const": 1
+          },
+          "cancellationScope": {
+            "const": "command"
+          },
+          "host": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "machine-host"
+              },
+              "architecture": {
+                "const": "x86_64"
+              },
+              "rootlessPodman": {
+                "type": "boolean"
+              }
+            },
+            "required": ["kind", "architecture", "rootlessPodman"],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "releaseQualified",
+          "commands",
+          "outputCursors",
+          "fileRead",
+          "fileList",
+          "fileWrite",
+          "checkpointHistory",
+          "retentionPins",
+          "pty",
+          "previews",
+          "hostStreams",
+          "streamInspection",
+          "streamCancellation",
+          "sshGateway",
+          "tcpForwarding",
+          "version",
+          "cancellationScope",
+          "host"
+        ],
+        "additionalProperties": false
       }
     }
   }

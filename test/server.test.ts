@@ -316,3 +316,163 @@ test("uncertain create retains assignment and does not allocate or execute twice
   });
   assert.equal(commandStarts, 1);
 });
+
+test("stream API hides host internals, denies foreign access and preserves cancellation uncertainty", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "jetski-stream-api-"));
+  const state = new SqliteState(join(directory, "state.sqlite"));
+  const objects = new LocalCheckpointStore(join(directory, "objects"));
+  let cancels = 0;
+  const provider: HostProvider = {
+    capabilities: () => ({
+      kind: "machine-host",
+      architecture: "x86_64",
+      rootlessPodman: true,
+    }),
+    allocate: async (input) => ({
+      id: "private-host",
+      allocationId: input.operationId,
+    }),
+    inspect: async () => ({ state: "ready" }),
+    retire: async () => {},
+  };
+  const transport: HostTransport = {
+    request: async (_host, request) => {
+      if (request.action === "stream-cancel") cancels++;
+      return { version: 1, id: request.id, result: { phase: "running" } };
+    },
+  };
+  const manager = new SandboxManager(state, provider, transport, objects, {
+    poolId: "pool",
+    approvedImages: [image],
+    streamTransport: {
+      open: async () => {
+        throw Error("Must never reopen from API");
+      },
+    },
+  });
+  const auth = bearerAuthentication([
+    { owner: "alice", token: "a".repeat(32) },
+    { owner: "bob", token: "b".repeat(32) },
+  ]);
+  const servers: ReturnType<typeof createHttpServer>[] = [];
+  const listen = async (backend: SandboxManager, sshGateway: boolean) => {
+    const server = createHttpServer(backend, auth, { sshGateway });
+    servers.push(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    return `http://127.0.0.1:${address.port}`;
+  };
+  t.after(async () => {
+    for (const server of servers) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    state.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const sandboxId = randomUUID();
+  await manager.create("alice", sandboxId, image, randomUUID());
+  await manager.reconcile("alice");
+  const scope = { owner: "alice", sandbox: sandboxId };
+  const sandbox = await manager.get(scope);
+  assert.ok(sandbox?.lease);
+  const id = randomUUID();
+  const record = {
+    streamId: id,
+    exposureId: "exposure",
+    port: 8080,
+    generation: 1,
+    phase: "open",
+    cancelRequested: false,
+    lease: sandbox.lease,
+    image,
+    controller: "private-controller",
+    validUntil: Date.now() + 60000,
+  };
+  await state.transaction((tx) =>
+    tx.put(`stream/alice/${sandboxId}/${id}`, record),
+  );
+  const base = await listen(manager, true);
+  const client = new JetskiClient(base, "a".repeat(32)),
+    foreign = new JetskiClient(base, "b".repeat(32));
+  const expected = {
+    streamId: id,
+    exposureId: "exposure",
+    port: 8080,
+    generation: 1,
+    phase: "open",
+    cancelRequested: false,
+  };
+  assert.deepEqual(await client.streamStatus(sandboxId, id), expected);
+  assert.equal(cancels, 0, "GET must not reconcile or dispatch");
+  await assert.rejects(
+    foreign.streamStatus(sandboxId, id),
+    (error: unknown) => (error as { status: number }).status === 404,
+  );
+  await assert.rejects(foreign.cancelStream(sandboxId, id));
+  await assert.rejects(
+    client.streamStatus(sandboxId, randomUUID()),
+    (error: unknown) => (error as { status: number }).status === 404,
+  );
+  await assert.rejects(client.streamStatus(sandboxId, "invalid-uuid"));
+  await assert.rejects(
+    client.request(`/v1/sandboxes/${sandboxId}/streams/${id}`, "DELETE", {
+      host: "other",
+    }),
+  );
+  assert.equal(cancels, 0);
+  assert.deepEqual(await client.cancelStream(sandboxId, id), {
+    ...expected,
+    cancelRequested: true,
+  });
+  assert.equal(cancels, 1);
+  assert.equal(
+    (await client.streamStatus(sandboxId, id)).phase,
+    "open",
+    "ACK is not cleanup evidence",
+  );
+  await state.transaction((tx) =>
+    tx.put(`stream/alice/${sandboxId}/${id}`, {
+      ...record,
+      cancelRequested: true,
+      phase: "cancelled",
+    }),
+  );
+  assert.equal((await client.cancelStream(sandboxId, id)).phase, "cancelled");
+  assert.equal(cancels, 1, "terminal replay must not contact removed host");
+  const capabilities =
+    await client.request<Record<string, unknown>>("/v1/capabilities");
+  assert.equal(capabilities.tcpForwarding, true);
+  assert.equal(capabilities.hostStreams, true);
+  assert.equal(capabilities.pty, true);
+  assert.equal(capabilities.releaseQualified, false);
+  const noGateway = new JetskiClient(
+    await listen(manager, false),
+    "a".repeat(32),
+  );
+  assert.equal(
+    (await noGateway.request<Record<string, unknown>>("/v1/capabilities"))
+      .tcpForwarding,
+    false,
+  );
+  const noStreams = new SandboxManager(state, provider, transport, objects, {
+    poolId: "pool",
+    approvedImages: [image],
+  });
+  const disabled = new JetskiClient(
+    await listen(noStreams, true),
+    "a".repeat(32),
+  );
+  assert.equal(
+    (await disabled.request<Record<string, unknown>>("/v1/capabilities"))
+      .tcpForwarding,
+    false,
+  );
+  await assert.rejects(
+    disabled.streamStatus(sandboxId, id),
+    (error: unknown) => (error as { status: number }).status === 501,
+  );
+});

@@ -48,6 +48,27 @@ export class JetskiClient {
     if (this.base.username || this.base.password)
       throw new Error("URL credentials prohibited");
   }
+  capabilities(): Promise<import("./core/capabilities.js").ApiCapabilities> {
+    return this.request("/v1/capabilities");
+  }
+  streamStatus(
+    sandbox: string,
+    streamId: string,
+  ): Promise<import("./core/streams.js").StreamStatus> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/streams/${identifier(streamId)}`,
+    );
+  }
+  cancelStream(
+    sandbox: string,
+    streamId: string,
+  ): Promise<import("./core/streams.js").StreamStatus> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/streams/${identifier(streamId)}`,
+      "DELETE",
+      {},
+    );
+  }
   exposePort(
     sandbox: string,
     operationId: string,

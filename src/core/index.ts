@@ -1,3 +1,4 @@
+export type { ApiCapabilities } from "./capabilities.js";
 export * from "./checkpoint-history.js";
 export * from "./checkpoints.js";
 export * from "./contracts.js";

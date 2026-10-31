@@ -91,7 +91,9 @@ if (command === "serve") {
       token: required(process.env[principal.tokenEnv], principal.tokenEnv),
     })),
   );
-  const server = createHttpServer(manager, authenticate);
+  const server = createHttpServer(manager, authenticate, {
+    sshGateway: !!config.sshGateway,
+  });
   let sshGateway:
     | ReturnType<typeof import("./server/ssh.js").createSshGateway>
     | undefined;
@@ -179,6 +181,21 @@ if (command === "serve") {
   let result: unknown;
   let binaryOutput = false;
   switch (command) {
+    case "capabilities":
+      result = await client.capabilities();
+      break;
+    case "stream-status":
+      result = await client.streamStatus(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "stream ID"),
+      );
+      break;
+    case "stream-cancel":
+      result = await client.cancelStream(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "stream ID"),
+      );
+      break;
     case "checkpoints":
       result = await client.checkpoints(required(positionals[1], "sandbox ID"));
       break;

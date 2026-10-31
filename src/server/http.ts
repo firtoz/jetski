@@ -4,9 +4,11 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import type { ApiCapabilities } from "../core/capabilities.js";
 import { identifier } from "../core/contracts.js";
 import type { SandboxManager } from "../core/manager.js";
 import { tcpPort } from "../core/ports.js";
+import { StreamNotFound } from "../core/streams.js";
 import {
   DEFAULT_TERMINAL_GEOMETRY,
   type TerminalInput,
@@ -76,6 +78,7 @@ function fields(input: Record<string, unknown>, allowed: string[]) {
 export function createHttpServer(
   manager: SandboxManager,
   authenticate: Authenticate,
+  options: { sshGateway?: boolean } = {},
 ) {
   const server = createServer(async (request, response) => {
     try {
@@ -105,11 +108,16 @@ export function createHttpServer(
           fileWrite: true,
           checkpointHistory: true,
           retentionPins: true,
-          pty: false,
+          pty: true,
+          host: manager.hostCapabilities(),
+          hostStreams: !!manager.streams,
+          streamInspection: !!manager.streams,
+          streamCancellation: !!manager.streams,
+          sshGateway: options.sshGateway === true,
           previews: false,
-          tcpForwarding: false,
+          tcpForwarding: !!manager.streams && options.sshGateway === true,
           cancellationScope: "command",
-        });
+        } satisfies ApiCapabilities);
         return;
       }
       if (parts[1] !== "sandboxes") {
@@ -143,6 +151,28 @@ export function createHttpServer(
       const sandbox = await manager.get(scope);
       if (!sandbox) {
         send(response, 404, { error: "not_found" });
+        return;
+      }
+      if (
+        parts[3] === "streams" &&
+        parts.length === 5 &&
+        (request.method === "GET" || request.method === "DELETE")
+      ) {
+        if (!manager.streams) {
+          send(response, 501, { error: "stream_transport_unavailable" });
+          return;
+        }
+        const id = string(parts[4]);
+        if (request.method === "DELETE") {
+          const input = await body(request);
+          fields(input, []);
+          await manager.streams.cancel(scope, id);
+        }
+        send(
+          response,
+          request.method === "DELETE" ? 202 : 200,
+          await manager.streams.inspect(scope, id),
+        );
         return;
       }
       if (parts[3] === "ports") {
@@ -493,7 +523,10 @@ export function createHttpServer(
     } catch (error) {
       // Do not expose provider diagnostics, paths, credentials or workload stderr.
       if (!response.headersSent) {
-        if (error instanceof TerminalInputNotFound)
+        if (
+          error instanceof TerminalInputNotFound ||
+          error instanceof StreamNotFound
+        )
           send(response, 404, { error: "not_found" });
         else send(response, 400, { error: "request_failed" });
       } else response.destroy();
