@@ -21,6 +21,8 @@ jobs:
           JETSKI_BROWSER_QUALIFY=1 node --import tsx --test test/preview.test.ts
       - name: Qualify standalone local storage example
         run: node --import tsx examples/qualify-storage.ts
+      - name: Qualify source-deleted filesystem storage recovery
+        run: node --import tsx examples/qualify-filesystem-storage.ts
       - name: Qualify checkpoint storage recovery
         run: node --import tsx examples/qualify-checkpoint-storage.ts
       - run: npm run lint

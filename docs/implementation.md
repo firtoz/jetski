@@ -40,7 +40,7 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 | -------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Independent repository           | Public MIT source, separate exports, standalone examples and CI                              | Final provenance/package independence audit                                          |
 | Core lifecycle and pooling       | Replay/fencing tests; real API stop/resume, warm reuse, held/historical restore, idle expiry | Full restart/placement matrix and matched hosted runs                                |
-| Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Finish active-stream stop/recovery regression and remaining lifecycle audit          |
+| Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Remaining interactive lifecycle/provider audit                                       |
 | Filesystem and checkpoints       | Exact archive fixtures; incremental/local-cache and source-deleted recovery tests            | Both providers/stores qualified under matched recovery conditions                    |
 | Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                           |
 | Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                       |
@@ -49,17 +49,16 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 
 ## Current work
 
-The active-stream stop test exposed a real ordering problem: runtime stop could
-kill a command supervisor before its authenticated completion was persisted.
-The fix closes admission and drains cancellation receipts before stopping the
-container. The API regression passes, but the SSH worker-loss test caught a separate
-issue: physical cleanup must remain possible without changing an uncertain command
-into a successful outcome. That correction passes local checks and awaits CI.
-See [the failure and recovery record](qualification.md#active-stream-stop-regression).
+The active-stream stop/recovery fix now passes all five CI jobs, including
+intentional worker-loss cleanup without promoting uncertain command outcomes.
+Real filesystem archives also pass exact source-deleted recovery through local
+storage and the isolated R2 bucket, including historical versions and links.
+The remaining focus is physical-provider replacement, remote storage/GC gates,
+and preparing staging integration. See [qualification evidence](qualification.md).
 
 ## Next steps
 
-1. Qualify the corrected quiescence path on exact-SHA CI; retain both failures.
+1. Finish filesystem-storage CI and the remaining remote/provider recovery gates.
 2. Audit remaining lifecycle/replacement requirements against existing tests;
    add checks only for uncovered requirements or concrete defects.
 3. Finish provider/storage qualification and prepare the downstream staging adapter.

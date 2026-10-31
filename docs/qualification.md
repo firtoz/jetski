@@ -5,8 +5,8 @@ The live acceptance checklist is in [implementation.md](implementation.md).
 
 ## Verified baseline
 
-[CI 41252297444](https://github.com/firtoz/jetski/actions/runs/41252297444)
-passed all five jobs at `fc3298b`: TypeScript/Python checks, rootless runtime,
+[CI 41253785969](https://github.com/firtoz/jetski/actions/runs/41253785969)
+passed all five jobs at `ef46ab3`: TypeScript/Python checks, rootless runtime,
 SSH control, standalone API and the Boat-adapter fixture. The Boat job emulates
 provider APIs on disposable Linux; it is not live Boat qualification.
 
@@ -36,10 +36,29 @@ rejection after resume. Existing publication fault injections remain enabled.
 | [41253025787](https://github.com/firtoz/jetski/actions/runs/41253025787), `499c7cc` | Readiness passed; stop remained uncertain with unresolved command outcome | Found container stop preceding supervisor completion                                       |
 | [41253387238](https://github.com/firtoz/jetski/actions/runs/41253387238), `a09b0e8` | API regression passed; SSH intentional worker-loss cleanup failed         | Keep cancellation drain, but permit physical termination with unchanged uncertain receipts |
 
-The latest correction has 74 Python tests plus build/typecheck/lint passing locally;
-its hosted proof is pending. It does not promote uncertain commands to successful
+The cleanup correction passed all five jobs in CI 41253785969, including the
+active API stream stop/resume and intentional SSH worker-loss tests. It does not promote uncertain commands to successful
 completion: publication/release still require resolved outcomes. Cancellation drain
 releases the fence lock while waiting and has a bounded timeout.
+
+## Real filesystem storage recovery
+
+`examples/qualify-filesystem-storage.ts` and `host/qualify_archive_store.py` capture
+real framed archives, delete the source tree and local archives, reopen SQLite and
+the storage client, then restore both historical versions. An independent oracle
+checks bytes, modes, empty files, Unicode, symlinks, hardlinks, rename/delete and
+opaque `.git` files. Local storage and the isolated R2 bucket passed on October 31.
+Only owned fixture objects were removed; immutable reservation markers remain.
+
+| R2 fixture save | Archive bytes | Uploaded bytes | Reused bytes | Save time |
+| --------------- | ------------: | -------------: | -----------: | --------: |
+| Initial         |     5,245,389 |      5,245,389 |            0 |  1,757 ms |
+| Changed tree    |     5,245,353 |      1,053,031 |    4,192,322 |    791 ms |
+
+These are one-fixture observations, not matched host benchmarks or universal
+speedups. This test allocates no execution host and does not prove physical VM
+replacement or real-grace garbage collection. CI runs the local storage path;
+private receipts retain the live R2 evidence.
 
 ## Other consequential failures retained
 
