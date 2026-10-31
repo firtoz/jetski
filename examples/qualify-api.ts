@@ -332,16 +332,16 @@ try {
     { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
   );
   assert.equal(cliRead.stdout, "1");
-  // Keep the checkpoint fault targeted at filesystem publication, not the
-  // additional command-output objects introduced by cancellation qualification.
-  for (const extra of [victim, survivor, cleanupCheck])
-    await manager.retainCommand({ owner: "qualification", sandbox: id }, extra);
+  // This run deliberately loses an ACK while retaining several new commands.
+  // Keep the later checkpoint-specific failure test independent of this case.
   loseSaveAck = true;
+  const firstStopStarted = Date.now();
+  const firstStopErrors = errors.length;
   const stopId = randomUUID();
   await client.request(`/v1/sandboxes/${id}/stop`, "POST", {
     operationId: stopId,
   });
-  for (let attempt = 0; attempt < 150; attempt++) {
+  for (let attempt = 0; attempt < 600; attempt++) {
     const operation = await client.operation(id, stopId);
     if (operation.phase === "succeeded") break;
     // Publication recovery must reuse the committed frame after lost store ACK.
@@ -357,6 +357,18 @@ try {
           error instanceof Error ? error.message : String(error),
         ),
       operation: await client.operation(id, stopId),
+    }),
+  );
+  const stopRecoveryErrors = errors
+    .slice(firstStopErrors)
+    .map((error) => (error instanceof Error ? error.message : String(error)));
+  assert.deepEqual(stopRecoveryErrors, [
+    "Injected checkpoint store acknowledgement loss",
+  ]);
+  console.log(
+    JSON.stringify({
+      multiOutputStopMs: Date.now() - firstStopStarted,
+      recoveredUploadAcknowledgementLoss: true,
     }),
   );
   assert.equal((await client.operation(id, uploadId)).phase, "succeeded");

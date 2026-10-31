@@ -93,6 +93,38 @@ workload-specific products.
 
 ## Latest continuation status
 
+Next regression now exists: test/shutdown-output.test.ts passes real SQLite reopen
+and three distinct binary output objects after first committed upload ACK loss,
+checks no release before publication, exact retained bytes/statuses and no duplicate
+upload. This does not reproduce the hosted failure. Restore real API's multiple
+unretained outputs; measure stop latency and record exact recovery errors with a
+bounded60s qualification deadline (previous fixture only15s). The requirement is
+correct durable recovery, not the arbitrary old15s fixture limit. Require exactly
+the injected error, so a different/repeating failure cannot hide behind the longer
+bound. Do not conclude timing was the cause until the real run proves it.
+
+
+Verified source22fd78da780de03515591d89511bb6fa762e3677, CI41227465887
+passed all five jobs; watcher90260 exited0. API job124614497854 explicitly confirms
+independentCommandCancellation and lostCancellationAcknowledgementRecovery along
+with durableStop, warmHostReuse, source-deleted restore, repeated checkpoints,
+retained output/history and the existing save/import/output fault cases. Private
+receipt /tmp/jetski-cancellation-qualified-api.log. Local56TypeScript/48Python tests
+passed. Source is pushed to main; no paid-provider/desktop/protected experiment
+changes. This qualifies the disposable installed command path, not live Boat,
+physical replacement, interactive transports or full release (completeLifecycle=false).
+
+Next discriminating regression: reproduce the failed805459a API run with multiple
+unretained command outputs and a lost first output-store ACK during shutdown.
+22fd78d restores the intended filesystem-save injection boundary by retaining the
+new outputs first; its green result does not explain/erase that separate failure.
+Add a narrowly targeted deterministic test and repair any controller interaction;
+retain original failure evidence. Then continue full interactive/provider/client/
+benchmark gates without shrinking scope. Current recovery monitor handles are all
+terminal; do not restart old runs. Scratchpad-only verification update follows the
+last published code commit.
+
+
 CI41227207124 at805459a: service environment fix passes bootstrap; API progressed
 through cancelled victim, surviving independent command, descendant absence and
 lost cancel ACK before later durable-stop failure. No full integration pass yet.
