@@ -168,6 +168,24 @@ export class OperationJournal {
       updatedAt: this.now(),
     });
   }
+  cancelQueuedIn(tx: Transaction, fence: Fence, id: string): void {
+    this.check(tx, fence);
+    const key = this.key(fence, id),
+      operation = tx.get<Operation>(key);
+    if (
+      !operation ||
+      operation.generation !== fence.generation ||
+      operation.phase !== "queued"
+    )
+      throw Error("Operation already dispatched");
+    tx.put(key, {
+      ...operation,
+      phase: "failed",
+      result: null,
+      error: "Placement cancelled by deletion",
+      updatedAt: this.now(),
+    });
+  }
   async pending(scope: Scope): Promise<Operation[]> {
     return this.state.transaction((tx) =>
       tx

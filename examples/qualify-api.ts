@@ -120,6 +120,29 @@ try {
   await assert.rejects(
     new JetskiClient(url, foreignToken).request(`/v1/sandboxes/${id}`),
   );
+  const cancelled = randomUUID(),
+    cancelledCreate = randomUUID(),
+    cancelledDelete = randomUUID();
+  await client.request("/v1/sandboxes", "POST", {
+    id: cancelled,
+    operationId: cancelledCreate,
+    image,
+  });
+  assert.equal(
+    (await client.request<Sandbox>(`/v1/sandboxes/${cancelled}`)).phase,
+    "queued",
+  );
+  await client.request(`/v1/sandboxes/${cancelled}`, "DELETE", {
+    operationId: cancelledDelete,
+  });
+  assert.equal(
+    (await client.operation(cancelled, cancelledCreate)).phase,
+    "failed",
+  );
+  assert.equal(
+    (await client.request<Sandbox>(`/v1/sandboxes/${cancelled}`)).phase,
+    "deleted",
+  );
   const commandId = randomUUID();
   const request = {
     id: commandId,
@@ -173,7 +196,10 @@ try {
     ["dist/cli.js", "list"],
     { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
   );
-  assert.equal((JSON.parse(cli.stdout) as Sandbox[])[0]?.id, id);
+  assert.equal(
+    (JSON.parse(cli.stdout) as Sandbox[]).find((item) => item.id === id)?.id,
+    id,
+  );
   controlUnavailable = false;
   loseSaveAck = true;
   const stopId = randomUUID();
@@ -393,6 +419,7 @@ try {
       lostCheckpointStoreAcknowledgementRecovery: true,
       lostOutputStoreAcknowledgementRecovery: true,
       assignedDeletion: true,
+      queuedDeletion: true,
       completeLifecycle: false,
     }),
   );

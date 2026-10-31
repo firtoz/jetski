@@ -337,7 +337,13 @@ export class SandboxManager {
             { image: sandbox.image },
           );
         }
-      const reservation = await this.pool.reserve(owner);
+      const pendingAllocation = (await this.pool.inspect(owner)).find(
+        (slot) => slot.phase === "allocating",
+      );
+      const reserved = pendingAllocation ?? (await this.pool.reserve(owner));
+      const reservation = reserved
+        ? await this.pool.dispatchAllocation(reserved.id, owner)
+        : undefined;
       if (reservation) {
         const allocated = await this.provider.allocate({
           owner,
@@ -530,11 +536,21 @@ export class SandboxManager {
         !current ||
         current.lease ||
         current.pendingResume ||
-        !["stopped", "deleted"].includes(current.phase)
+        !["queued", "stopped", "deleted"].includes(current.phase)
       )
         throw Error("Sandbox deletion requires resolved placement");
       const operation = this.operations.admitIn(tx, fence, id, "delete", {});
       if (operation.phase === "succeeded") return operation;
+      if (current.phase === "queued") {
+        this.pool.cancelQueuedIn(
+          tx,
+          scope.owner,
+          scope.sandbox,
+          current.placementOperation,
+          { image: current.image },
+        );
+        this.operations.cancelQueuedIn(tx, fence, current.placementOperation);
+      }
       this.operations.claimIn(tx, fence, id);
       tx.put(this.key(scope), { ...current, phase: "deleted" });
       return this.operations.finishIn(tx, fence, id, {

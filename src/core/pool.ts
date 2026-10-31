@@ -20,6 +20,7 @@ export type PoolSlot = {
   id: string;
   owner: string;
   allocationId: string;
+  dispatched: boolean;
   machineId: string | null;
   phase:
     | "allocating"
@@ -160,6 +161,7 @@ export class PoolJournal {
         id: this.newId(),
         owner,
         allocationId: this.newId(),
+        dispatched: false,
         machineId: null,
         phase: "allocating",
         lease: null,
@@ -168,6 +170,50 @@ export class PoolJournal {
       };
       tx.put(this.slotKey(slot.id), slot);
       return slot;
+    });
+  }
+  cancelQueuedIn(
+    tx: Transaction,
+    owner: string,
+    sandboxId: string,
+    id: string,
+    input: Json,
+  ) {
+    const key = this.ticketKey(owner, id),
+      ticket = tx.get<Ticket>(key);
+    if (
+      ticket &&
+      (ticket.sandboxId !== sandboxId ||
+        canonical(ticket.input) !== canonical(input))
+    )
+      throw Error("Placement identity conflict");
+    if (ticket?.phase === "assigned") throw Error("Placement already assigned");
+    tx.put(
+      key,
+      ticket
+        ? { ...ticket, phase: "finished" }
+        : { id, owner, sandboxId, input, phase: "finished", sequence: 0 },
+    );
+  }
+  async dispatchAllocation(
+    id: string,
+    owner: string,
+  ): Promise<PoolSlot | undefined> {
+    return this.state.transaction((tx) => {
+      const slot = tx.get<PoolSlot>(this.slotKey(id));
+      if (!slot || slot.owner !== owner || slot.phase !== "allocating")
+        throw Error("Allocation reservation unavailable");
+      if (slot.dispatched) return slot;
+      const demand = tx
+        .scan<Ticket>(`${this.prefix()}ticket/${owner}/`)
+        .some((row) => row.value.phase === "queued");
+      if (!demand) {
+        tx.put(this.slotKey(id), { ...slot, phase: "retired" });
+        return undefined;
+      }
+      const next = { ...slot, dispatched: true };
+      tx.put(this.slotKey(id), next);
+      return next;
     });
   }
   async provisioned(

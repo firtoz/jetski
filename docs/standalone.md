@@ -71,5 +71,8 @@ of active cloud hosts remains an unqualified release gate.
 sandbox identity. Assigned running/stopped sandboxes first complete verified save
 and release; already released sandboxes record deletion atomically. Acknowledged
 checkpoints and command history remain retained and readable; deleting a sandbox
-does not authorize garbage collection of its history. Queued, starting and
-quarantined placements must currently resolve before deletion is accepted.
+does not authorize garbage collection of its history. Queued deletion atomically
+cancels its placement without executing it. Undispatched allocation reservations
+are discarded; already dispatched allocations are reconciled under their original
+identity and any resulting idle host is retired normally. Starting and quarantined
+placements must currently resolve before deletion is accepted.

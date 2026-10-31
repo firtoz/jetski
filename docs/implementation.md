@@ -556,3 +556,27 @@ loss in addition to checkpoint/import ACK loss, requiring recovery before its ne
 checkpoint and deletion. Await CI. Orphan reader/controller-lease recovery, unresolved
 placement cancellation, active expiry and the remaining full release gates stay
 open. No paid resources or original GC experiment state changed.
+
+Verified output-journal source: **c49c7cd62719c935a50be8eb7e4cb0425bf128cf**,
+CI **41214348523**, all four jobs successful; watcher 91948 terminal0. Real API
+log confirms lostOutputStoreAcknowledgementRecovery=true along with checkpoint and
+import ACK recovery, equal archive hashes, assigned deletion and retained history.
+All 57 unit tests pass. These tests qualify acknowledgement-loss recovery with local
+storage, not abrupt process death or S3/provider parity. Next: orphan reader and
+multi-controller recovery, unresolved placement cancellation and active expiry;
+retain the full remaining storage/provider/interactive/client/benchmark scope.
+No paid resources or original GC experiment changes. Test jobs terminal and cleaned.
+
+Queued-deletion continuation: deletion now atomically cancels an undispatched
+placement operation/ticket and marks the sandbox deleted. Ticket tombstones prevent
+late queue admission or create replay from reviving cancelled work. Host reservations
+persist whether allocation was dispatched: unused reservations with no demand retire
+without provider I/O; dispatched reservations reconcile their original allocation ID
+even after cancellation, then retain/retire any resulting idle host without executing
+the deleted sandbox. Two tests cover pre-dispatch cancellation and allocation-ACK
+loss followed by deletion/controller restart, proving zero workload requests and no
+duplicate physical allocation. Twenty-six TypeScript tests, build/typecheck/Biome
+pass. The real API fixture now deletes excess queued demand while another assignment
+owns the sole host. Await CI. Starting/quarantined placement deletion, orphan reader
+and multi-controller recovery, active expiry and the remaining full release gates
+remain open. No paid allocations or original GC experiment changes occurred.
