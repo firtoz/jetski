@@ -150,6 +150,20 @@ export function createHttpServer(
         );
         return;
       }
+      if (
+        parts.length === 4 &&
+        (parts[3] === "stop" || parts[3] === "checkpoint") &&
+        request.method === "POST"
+      ) {
+        const input = await body(request);
+        fields(input, ["operationId"]);
+        send(
+          response,
+          202,
+          await manager.stop(scope, string(input.operationId), parts[3]),
+        );
+        return;
+      }
       if (parts[3] === "commands") {
         if (parts.length === 4 && request.method === "POST") {
           const input = await body(request);

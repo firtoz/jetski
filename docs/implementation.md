@@ -338,3 +338,27 @@ transport disabled; CI qualification remains pending. This does not yet prove
 full host retirement or automatic lifecycle retention: stop/checkpoint/resume/delete
 remain the next coordinator work, and interrupted retention still quarantines
 rather than automatically retries. No paid resources or existing GC state touched.
+
+Verified output-retention source: **5cda744d93eec3b0e08ba73ff48517a636f1bc84**,
+CI **41210949349**, all four jobs passed; watcher 80494 terminal0. Real standalone
+API output/status remain available after disabling host-control transport. This is
+transport-unavailable evidence, not yet full lifecycle host-retirement recovery.
+Next: persist stop/checkpoint phases, close admission atomically, resolve command
+receipts and retain output, publish filesystem checkpoint, then release the host;
+implement resume with explicit generation transitions and verified import. Keep
+all remaining adapter/transport/GC/client/benchmark gates. Goal remains active.
+
+Shutdown continuation: added a persisted controller sequence and HTTP/CLI routes
+for checkpoint and stop. Command admission closes atomically with stop admission;
+quiescence precedes terminal-output retention and filesystem capture/publication.
+Cleanup revalidates published objects; stop removes the container, acknowledges
+release, purges the source, then returns the host to the owner's pool. Checkpoint
+keeps its stopped assignment. Safe stages reconcile after lost acknowledgements;
+failed output/archive publication remains quarantined for explicit recovery.
+Three new tests cover publication-before-destruction, interrupted upload exclusion,
+release-ACK loss/controller restart, completed-operation replay and warm host reuse.
+Twenty-two TypeScript tests, build/typecheck/lint pass. The real API fixture now
+attempts durable stop, post-release output access and a new assignment on the same
+host; await CI before claiming this path qualified. Resume, delete, controller
+multi-writer qualification and automatic interrupted-upload recovery remain open,
+along with all earlier full-release gates. No paid host or prior GC state touched.

@@ -1,8 +1,8 @@
 # Standalone service (implementation preview)
 
-The current server implements creation, inspection/listing, create-operation
-receipts, command admission/status and resumable output. Stop/resume/delete,
-checkpoint API routes and interactive gateways are not implemented yet. Do not
+The current server implements creation, inspection/listing, operation receipts,
+command admission/status and resumable output, checkpoint and stop. Resume/delete
+and interactive gateways are not implemented yet. Do not
 use this preview as a durable hosted service; use disposable qualification hosts.
 The full release gates remain in [implementation.md](implementation.md).
 
@@ -46,3 +46,11 @@ ledger reserves one host per owner by default and queues excess assignments.
 Unknown host effects quarantine the assignment; automatic recovery of every
 interrupted lifecycle stage is still being implemented. Do not retry uncertain
 commands with a new command ID.
+
+`checkpoint ID --operation UUID` stops execution, retains terminal command output
+and publishes the persistent filesystem while retaining the host assignment.
+`stop ID --operation UUID` additionally removes the container, verifies publication
+before release, purges its source tree and returns the host to its owner's pool.
+Poll `operation ID --id UUID` for completion. Failed publication quarantines the
+source; it never reports successful release. A lost release acknowledgement can
+be reconciled using the existing receipt without creating a new assignment.

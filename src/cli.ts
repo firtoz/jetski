@@ -126,6 +126,14 @@ if (command === "serve") {
         },
       );
       break;
+    case "stop":
+    case "checkpoint":
+      result = await client.request(
+        `/v1/sandboxes/${required(positionals[1], "sandbox ID")}/${command}`,
+        "POST",
+        { operationId: required(values.operation, "--operation") },
+      );
+      break;
     case "operation":
       result = await client.operation(
         required(positionals[1], "sandbox ID"),
@@ -134,7 +142,7 @@ if (command === "serve") {
       break;
     default:
       throw new Error(
-        "Usage: jetski serve --config PATH | list | get ID | create --id UUID --operation UUID --image DIGEST | exec ID --id UUID -- COMMAND | operation ID --id UUID",
+        "Usage: jetski serve --config PATH | list | get ID | create --id UUID --operation UUID --image DIGEST | exec ID --id UUID -- COMMAND | operation ID --id UUID | stop ID --operation UUID | checkpoint ID --operation UUID",
       );
   }
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");

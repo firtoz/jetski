@@ -64,8 +64,10 @@ const url = `http://127.0.0.1:${address.port}`,
   client = new JetskiClient(url, token);
 const errors: unknown[] = [];
 const stopWorker = startWorker(manager, (error) => errors.push(error), 20);
+let cleanupId: string;
 const id = randomUUID(),
   operationId = randomUUID();
+cleanupId = id;
 try {
   await client.request("/v1/sandboxes", "POST", { id, operationId, image });
   let sandbox: Sandbox | undefined;
@@ -136,6 +138,60 @@ try {
     { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
   );
   assert.equal((JSON.parse(cli.stdout) as Sandbox[])[0]?.id, id);
+  controlUnavailable = false;
+  const stopId = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/stop`, "POST", {
+    operationId: stopId,
+  });
+  for (let attempt = 0; attempt < 150; attempt++) {
+    const operation = await client.operation(id, stopId);
+    if (operation.phase === "succeeded") break;
+    if (operation.phase === "uncertain") throw Error("Stop uncertain");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal((await client.operation(id, stopId)).phase, "succeeded");
+  const stopped = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
+  assert.equal(stopped.phase, "stopped");
+  assert.equal(stopped.lease, null);
+  controlUnavailable = true;
+  assert.deepEqual(
+    await client.request(`/v1/sandboxes/${id}/commands/${commandId}`),
+    command,
+  );
+  assert.deepEqual(
+    await client.request(`/v1/sandboxes/${id}/commands/${commandId}/output`),
+    await manager.commandOutput(
+      { owner: "qualification", sandbox: id },
+      commandId,
+      "stdout",
+      0,
+      256 * 1024,
+    ),
+  );
+  controlUnavailable = false;
+  const next = randomUUID();
+  await client.request("/v1/sandboxes", "POST", {
+    id: next,
+    operationId: randomUUID(),
+    image,
+  });
+  cleanupId = next;
+  let replacement: Sandbox | undefined;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    replacement = await client.request<Sandbox>(`/v1/sandboxes/${next}`);
+    if (replacement.phase === "running") break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(replacement?.phase, "running");
+  assert.equal(replacement.lease?.machineId, sandbox?.lease?.machineId);
+  assert.notEqual(
+    replacement.lease?.assignmentId,
+    sandbox?.lease?.assignmentId,
+  );
+  assert.equal(
+    replacement.lease?.generation,
+    (sandbox?.lease?.generation ?? 0) + 1,
+  );
   console.log(
     JSON.stringify({
       standaloneApi: true,
@@ -145,6 +201,8 @@ try {
       outputWithoutHostControl: true,
       sdk: true,
       cli: true,
+      durableStop: true,
+      warmHostReuse: true,
       completeLifecycle: false,
     }),
   );
@@ -152,7 +210,10 @@ try {
   await stopWorker();
   let cleanupError: unknown;
   try {
-    const sandbox = await manager.get({ owner: "qualification", sandbox: id });
+    const sandbox = await manager.get({
+      owner: "qualification",
+      sandbox: cleanupId,
+    });
     if (sandbox?.lease) {
       const payload = { lease: sandbox.lease, image };
       for (const action of ["quiesce", "remove"])

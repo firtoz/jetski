@@ -12,6 +12,8 @@ import {
 } from "./contracts.js";
 import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
+import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
+import { CheckpointTransfer } from "./transfer.js";
 import { HOST_PROTOCOL_VERSION, type HostTransport } from "./transport.js";
 
 export type Sandbox = {
@@ -53,6 +55,7 @@ export class SandboxManager {
   private readonly outputs: CommandOutputStore;
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
+  private readonly shutdown: ShutdownCoordinator;
   constructor(
     private readonly state: StateStore,
     private readonly provider: HostProvider,
@@ -70,6 +73,31 @@ export class SandboxManager {
     this.operations = new OperationJournal(state);
     this.checkpoints = new CheckpointRegistry(state, objects);
     this.outputs = new CommandOutputStore(objects, this.checkpoints);
+    this.shutdown = new ShutdownCoordinator({
+      state,
+      operations: this.operations,
+      pool: this.pool,
+      registry: this.checkpoints,
+      objects,
+      transfer: new CheckpointTransfer(objects, this.checkpoints),
+      request: (lease, action, payload) => this.request(lease, action, payload),
+      retainCommands: async (scope) => {
+        const commands = await state.transaction((tx) =>
+          tx
+            .scan<CommandRecord>(`command/${scopeKey(scope)}/`)
+            .map((row) => row.value),
+        );
+        for (const command of commands) {
+          const status = await this.commandStatus(scope, command.id);
+          if (!status || typeof status !== "object" || Array.isArray(status))
+            throw Error("Invalid command receipt");
+          if (["queued", "running"].includes(String(status.phase)))
+            return false;
+          await this.retainCommand(scope, command.id);
+        }
+        return true;
+      },
+    });
     this.images = new Set(options.approvedImages);
     for (const image of this.images)
       if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}$/.test(image))
@@ -221,6 +249,7 @@ export class SandboxManager {
     this.activeOwners.add(owner);
     try {
       await this.recoverObservedCreates(owner);
+      await this.shutdown.reconcile(owner);
       // Repair admission interrupted between the sandbox and queue transactions.
       for (const sandbox of await this.list(owner))
         if (sandbox.phase === "queued")
@@ -293,6 +322,12 @@ export class SandboxManager {
     } finally {
       this.activeOwners.delete(owner);
     }
+  }
+  async stop(scope: Scope, id: string, mode: ShutdownMode = "stop") {
+    this.uuid(id);
+    if (mode !== "stop" && mode !== "checkpoint")
+      throw Error("Invalid shutdown mode");
+    return this.shutdown.admit(scope, id, mode);
   }
   async startCommand(
     scope: Scope,
