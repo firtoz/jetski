@@ -93,6 +93,12 @@ workload-specific products.
 
 ## Latest continuation status
 
+Environment fix22e909d, CI41226947132 exposed bootstrap configuration-directory
+ownership: root-created user unit directories prevent systemctl enable writing its
+wants symlink. New directories now belong to the dedicated runtime account; the
+unit remains scoped to it. Preserve failure; final API/environment proof pending.
+
+
 CI41226730157 failed SSH/API; dedicated service journal identifies inherited
 XDG_RUNTIME_DIR=/run/user/1001 not owned by its current user. Rootless standalone,
 unit and Boat bootstrap passed. Private receipt /tmp/jetski-runtime-service-ssh.log.

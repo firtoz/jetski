@@ -153,6 +153,7 @@ def bootstrap(config):
                 raise ValueError("unsafe_runtime_unit_path")
         else:
             parent.mkdir(mode=0o755)
+            os.chown(parent, account.pw_uid, account.pw_gid)
     unit = dropin / "10-jetski.conf"
     if unit.is_symlink():
         raise ValueError("unsafe_runtime_unit")
