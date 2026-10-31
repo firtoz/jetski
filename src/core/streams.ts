@@ -381,14 +381,15 @@ export class StreamCoordinator {
     void completed.catch(() => {});
     const output = {
       async *[Symbol.asyncIterator]() {
+        let outputEnded = false;
         try {
           for await (const bytes of connection.output) {
             await check();
             yield bytes;
           }
-          await completed;
+          outputEnded = true;
         } finally {
-          if (!stopped) abort();
+          if (!outputEnded && !stopped) abort();
         }
       },
     };

@@ -93,6 +93,38 @@ workload-specific products.
 
 ## Latest continuation status
 
+SSH forwarding candidate: optional gateway direct-tcpip channels require an exact
+owner/sandbox exposure, matching port and explicit immutable stream UUID encoded
+as EXPOSURE_ID.STREAM_UUID.jetski. No DNS/outer-host destination is opened. Shared
+core coordinator enforces admission, revocation and generation fences. Bounds:
+64gateway/8per-client channels,16KiB serialized host writes, SSH receive window,
+5second output backpressure,30second admission and1hour lifetime. Disconnect and
+completion rejection close both forwarding directions without byte replay.
+Corrected duplex semantics: output FIN is observable before input FIN; completed
+remains separate and requires verified full host completion. Gateway sends SSH EOF
+without closing input. Local encrypted tests cover64KiB binary echo, owner/target
+rejection, duplicate ID, remote-first half-close and idle cancellation after output
+EOF. Hosted fixture exercises both half-close orders through gateway/core/real
+host/container. Static CI listener gains a half-close mode; syntax-only locally.
+Final checks/CI pending. CLI convenience forwarding, HTTP/WS previews, full real
+gateway stop/replacement and Boat streaming remain required. Prior turn classified
+as verified progress; no paid resources or protected experiment changes.
+
+
+Published e90cae208eac940ce48f90fea8bf55a517cf96ef; CI41244406523.
+All five jobs passed; watcher65101 exited0. /tmp/jetski-stream-tombstone-ci.log,
+/tmp/jetski-stream-tombstone-ssh.log (job124664727436), and
+/tmp/jetski-stream-tombstone-api.log (job124664727642) retain exact-source receipts.
+Local91TS/70Python tests/build/typecheck/lint pass. Installed SSH fixture verified
+missing-admission cancellation, subsequent trusted terminal observation and host
+refusal of a delayed original request. Shutdown fixtures include unresolved streams and verify
+quiesce -> terminal stream observation -> capture ordering across publication and
+release-ACK recovery. Gateway-level real stop/replacement remains unqualified.
+Next complete authenticated network gateways and their end-to-end lifecycle tests,
+then Boat streaming/live-provider qualification and client/benchmark/release gates.
+No paid hosts, desktop workload execution or protected experiment changes.
+
+
 Missing-admission recovery candidate: after a status request fails for an inactive,
 expired or uncertain stream, the coordinator durably records cancellation and
 attempts the exact fenced host cancellation. This can install a tombstone even

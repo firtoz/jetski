@@ -116,6 +116,13 @@ test("FIN without input closure, nonzero exit and truncated output stay uncertai
     f.close(scenario === "exit" ? 1 : 0);
     if (scenario === "abandon") {
       for await (const _ of connection.output) break;
+    } else if (scenario === "input-open" || scenario === "exit") {
+      try {
+        for await (const _ of connection.output) {
+        }
+      } catch (error) {
+        assert.ok(error instanceof HostTransportError);
+      }
     } else {
       await assert.rejects(async () => {
         for await (const _ of connection.output) {
@@ -158,4 +165,20 @@ test("backpressure admits one bounded write and forbids concurrent input", async
   }
   await connection.completed;
   assert.equal(calls, 3);
+});
+
+test("remote half-close reaches the reader while uploads can still continue", async () => {
+  const f = fixture();
+  f.output.write(ready);
+  const connection = await attachHostStream(f.wire, new Uint8Array([1]));
+  f.output.write(Buffer.concat([encode({ kind: "data", bytes: data }), fin]));
+  const received: Uint8Array[] = [];
+  for await (const bytes of connection.output) received.push(bytes);
+  assert.deepEqual(Buffer.concat(received), Buffer.from(data));
+  await connection.send(data);
+  await connection.end();
+  f.output.end();
+  f.close(0);
+  await connection.completed;
+  assert.equal(f.terminated, 0);
 });

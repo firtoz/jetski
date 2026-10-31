@@ -9,6 +9,7 @@ export type HostStreamRequest = {
 };
 /** One connection, never reconnected/replayed. Consume output exactly once.
  * send accepts at most 16KiB and must be awaited before another send/end.
+ * Output EOF is a half-close; input may continue. Always observe completed.
  * completed requires both half-closes and authenticated host success, not EOF.
  * abort closes transport; inspect the durable host receipt for cleanup status. */
 export interface HostConnection {

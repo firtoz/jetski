@@ -120,27 +120,42 @@ export async function attachHostStream(
       writing = false;
     }
   }
+  async function finishConnection() {
+    try {
+      // FIN closes only the output direction. Continue validating framing and
+      // host termination while input may still be flowing in the other direction.
+      for await (const _ of incoming) throw Error("Data after stream FIN");
+      if (!inputEnded || (await closed) !== 0 || failure)
+        throw Error("Host stream completion unknown");
+      finished = true;
+      cleanup();
+      resolveDone();
+    } catch {
+      fail("Host stream completion unknown");
+    }
+  }
   const output = {
     async *[Symbol.asyncIterator]() {
       if (consumed) throw Error("Host stream output already consumed");
       consumed = true;
       let fin = false;
       try {
-        for await (const frame of incoming) {
+        for (;;) {
+          const next = await incoming.next();
+          if (next.done) throw Error("Missing stream FIN");
+          const frame = next.value;
           if (frame.kind === "data") yield frame.bytes;
-          else if (frame.kind === "fin") fin = true;
-          else throw Error("Duplicate stream readiness");
+          else if (frame.kind === "fin") {
+            fin = true;
+            void finishConnection();
+            return;
+          } else throw Error("Duplicate stream readiness");
         }
-        if (!fin || !inputEnded || (await closed) !== 0 || failure)
-          throw Error("Host stream completion unknown");
-        finished = true;
-        cleanup();
-        resolveDone();
       } catch {
         fail("Host stream completion unknown");
         throw failure;
       } finally {
-        if (!finished) abort();
+        if (!fin) abort();
       }
     },
   };

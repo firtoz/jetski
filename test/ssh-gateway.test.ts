@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { connect as connectSocket } from "node:net";
+import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import ssh2, {
   type ClientChannel,
@@ -229,4 +231,183 @@ test("SSH gateway shutdown closes silent pre-header sockets", {
   const closed = once(socket, "close");
   await gateway.close();
   await closed;
+});
+
+test("SSH forwarding scopes targets, preserves binary data and supports remote-first half-close", {
+  timeout: 15000,
+}, async (t) => {
+  const identities = new Set<string>(),
+    uploads: Buffer[] = [];
+  const aborters = new Map<string, () => void>();
+  const backend: SshGatewayBackend = {
+    get: async (scope) =>
+      scope.owner === "alice" && scope.sandbox === "box"
+        ? {
+            id: "box",
+            owner: "alice",
+            image: "fixture",
+            createOperation: "create",
+            placementOperation: "place",
+            restoreCheckpoint: null,
+            pendingResume: null,
+            phase: "running",
+            lease: null,
+            checkpoint: null,
+            generation: 1,
+          }
+        : undefined,
+    requireTerminal: async () => {
+      throw Error("unused");
+    },
+    terminalInput: async () => {
+      throw Error("unused");
+    },
+    terminalInputStatus: async () => {
+      throw Error("unused");
+    },
+    commandOutput: async () => {
+      throw Error("unused");
+    },
+    commandStatus: async () => {
+      throw Error("unused");
+    },
+    ports: {
+      async status(scope, id) {
+        assert.equal(scope.owner, "alice");
+        return {
+          id,
+          generation: 1,
+          revoked: false,
+          available: id === "echo" || id === "half",
+          port: 8080,
+        };
+      },
+    },
+    streams: {
+      async open(scope, exposure, id, signal) {
+        assert.deepEqual(scope, { owner: "alice", sandbox: "box" });
+        assert.ok(!identities.has(id), "No stream replay");
+        identities.add(id);
+        const output = new PassThrough();
+        let resolve!: () => void,
+          reject!: (error: Error) => void,
+          ended = false;
+        const completed = new Promise<void>((yes, no) => {
+          resolve = yes;
+          reject = no;
+        });
+        void completed.catch(() => {});
+        const abort = () => {
+          if (!ended) {
+            ended = true;
+            output.destroy();
+            reject(Error("interrupted"));
+          }
+        };
+        aborters.set(id, abort);
+        signal?.addEventListener("abort", abort, { once: true });
+        if (exposure === "half") output.end(Buffer.from("read-finished"));
+        return {
+          output,
+          completed,
+          abort,
+          async send(bytes) {
+            assert.ok(bytes.length <= 16384);
+            uploads.push(Buffer.from(bytes));
+            if (exposure === "echo") output.write(bytes);
+          },
+          async end() {
+            if (ended) throw Error("already ended");
+            ended = true;
+            if (exposure === "echo") output.end();
+            resolve();
+          },
+        };
+      },
+    },
+  };
+  const gateway = createSshGateway(backend, {
+    hostKey: Buffer.from(host.private),
+    principals: [
+      { owner: "alice", publicKey: alice.public },
+      { owner: "bob", publicKey: bob.public },
+    ],
+  });
+  await new Promise<void>((resolve) =>
+    gateway.server.listen(0, "127.0.0.1", resolve),
+  );
+  const address = gateway.server.address();
+  assert.ok(address && typeof address !== "string");
+  const clients: SshClient[] = [];
+  t.after(async () => {
+    for (const client of clients) client.destroy();
+    await gateway.close();
+  });
+  async function connect(key: string) {
+    const client = new Client();
+    clients.push(client);
+    client.on("error", () => {});
+    const ready = once(client, "ready");
+    client.connect({
+      host: "127.0.0.1",
+      port: (address as { port: number }).port,
+      username: "box",
+      privateKey: key,
+      hostVerifier: (key: Buffer) =>
+        key.equals((utils.parseKey(host.public) as ParsedKey).getPublicSSH()),
+    });
+    await ready;
+    return client;
+  }
+  async function forward(
+    client: SshClient,
+    exposure: string,
+    id: string,
+    port = 8080,
+  ): Promise<ClientChannel> {
+    return new Promise((resolve, reject) =>
+      client.forwardOut(
+        "127.0.0.1",
+        1234,
+        `${exposure}.${id}.jetski`,
+        port,
+        (error, channel) => (error ? reject(error) : resolve(channel)),
+      ),
+    );
+  }
+  const a = await connect(alice.private),
+    b = await connect(bob.private);
+  await assert.rejects(forward(b, "echo", randomUUID()));
+  await assert.rejects(forward(a, "echo", randomUUID(), 22));
+  await assert.rejects(forward(a, "missing", randomUUID()));
+  assert.equal(identities.size, 0);
+  const id = randomUUID(),
+    echo = await forward(a, "echo", id);
+  echo.on("error", () => {});
+  const bytes = Buffer.from(Array.from({ length: 65536 }, (_, i) => i % 251));
+  const chunks: Buffer[] = [];
+  echo.on("data", (part: Buffer) => chunks.push(Buffer.from(part)));
+  const closed = once(echo, "close");
+  echo.end(bytes);
+  await closed;
+  assert.deepEqual(Buffer.concat(chunks), bytes);
+  await assert.rejects(forward(a, "echo", id));
+  const half = await forward(a, "half", randomUUID());
+  half.on("error", () => {});
+  const response: Buffer[] = [];
+  half.on("data", (part: Buffer) => response.push(Buffer.from(part)));
+  await once(half, "end");
+  assert.equal(Buffer.concat(response).toString(), "read-finished");
+  const halfClosed = once(half, "close");
+  half.end(bytes);
+  await halfClosed;
+  assert.deepEqual(Buffer.concat(uploads), Buffer.concat([bytes, bytes]));
+  const idleId = randomUUID(),
+    idle = await forward(a, "half", idleId);
+  idle.on("error", () => {});
+  idle.resume();
+  await once(idle, "end");
+  const cancelled = once(idle, "close");
+  aborters.get(idleId)!();
+  await cancelled;
 });

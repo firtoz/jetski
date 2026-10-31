@@ -22,6 +22,7 @@ import {
   SshTransport,
   sshArguments,
 } from "../src/transport/ssh.js";
+import { qualifyForward } from "./qualify-forward.js";
 
 export async function qualifyHostStream(
   host: SshHost,
@@ -67,13 +68,14 @@ export async function qualifyHostStream(
     }
     throw Error("fixture_command_deadline");
   }
-  async function startServer(move: boolean) {
+  async function startServer(move: boolean, half = false) {
     const commandId = randomUUID();
     const script =
       (move
         ? "mv /workspace/relay-http-fixture /tmp/relay-http-fixture; "
         : "") +
-      "rm -f /tmp/jetski-http-ready /tmp/jetski-http-complete; exec /tmp/relay-http-fixture";
+      "rm -f /tmp/jetski-http-ready /tmp/jetski-http-complete; exec /tmp/relay-http-fixture" +
+      (half ? " --half" : "");
     await request("command-start", {
       ...payload,
       commandId,
@@ -322,6 +324,7 @@ export async function qualifyHostStream(
     await assert.rejects(async () => {
       for await (const _ of interruptedConnection.output) {
       }
+      await interruptedConnection.completed;
     }, /Injected lost/);
     assert.equal(
       (await interruptedCoordinator.status(scope, recoveryId)).phase,
@@ -377,6 +380,11 @@ export async function qualifyHostStream(
     await assert.rejects(
       transport.open(host.id, { ...payload, streamId: missingId, port: 18080 }),
     );
+    for (const half of [false, true]) {
+      const forwardingServer = await startServer(false, half);
+      await qualifyForward(scope, ports, coordinator, half);
+      await stopServer(forwardingServer);
+    }
     const revokedServer = await startServer(false),
       revokedId = randomUUID();
     const revoked = await coordinator.open(scope, "fixture-port", revokedId);

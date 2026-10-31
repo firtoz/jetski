@@ -8,7 +8,10 @@ const { Server, utils } = ssh2;
 import { observationDelay } from "../client/wait.js";
 import { OUTPUT_CHUNK, OUTPUT_LIMIT } from "../core/command-output.js";
 import { identifier, type Json, type Scope } from "../core/contracts.js";
+import type { HostConnection } from "../core/host-stream.js";
 import type { SandboxManager } from "../core/manager.js";
+import type { PortRegistry } from "../core/ports.js";
+import type { StreamCoordinator } from "../core/streams.js";
 import {
   type TerminalInput,
   terminalGeometry,
@@ -22,7 +25,10 @@ export type SshGatewayBackend = Pick<
   | "terminalInputStatus"
   | "commandOutput"
   | "commandStatus"
->;
+> & {
+  ports?: Pick<PortRegistry, "status">;
+  streams?: Pick<StreamCoordinator, "open"> | undefined;
+};
 export type SshGatewayOptions = {
   hostKey: Buffer;
   principals: Array<{ owner: string; publicKey: string }>;
@@ -49,6 +55,7 @@ export function createSshGateway(
       keys.length
   )
     throw Error("Unique SSH principal keys required");
+  let forwards = 0;
   const clients = new Set<Connection>();
   const tasks = new Set<Promise<void>>();
   const sockets = new Map<string, { socket: Socket; timer: NodeJS.Timeout }>();
@@ -65,6 +72,7 @@ export function createSshGateway(
       let scope: Scope | undefined;
       let attempts = 0;
       let used = false;
+      let clientForwards = 0;
       const deadline = setTimeout(() => client.end(), 15000);
       client.once("close", () => clearTimeout(deadline));
       client.on("authentication", (context) => {
@@ -113,8 +121,77 @@ export function createSshGateway(
           return;
         }
         const authorized = scope;
+        client.on("tcpip", (accept, reject, target) => {
+          const match =
+            /^([A-Za-z0-9_-]{1,128})\.([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.jetski$/.exec(
+              target.destIP,
+            );
+          if (
+            used ||
+            clientForwards >= 8 ||
+            forwards >= 64 ||
+            !match ||
+            !backend.ports ||
+            !backend.streams
+          ) {
+            reject();
+            return;
+          }
+          const ports = backend.ports,
+            streams = backend.streams;
+          const exposure = match[1]!,
+            streamId = match[2]!;
+          forwards++;
+          clientForwards++;
+          const abort = new AbortController();
+          let channel: ServerChannel | undefined,
+            connection: HostConnection | undefined;
+          const close = () => {
+            abort.abort();
+            connection?.abort();
+            channel?.close();
+          };
+          const lifetime = setTimeout(close, 3600000);
+          const admission = setTimeout(close, 30000);
+          client.once("close", close);
+          const task = (async () => {
+            if (!(await backend.get(authorized)))
+              throw Error("Sandbox unavailable");
+            const permission = await ports.status(authorized, exposure);
+            if (!permission.available || permission.port !== target.destPort)
+              throw Error("Port unavailable");
+            abort.signal.throwIfAborted();
+            connection = await streams.open(
+              authorized,
+              exposure,
+              streamId,
+              abort.signal,
+            );
+            abort.signal.throwIfAborted();
+            channel = accept();
+            clearTimeout(deadline);
+            clearTimeout(admission);
+            channel.on("error", close);
+            channel.once("close", close);
+            await pumpTcp(connection, channel, abort.signal);
+          })()
+            .catch(() => {
+              if (!channel) reject();
+              close();
+            })
+            .finally(() => {
+              clearTimeout(admission);
+              clearTimeout(lifetime);
+              client.removeListener("close", close);
+              close();
+              forwards--;
+              clientForwards--;
+            });
+          tasks.add(task);
+          void task.finally(() => tasks.delete(task));
+        });
         client.on("session", (accept, reject) => {
-          if (used) {
+          if (used || clientForwards) {
             reject();
             return;
           }
@@ -376,4 +453,56 @@ async function pumpOutput(
     }
     if (!bytes.length) await observationDelay(signal);
   }
+}
+
+async function pumpTcp(
+  connection: HostConnection,
+  channel: ServerChannel,
+  signal: AbortSignal,
+) {
+  const input = async () => {
+    for await (const chunk of channel) {
+      const bytes = Buffer.from(chunk);
+      if (bytes.length > 2 * 1024 * 1024)
+        throw Error("SSH input window exceeded");
+      for (let at = 0; at < bytes.length; at += 16384) {
+        signal.throwIfAborted();
+        await connection.send(bytes.subarray(at, at + 16384));
+      }
+    }
+    await connection.end();
+  };
+  const output = async () => {
+    for await (const bytes of connection.output) {
+      if (!(bytes instanceof Uint8Array) || bytes.length > 2 * 1024 * 1024)
+        throw Error("Invalid host forwarding chunk");
+      for (let at = 0; at < bytes.length; at += 16384) {
+        signal.throwIfAborted();
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(Error("SSH forwarding backpressure deadline")),
+            5000,
+          );
+          channel.write(bytes.subarray(at, at + 16384), (error) => {
+            clearTimeout(timer);
+            if (error) reject(error);
+            else resolve();
+          });
+        });
+      }
+    }
+    // ServerChannel.end() closes both directions in ssh2. Send only SSH EOF so
+    // the client can finish uploading after the workload has stopped sending.
+    channel.eof();
+  };
+  const fail = (error: unknown) => {
+    connection.abort();
+    channel.close();
+    throw error;
+  };
+  await Promise.all([
+    input().catch(fail),
+    output().catch(fail),
+    connection.completed.catch(fail),
+  ]);
 }

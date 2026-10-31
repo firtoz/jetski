@@ -261,9 +261,9 @@ ssh -p 2222 -t SANDBOX_ID@localhost 'attach TERMINAL_ID 0'
 
 The command has a strict grammar and is never interpreted by a host shell.
 Password auth, outer shells, arbitrary commands, SFTP, environment changes,
-agent/X11 forwarding and arbitrary host TCP forwarding are rejected. Dedicated
-sandbox network gateways remain separate unfinished work. The current gateway
-attaches to existing PTY terminals; it does not create work on reconnect.
+agent/X11 forwarding and arbitrary host TCP forwarding are rejected. The gateway
+attaches to existing PTY terminals; it does not create terminals on reconnect.
+Authorized workload TCP connections use the explicit forwarding protocol below.
 
 Input uses the core's durable receipt IDs, one serialized frame at a time, up to
 16 KiB per frame. Queued control requests are bounded to 64; receipt observation
@@ -295,3 +295,36 @@ its original outcome. Revocation is permanent for that exposure ID, survives
 controller restart and does not erase history. At most 64 permissions may be
 available per sandbox. Gateway integration, active-stream revocation and host-side
 stream fencing remain required before TCP forwarding or previews are advertised.
+
+## SSH workload TCP forwarding (experimental)
+
+When an SSH host stream adapter is configured, the public-key gateway accepts
+`direct-tcpip` channels addressed to `EXPOSURE_ID.STREAM_UUID.jetski`, with the
+exact port recorded by `exposePort`. This is a protocol address, never a DNS name
+or an outer-host destination. The SSH username selects the sandbox and the key
+selects the owner. For example, after creating a port exposure for8080:
+
+```sh
+ssh -p 2222 -W EXPOSURE_ID.STREAM_UUID.jetski:8080 SANDBOX_ID@localhost
+```
+
+Supply a fresh canonical UUID for each intentional new connection. Reusing it is
+rejected even after disconnection; neither the gateway nor host automatically
+reconnects or replays bytes. Use the operation/stream receipt to investigate
+uncertain completion. The CLI forwarding convenience command remains unfinished.
+
+The gateway caps forwarding at64channels total and8per authenticated connection.
+It does not mix terminal sessions and forwarding channels on one SSH connection.
+Input follows the SSH receive window (at most2MiB chunks), split into awaited16KiB
+host writes. Output writes have a5second backpressure deadline; admission is
+bounded to30seconds and connections to1hour. Both TCP half-closes are supported:
+output EOF does not prevent further input. `HostConnection.completed`, not output
+EOF alone, reports full verified host completion. Network delivery is not a promise
+that an application processed the bytes.
+
+Port revocation, assignment changes and controller expiry use the same durable
+stream authority as embedded clients. Interruption closes the forwarding channel
+and preserves uncertain delivery/cleanup until reconciled. Arbitrary IP addresses,
+Unix sockets, remote listeners and host ports remain unavailable. Boat streaming,
+authenticated HTTP/WebSocket previews, full gateway stop/replacement qualification
+and broader release gates remain open; see the implementation matrix.
