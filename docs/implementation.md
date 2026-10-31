@@ -93,12 +93,17 @@ workload-specific products.
 
 ## Latest continuation status
 
-Current source: **2e97b8747cfcfc4773529810b1ee90b2d58395d8**, CI **41221469787**.
-Watcher **93674** is live. First poll this exact handle/run on continuation; no
-workflow restart on observation timeout. Local build/typecheck/lint pass, prior45
-TypeScript suite passed plus the added omitted-inventory test passed. CI has46
-TypeScript and42Python tests to complete. Previous source5ff2a89 passed all four
-jobs in CI41221063301; watcher11645 exited0 and disposable resources were cleaned.
+Current source: **5234d11259626910c0be1b2aad09c14f041e1d7a**, CI **41221713515**.
+Watcher **84585** is live. Poll this exact handle/run first on continuation; do not
+restart on observation timeout. Local build/typecheck/lint and all48TypeScript tests
+pass. Rootless-runtime CI passed; unit/SSH/API status still requires terminal
+observation. Prior source2e97b87 passed all4jobs inCI41221469787; watcher93674 exited0.
+
+Two SQLite controller connections now qualify superseded inventory fencing,
+competing ID and reader/writer exclusion, retained-object preservation, and result
+replay. Corrupt observations/cross-owner candidates fail before deletion. Each
+physical deletion rechecks generation, collection and cursor before dispatch.
+These checks are not broad distributed partition or full lifecycle qualification.
 
 Scoped orphan inventory is implemented with64object persistent pages, complete-pass
 receipts, immutable first-seen observations and24hgrace. Restart re-enumerates fully;
@@ -108,8 +113,8 @@ real-grace execution remain unqualified. Core holds at most100000inventoryobject
 local adapter still reads directory names, and metadata compaction is not implemented.
 No paid hosts, cloud storage writes or protected experiment changes occurred.
 
-Next: observe CI; qualify competing collectors and inventory/candidate corruption,
-then proceed with remaining host adapters and interactive transports. Live R2 still
+Next: observe CI, then implement the remaining Boat host adapter and interactive
+transports (command cancellation, PTY, SSH gateway, previews and TCP). Live R2 still
 awaits private bucket-scoped credentials. Full provider/parity/fresh-host/client/
 benchmark gates remain open. Keep the full acceptance matrix authoritative.
 
@@ -786,3 +791,15 @@ unknown fields, and each deletion now rechecks generation/operation/cursor befor
 dispatch as well as after acknowledgement. These tests do not prove arbitrary
 network partitions or all multi-controller lifecycle paths. Local final checks and
 CI pending; provider/interactive/client/benchmark gates remain open.
+
+Boat adapter continuation: priorCI41221713515 at5234d11 passed all four jobs;
+watcher84585 exited0. Added explicit Boat API/provider subpath with durable create
+request/idempotency identity before dispatch, one-hour lifetime, snapshots/monitoring
+off and no inherited environment. Lost-ACK retry retains exact body across SQLite
+reopen/config changes; expired unknown creation cannot issue another POST. Provider
+readiness requires the separately bootstrapped host-control attestation. Retirement
+is ownership/allocation-fenced and observes absence after accepted deletion. HTTP
+is HTTPS-only, no redirects/retries, bounded1MiB/30s. Official provider docs reviewed.
+Tests use HTTP fixtures, not hosted allocation. Boat bootstrap/transport discovery
+and standalone wiring remain required before useful live-host qualification. No
+paid host/remote storage/protected experiment changes. Local final suite/CI pending.
