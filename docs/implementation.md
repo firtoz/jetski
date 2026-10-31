@@ -93,6 +93,24 @@ workload-specific products.
 
 ## Latest continuation status
 
+Current published source ee4726d; CI41245684204 completed with four passing
+jobs and failed SSH job124668504629. Remote-first half-close delivered response
+bytes but settled uncertain. Preserve /tmp/jetski-gateway-drain-failed.log.
+A delayed upstream-send regression reproduces premature channel destruction:
+Node's default readable async iterator destroys the SSH duplex on readable EOF.
+The candidate uses iterator({destroyOnReturn:false}), tracks readable-end before
+ssh2's synchronous close event, and retains the bounded final receipt deadline.
+The regression now verifies both delayed writes and delayed final receipts for
+normal and remote-first half-close. Focused3tests, full93TS/70Python, build,
+typecheck and lint pass. Prior failed local delayed-input reproduction:
+/tmp/jetski-gateway-slow-input-default.log; fixed full suite:
+/tmp/jetski-gateway-duplex-full.log. A first pinned-Node focus invocation failed
+key parsing before gateway execution; the subsequent pinned focus/full runs pass.
+Next publish and observe exact follow-upCI, then CLI forwarding, capability
+discovery and real gateway lifecycle/preview/provider gates. No paid resources,
+desktop native workloads or protected experiment changes.
+
+
 CI41245312831 at1874e50 SSH job124667405633 failed: response bytes arrived,
 but forwarding receipt was uncertain at qualify-forward.ts:97. Preserve
 /tmp/jetski-gateway-forward-failed.log. Orderly SSH channel close after both EOFs

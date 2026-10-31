@@ -472,7 +472,7 @@ async function pumpTcp(
     pumpFinished = false;
   let finalDeadline: ReturnType<typeof setTimeout> | undefined;
   const finishDirection = () => {
-    if (!pumpFinished && inputEnded && outputEnded) {
+    if (!pumpFinished && !finalDeadline && inputEnded && outputEnded) {
       drained();
       finalDeadline = setTimeout(() => {
         connection.abort();
@@ -480,8 +480,17 @@ async function pumpTcp(
       }, 30000);
     }
   };
+  // Node emits readable end before an async iterator resumes after its final
+  // awaited write. ssh2 can emit close synchronously from that same end event.
+  // Preserve the pending upstream writes and receipt once both directions ended.
+  const incomingEnd = () => {
+    inputEnded = true;
+    finishDirection();
+  };
+  channel.once("end", incomingEnd);
   const input = async () => {
-    for await (const chunk of channel) {
+    // Reading EOF must not destroy the writable half of the SSH duplex.
+    for await (const chunk of channel.iterator({ destroyOnReturn: false })) {
       const bytes = Buffer.from(chunk);
       if (bytes.length > 2 * 1024 * 1024)
         throw Error("SSH input window exceeded");
@@ -532,6 +541,7 @@ async function pumpTcp(
     ]);
   } finally {
     pumpFinished = true;
+    channel.removeListener("end", incomingEnd);
     clearTimeout(finalDeadline);
   }
 }

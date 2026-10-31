@@ -317,6 +317,7 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
           abort,
           async send(bytes) {
             assert.ok(bytes.length <= 16384);
+            await new Promise((resolve) => setTimeout(resolve, 25));
             uploads.push(Buffer.from(bytes));
             if (exposure === "echo") output.write(bytes);
           },
@@ -400,7 +401,8 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
   await outcomes.get(id);
   assert.deepEqual(Buffer.concat(chunks), bytes);
   await assert.rejects(forward(a, "echo", id));
-  const half = await forward(a, "half", randomUUID());
+  const halfId = randomUUID(),
+    half = await forward(a, "half", halfId);
   half.on("error", () => {});
   const response: Buffer[] = [];
   half.on("data", (part: Buffer) => response.push(Buffer.from(part)));
@@ -409,6 +411,7 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
   const halfClosed = once(half, "close");
   half.end(bytes);
   await halfClosed;
+  await outcomes.get(halfId);
   assert.deepEqual(Buffer.concat(uploads), Buffer.concat([bytes, bytes]));
   const idleId = randomUUID(),
     idle = await forward(a, "half", idleId);
