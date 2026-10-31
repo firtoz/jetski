@@ -2,8 +2,10 @@
 
 Local storage remains the default and lives on the control-plane disk. It does not
 protect against loss of that disk. The S3 adapter is implemented behind
-`jetski/storage/s3`, but **live S3/R2 conformance and replacement recovery are not yet
-qualified**. The SDK and portable core do not import the AWS SDK.
+`jetski/storage/s3`. Live R2 passed the bounded storage and checkpoint-recovery
+checks below on October 31, 2026. **Physical-host replacement, provider outage and
+real-grace collection remain unqualified.** The SDK and portable core do not import
+the AWS SDK.
 
 Standalone configuration can select an existing bucket and dedicated namespace:
 
@@ -124,3 +126,37 @@ IDs and persistent observation records let a lost deletion acknowledgement retry
 the same object after restart. Observation and collection receipts remain in the
 metadata database; automatic metadata compaction is not implemented. Tests use an
 injected clock, not an elapsed real-time cloud qualification.
+
+
+## Live R2 evidence and checkpoint recovery runner
+
+On October 31, 2026, the storage runner passed all 12 checks against a private,
+isolated R2 bucket using a seven-day, bucket-scoped object credential. It used
+one-entry list pages, took 5,361 ms, and cleaned all six admitted fixture blobs.
+Permanent identity markers remain. This single run is functional evidence, not a
+performance comparison or a guarantee about every S3-compatible provider.
+
+`examples/qualify-checkpoint-storage.ts` uses the same optional storage configuration:
+
+```sh
+node --import tsx examples/qualify-checkpoint-storage.ts
+node --import tsx examples/qualify-checkpoint-storage.ts /private/storage-config.json
+```
+
+It creates a fresh random scope and temporary SQLite database. Two independently
+compressed binary frames exercise committed-upload acknowledgement loss, database
+and storage-client reopening, recovery without rereading the uploaded source,
+changed-frame-only upload, stable operation replay, retained shared-frame recovery,
+pins/readers, and committed-deletion acknowledgement loss followed by reopening.
+It checks all reconstructed binary bytes and deletes only explicitly admitted
+fixture objects. Failure retains the local state directory and reports safe scope
+identifiers; provider exception details and credentials are not printed.
+
+The same harness passed all 11 checks on local storage and live R2. R2 took
+4,213 ms and made exactly two adapter `put` calls: one initial frame and one changed
+frame. Both fixture blobs were cleaned; identity markers remain. Acknowledgement
+loss is injected after an adapter returns, not by disrupting the provider network.
+The collector uses a synthetic clock in this disposable scope; this is **not** an
+elapsed 24-hour cloud-GC test. The fixture tests frame bytes and publication, not
+filesystem extraction, execution-host replacement or a full API workflow. Live
+S3-backed host recovery and matched end-to-end performance remain acceptance gates.

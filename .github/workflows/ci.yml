@@ -17,6 +17,8 @@ jobs:
       - run: npm test
       - name: Qualify standalone local storage example
         run: node --import tsx examples/qualify-storage.ts
+      - name: Qualify checkpoint storage recovery
+        run: node --import tsx examples/qualify-checkpoint-storage.ts
       - run: npm run lint
       - run: python3 -m unittest discover -s host -v
       - run: pipx run --spec ruff==0.17.3 ruff check host

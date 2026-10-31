@@ -93,19 +93,32 @@ workload-specific products.
 
 ## Latest continuation status
 
-Current source: **21f8b39b72e56281096f2a42ef6b3bb433c2c360**, CI **41222561910**.
-Watcher **63739** is live; poll exact handle/run first on continuation. Unit/build/
-typecheck/lint job passed with53TypeScript+42Python tests. Runtime/SSH/API jobs
-remain running. Do not restart on an observation timeout. Priore221820 passed all4
-jobs inCI41222088859; watcher79933 exited0 and disposable resources cleaned.
+Current source before this continuation: **18fe180f1547b476e61bd9a361c7c3740e83e393**,
+CI **41222791893**, all five jobs successful. Boat fixture logs confirm actual
+host-control execution, large-input verification, corruption rejection and two
+private-directory cleanups. This is disposable Linux with an emulated provider
+envelope, not live Boat. No need to restart previous watchers.
 
-BoatTransport now sends owned-host protocol requests through bounded command/file
-APIs without retrying uncertain effects. Above48KiB, input goes to a fresh private
-temporary directory and is length/SHA-verified before dispatch, avoiding argv limits.
-Cleanup is nonrecursive, owner/mode/symlink checked. Tests use injected HTTP only;
-actual large-request script execution on disposable CI Linux is the next gate.
-Then implement automatic bootstrap and standalone Boat configuration. No live Boat
-allocation or cloud-storage request was made. Paid qualification remains unapproved.
+The isolated private R2 bucket and seven-day bucket-only object read/write token
+were explicitly approved and created. Credentials remain outside the repository;
+expiry November 7, 2026. Live storage conformance passed all12checks in5361ms,
+including one-entry pagination and fresh-client recovery. All6fixture blobs cleaned;
+permanent identity markers intentionally remain.
+
+Added a generic checkpoint-storage recovery executable and local CI step. Its11
+checks pass on local storage and live R2 (4213ms): committed upload ACK loss,
+SQLite/storage-client reopen, source-independent publication, changed-frame-only
+upload, replay, exact binary reconstruction, reader/pin/shared-frame protection,
+and deletion ACK loss/reopen. Exactly2adapter puts; bothfixture blobs cleaned.
+Faults are injected at adapter-return boundaries; GC time is synthetic and scoped
+to disposable fixtures. This does not qualify provider outage, real-grace GC,
+filesystem extraction or physical-host replacement. No paid host was allocated;
+the separate real-grace experiment was untouched. Final checks/CI pending.
+
+Next: finish Boat bootstrap/configuration, full interactive transports and live
+S3-backed execution/replacement. Keep the remaining client and matched benchmark
+gates open. Live R2 access is now available; no new credential permission is needed
+within its approved bucket scope and seven-day duration.
 
 Boat allocation/inspection/retirement implementation now exists behind its own
 subpath. HTTP fixture tests qualify frozen create replay acrossSQLite reopen,
@@ -132,8 +145,7 @@ local adapter still reads directory names, and metadata compaction is not implem
 No paid hosts, cloud storage writes or protected experiment changes occurred.
 
 Next: observe CI, then implement the remaining Boat host adapter and interactive
-transports (command cancellation, PTY, SSH gateway, previews and TCP). Live R2 still
-awaits private bucket-scoped credentials. Full provider/parity/fresh-host/client/
+transports (command cancellation, PTY, SSH gateway, previews and TCP). Live R2 functional storage checks now pass; full recovery gates remain. Full provider/parity/fresh-host/client/
 benchmark gates remain open. Keep the full acceptance matrix authoritative.
 
 The independent SSH/Podman + SQLite/local-store vertical slice now executes commands,
