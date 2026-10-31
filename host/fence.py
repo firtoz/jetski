@@ -160,6 +160,11 @@ class Fence:
                 return state
             if state["phase"] != "closed":
                 raise ValueError("release_before_close")
+            if any(
+                command["phase"] not in ("succeeded", "failed", "cancelled")
+                for command in state.get("commands", {}).values()
+            ):
+                raise ValueError("commands_unresolved")
             # Trusted supervisor verifies durable remote publication AND absence of
             # lingering processes, mounts, listeners and credentials. Never a client flag.
             if verify(lease, receipt) is not True:

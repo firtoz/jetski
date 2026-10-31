@@ -7,12 +7,14 @@ import os
 import stat
 import pathlib
 import sys
+import subprocess
 
 # Python -I excludes the script directory. Installation makes this directory
 # root-owned and not group/world writable before enabling the SSH command.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from archive import capture  # noqa: E402
+from commands import Commands  # noqa: E402
 from fence import Fence, identity  # noqa: E402
 from runtime import PodmanRuntime  # noqa: E402
 from supervisor import (  # noqa: E402
@@ -27,7 +29,7 @@ from supervisor import (  # noqa: E402
 )
 
 
-def dispatch(request, config, account, run):
+def dispatch(request, config, account, run, launch=None):
     if (
         not isinstance(request, dict)
         or set(request) != {"version", "id", "action", "payload"}
@@ -56,6 +58,29 @@ def dispatch(request, config, account, run):
             return state
     image = payload.get("image")
     runtime = PodmanRuntime(fence, run, image, DATA_ROOT, config["images"])
+    commands = Commands(fence, CONTROL_ROOT / "commands", launch)
+    if action == "command-start":
+        if launch is None:
+            raise ValueError("command_launcher_unavailable")
+        return commands.start(
+            lease,
+            payload.get("commandId"),
+            payload.get("argv"),
+            payload.get("cwd", "/workspace"),
+            payload.get("timeout", 120),
+        )
+    if action == "command-status":
+        return commands.status(lease, payload.get("commandId"))
+    if action == "command-output":
+        return commands.output(
+            lease,
+            payload.get("commandId"),
+            payload.get("channel"),
+            payload.get("offset"),
+            payload.get("bytes"),
+        )
+    if action == "command-cancel":
+        return commands.cancel(lease, payload.get("commandId"), runtime)
     if action == "create":
         with fence.locked():
             state = fence.read()
@@ -134,7 +159,18 @@ def main():
     def run(args):
         return bounded_command(runtime_argv(account) + args, CONTROL_ROOT)
 
-    result = dispatch(request, config, account, run)
+    def launch(command):
+        subprocess.Popen(
+            [sys.executable, "-I", "/opt/jetski/host/commands.py", command],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd="/",
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+        )
+
+    result = dispatch(request, config, account, run, launch)
     output = json.dumps(dict(version=1, id=request["id"], result=result), separators=(",", ":"))
     if len(output.encode("utf8")) > 2 * 1024 * 1024:
         raise ValueError("host_response_limit")

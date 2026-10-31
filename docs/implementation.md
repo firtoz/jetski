@@ -231,3 +231,17 @@ staging adoption. All original acceptance gates remain in scope. The current cod
 is an implementation checkpoint, not a v1 release. No live operations remain from
 this continuation; CI jobs are terminal and disposable listeners/containers cleaned
 within their fixtures. Check `gh run list` for the documentation commit's latest CI.
+
+2026-10-31 execution continuation: added host command admission, detached workers,
+terminal receipts and bounded binary output cursors. Identity replay observes the
+existing command; even lost worker-launch acknowledgement does not spawn another.
+Host release rejects unresolved command receipts. Worker output is bounded and
+quiescence is observed after time/output limits. Cancellation currently stops the
+whole assignment; precise per-command signals and PTYs are still required for v1.
+Six new unit tests cover replay/restart, lost launch ACK, binary cursors, stale
+leases, release exclusion and invalid specs (27 Python, 12 TypeScript tests).
+The SSH CI fixture now exercises real commands, reconnecting output, duplicate
+prevention, cancellation and a nonempty checkpoint. Await its actual CI outcome;
+source-only assertions do not qualify execution. Prior documentation CI must be
+checked independently. This continuation has made implementation progress; no
+paid hosts, desktop runtime changes or existing GC experiment changes occurred.

@@ -84,13 +84,95 @@ try {
   await assert.rejects(
     request("create", { ...payload, lease: { ...lease, generation: 2 } }),
   );
+  const waitCommand = async (commandId: string) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const result = await request("command-status", { ...payload, commandId });
+      if (
+        result &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        ["succeeded", "failed", "cancelled", "uncertain"].includes(
+          String(result.phase),
+        )
+      )
+        return result;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("Command did not reach a terminal receipt");
+  };
+  const commandId = randomUUID();
+  const argv = [
+    "/bin/sh",
+    "-ec",
+    "printf 1 >> /workspace/counter; printf 'hello\\000world' > /workspace/payload; chmod 640 /workspace/payload; ln /workspace/payload /workspace/hard; ln -s /workspace/payload /home/sandbox/link; cat /workspace/payload",
+  ];
+  await request("command-start", { ...payload, commandId, argv });
+  assert.equal((await waitCommand(commandId)).phase, "succeeded");
+  const replay = await request("command-start", {
+    ...payload,
+    commandId,
+    argv,
+  });
+  assert.ok(
+    replay &&
+      typeof replay === "object" &&
+      !Array.isArray(replay) &&
+      replay.phase === "succeeded",
+  );
+  const first = await request("command-output", {
+    ...payload,
+    commandId,
+    channel: "stdout",
+    offset: 0,
+    bytes: 4,
+  });
+  const second = await request("command-output", {
+    ...payload,
+    commandId,
+    channel: "stdout",
+    offset: 4,
+    bytes: 256,
+  });
+  if (
+    !first ||
+    !second ||
+    typeof first !== "object" ||
+    typeof second !== "object" ||
+    Array.isArray(first) ||
+    Array.isArray(second) ||
+    typeof first.base64 !== "string" ||
+    typeof second.base64 !== "string"
+  )
+    throw new Error("Invalid output receipt");
+  assert.deepEqual(
+    Buffer.concat([
+      Buffer.from(first.base64, "base64"),
+      Buffer.from(second.base64, "base64"),
+    ]),
+    Buffer.from("hello\0world"),
+  );
+  const verifyId = randomUUID();
+  await request("command-start", {
+    ...payload,
+    commandId: verifyId,
+    argv: ["/bin/sh", "-ec", 'test "$(cat /workspace/counter)" = 1'],
+  });
+  assert.equal((await waitCommand(verifyId)).phase, "succeeded");
+  const cancelId = randomUUID();
+  await request("command-start", {
+    ...payload,
+    commandId: cancelId,
+    argv: ["/bin/sh", "-c", "sleep 30"],
+  });
+  await request("command-cancel", { ...payload, commandId: cancelId });
+  assert.equal((await waitCommand(cancelId)).phase, "cancelled");
   await request("quiesce", payload);
   const checkpoint = await request("capture", payload);
   assert.ok(
     checkpoint &&
       typeof checkpoint === "object" &&
       !Array.isArray(checkpoint) &&
-      checkpoint.entries === 2,
+      checkpoint.entries === 6,
   );
   const directory = await mkdtemp(join(tmpdir(), "jetski-ssh-retention-"));
   const state = new SqliteState(join(directory, "state.sqlite"));
@@ -152,6 +234,9 @@ try {
       staleFenceDenied: true,
       capture: true,
       verifiedLocalPublication: true,
+      durableExecution: true,
+      binaryOutputReconnect: true,
+      assignmentCancellation: true,
     }),
   );
 } finally {
