@@ -93,6 +93,40 @@ workload-specific products.
 
 ## Latest continuation status
 
+Host stream admission candidate: host/streams.py persists reservation and dispatch
+intent before exec creation, with immutable stream/session identities,64active and
+4096history bounds, cancel-before-admission tombstones and no redispatch on replay.
+A stored dispatched/connected phase is historical, not broker-liveness evidence.
+Only a trusted termination verifier or verified whole-container stop settles
+cleanup; stop records delivery=unknown rather than inventing successful byte
+transfer. Fence.release refuses unresolved streams. Bootstrap/bundle manifests
+include the new module; internal authenticated control has reserve/status/cancel
+intent actions. No remote caller can supply completion proof. Actual byte broker
+and per-stream cancellation execution remain unimplemented, so TCP stays disabled.
+Local73TS/66Python tests/build/typecheck/lint pass, including restart/ACK loss,
+identity conflicts, pre-admission cancel, failed stop and release fencing. The
+installed SSH fixture now checks real control reservations, replay/tombstones and
+quiescence settlement; hosted CI pending. No paid allocation or desktop runtime
+execution; protected GC experiment unchanged. Next connect this journal to the
+qualified native relay using authenticated streaming transport and safe cancellation.
+
+Verifiedc7c7423b5270c000394cfa74014d205009b6a268 / CI41239331241 all five
+jobs passed; watcher60394 exited0. /tmp/jetski-tcp-fixture-ci.log and
+/tmp/jetski-tcp-fixture-native.log, rootless job124649713837, explicitly confirm
+TCP relay exact binary bytes, both half-closes, malformed frames, isolated workload
+loopback and owned fixture cleanup.73TS/59Python regression checks remain green.
+Earlier ea4389d run failed only its image-dependent listener fixture; retain receipt
+and do not erase that failed trial. Native relay source unchanged between runs.
+No desktop native execution or paid allocation; protected GC experiment untouched.
+Next: authenticated host-control stream admission with durable session IDs and
+lease fencing; ensure stop/revoke drains or terminates owned relay sessions before
+host reuse, then SDK/CLI/SSH forwarding and isolated authenticated HTTP/WS previews.
+BoatControlChannel currently supports bounded request/response commands only:
+actual streaming support must be qualified independently, not assumed from SSH.
+No public TCP capability enabled yet. Full provider/cache/benchmark/client/release
+acceptance remains open; goal active. Source published on main; this verified
+scratchpad-only update is uncommitted.
+
 ea4389d4faa364fcb97a90aa38d38b93b1a96ff3 / CI41239068959 rootless job
 124648943938 failed container_listener_unavailable. Native byte/half-close/error
 checks completed before the failing container check. Preserve

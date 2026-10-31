@@ -20,6 +20,7 @@ MODULES = {
     "bootstrap.py",
     "commands.py",
     "terminal_input.py",
+    "streams.py",
     "podman_exec.py",
     "command-supervisor.c",
     "control.py",

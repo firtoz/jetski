@@ -87,6 +87,41 @@ try {
   await assert.rejects(
     request("create", { ...payload, lease: { ...lease, generation: 2 } }),
   );
+  const reservedStream = randomUUID();
+  const reservation = await request("stream-reserve", {
+    ...payload,
+    streamId: reservedStream,
+    port: 8080,
+  });
+  assert.deepEqual(
+    await request("stream-reserve", {
+      ...payload,
+      streamId: reservedStream,
+      port: 8080,
+    }),
+    reservation,
+  );
+  await assert.rejects(
+    request("stream-reserve", {
+      ...payload,
+      streamId: reservedStream,
+      port: 8081,
+    }),
+  );
+  const blockedStream = randomUUID();
+  const tombstone = await request("stream-cancel", {
+    ...payload,
+    streamId: blockedStream,
+  });
+  assert.deepEqual(
+    await request("stream-reserve", {
+      ...payload,
+      streamId: blockedStream,
+      port: 8080,
+    }),
+    tombstone,
+  );
+  assert.equal((tombstone as { phase: string }).phase, "cancelled");
   const waitCommand = async (commandId: string, commandPayload = payload) => {
     for (let attempt = 0; attempt < 100; attempt++) {
       const result = await request("command-status", {
@@ -338,6 +373,13 @@ try {
   await request("command-cancel", { ...payload, commandId: cancelId });
   assert.equal((await waitCommand(cancelId)).phase, "cancelled");
   await request("quiesce", payload);
+  const stoppedStream = await request("stream-status", {
+    ...payload,
+    streamId: reservedStream,
+  });
+  assert.equal((stoppedStream as { phase: string }).phase, "cancelled");
+  assert.equal((stoppedStream as { delivery: string }).delivery, "unknown");
+  assert.equal((stoppedStream as { reason: string }).reason, "runtime_stopped");
   const checkpoint = await request("capture", payload);
   assert.ok(
     checkpoint &&
@@ -563,6 +605,7 @@ os.close(matches[0])
     JSON.stringify({
       replaySafeFileUpload: true,
       sshControl: true,
+      durableStreamAdmissionAndQuiescence: true,
       bootstrap: true,
       rootlessCreate: true,
       createReplay: true,

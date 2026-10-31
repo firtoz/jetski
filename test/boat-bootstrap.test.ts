@@ -30,7 +30,8 @@ test("Boat bootstrap journals code and policy, resumes uncertainty and rejects c
         poolId: "pool",
         images: [image],
       });
-      assert.equal(Object.keys(bundle.files).length, 15);
+      assert.equal(Object.keys(bundle.files).length, 16);
+      assert.ok(Object.hasOwn(bundle.files, "streams.py"));
       assert.equal(
         Object.keys(bundle).sort().join(","),
         "config,files,version",

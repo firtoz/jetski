@@ -165,6 +165,11 @@ class Fence:
                 for command in state.get("commands", {}).values()
             ):
                 raise ValueError("commands_unresolved")
+            if any(
+                row["phase"] not in ("closed", "cancelled")
+                for row in state.get("streams", {}).values()
+            ):
+                raise ValueError("streams_unresolved")
             # Trusted supervisor verifies durable remote publication AND absence of
             # lingering processes, mounts, listeners and credentials. Never a client flag.
             if verify(lease, receipt) is not True:

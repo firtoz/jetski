@@ -8,6 +8,7 @@ runtime account, with a clean environment and bounded output/time.
 import pathlib
 import re
 from fence import identity
+from streams import stopped_streams
 
 
 class PodmanRuntime:
@@ -147,7 +148,8 @@ class PodmanRuntime:
             if inspected["exitCode"] != 0 or inspected["stdout"].strip() != "false":
                 raise RuntimeError("runtime_quiescence_unconfirmed")
             runtime = {**runtime, "phase": "stopped"}
-            self.fence.write({**state, "runtime": runtime})
+            state = {**state, "runtime": runtime}
+            self.fence.write({**state, "streams": stopped_streams(state)})
             return runtime
 
     def remove(self, raw):

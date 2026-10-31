@@ -35,6 +35,7 @@ MODULES = (
     "control.py",
     "commands.py",
     "terminal_input.py",
+    "streams.py",
     "podman_exec.py",
     "files.py",
     "file_upload.py",

@@ -15,6 +15,7 @@ import subprocess
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from archive import capture, sync_dir  # noqa: E402
+from streams import Streams  # noqa: E402
 from terminal_input import TerminalInputs  # noqa: E402
 from commands import Commands, reconcile_workers_locked  # noqa: E402
 from files import Files  # noqa: E402
@@ -69,6 +70,13 @@ def dispatch(request, config, account, run, launch=None):
     runtime = PodmanRuntime(
         fence, run, image, DATA_ROOT, config["images"], "/opt/jetski/command-supervisor"
     )
+    streams = Streams(fence)
+    if action == "stream-reserve":
+        return streams.reserve(lease, payload.get("streamId"), payload.get("port"))
+    if action == "stream-status":
+        return streams.status(lease, payload.get("streamId"))
+    if action == "stream-cancel":
+        return streams.cancel(lease, payload.get("streamId"))
     importer = CheckpointImport(fence, ARCHIVE_ROOT, DATA_ROOT, account)
     if action == "import-begin":
         return importer.begin(
