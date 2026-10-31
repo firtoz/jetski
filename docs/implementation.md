@@ -93,6 +93,14 @@ workload-specific products.
 
 ## Latest continuation status
 
+Pressure diagnostic update:639f839 / CI41232455572 native job124629294702
+also failed; the non-tail bytes begin with the authenticated completion prefix
+(redacted), so investigate trailing provider bytes or duplicate framing. Evidence
+/tmp/jetski-pressure-diagnostic-native.log. Next diagnostic includes the bounded
+redacted decoder tail; never print nonce. First failed run41232258513 is terminal,
+watcher97186 exited1. Second run still observed by watcher7117; other jobs remain
+pending. Do not weaken completion proof or call this pressure case qualified.
+
 Terminal backpressure continuation: added bounded 64-pending-input admission and
 partial-send timeout/restart tests, including queue capacity reuse and preservation
 of uncertainty after closure. Native disposable qualification now checks exact

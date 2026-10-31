@@ -219,8 +219,10 @@ def main():
                         if channel == "stderr":
                             diagnostic = decoder.feed(chunk)
                             if diagnostic:
-                                safe = diagnostic.replace(nonces[session], b"<private>").replace(
-                                    nonces[session].hex().encode(), b"<private>"
+                                safe = (
+                                    (diagnostic + decoder.tail)
+                                    .replace(nonces[session], b"<private>")
+                                    .replace(nonces[session].hex().encode(), b"<private>")
                                 )
                                 safe = re.sub(rb"[a-f0-9]{16,}", b"<identity>", safe)
                                 raise AssertionError(
