@@ -4,13 +4,14 @@ import concurrent.futures
 import json
 import os
 import pathlib
+import secrets
 import subprocess
 import tempfile
 import threading
 import uuid
 from fence import Fence
 from runtime import PodmanRuntime
-from podman_exec import ExecApi
+from podman_exec import ExecApi, CompletionDecoder
 
 
 def main():
@@ -54,22 +55,56 @@ def main():
         runtime = PodmanRuntime(fence, run, image, data, [image])
         container = runtime.container(lease)
         sessions = []
+
+        nonces, completions = {}, {}
+
+        def create(argv):
+            session = api.create(container, argv, stdin=True)
+            nonces[session] = secrets.token_bytes(32)
+            return session
+
+        def output(session, timeout=40):
+            decoder = CompletionDecoder(nonces[session])
+            for channel, chunk in api.output(
+                session, timeout=timeout, initial_input=nonces[session]
+            ):
+                if channel == "stderr":
+                    chunk = decoder.feed(chunk)
+                if chunk:
+                    yield channel, chunk
+            completions[session] = decoder.finish()
+
         try:
             runtime.create(lease)
-            binary = api.create(
-                container,
-                ["/jetski-supervisor", "/bin/sh", "-c", "printf 'a\\000b'; printf 'err\\377' >&2"],
+            binary = create(
+                [
+                    "/jetski-supervisor",
+                    "/bin/sh",
+                    "-c",
+                    "test $(wc -c) = 0; printf 'a\\000b'; printf 'err\\377' >&2",
+                ],
             )
             sessions.append(binary)
-            output = {"stdout": b"", "stderr": b""}
-            for channel, chunk in api.output(binary, timeout=30):
-                output[channel] += chunk
-            assert output == {"stdout": b"a\0b", "stderr": b"err\xff"}, output
+            binary_output = {"stdout": b"", "stderr": b""}
+            for channel, chunk in output(binary, timeout=30):
+                binary_output[channel] += chunk
+            assert binary_output == {"stdout": b"a\0b", "stderr": b"err\xff"}, binary_output
+            assert completions[binary] == dict(cancelled=False, exitCode=0, descendantsReaped=True)
             assert api.inspect(binary)["ExitCode"] == 0
+            killed = create(
+                ["/jetski-supervisor", "/bin/sh", "-c", "printf killed; kill -KILL $PPID"]
+            )
+            sessions.append(killed)
+            try:
+                list(output(killed, timeout=30))
+            except ValueError as error:
+                assert "completion_unconfirmed" in str(error)
+            else:
+                raise AssertionError("Killed supervisor falsely reported clean completion")
+            assert killed not in completions
             api.remove(binary)
             api.remove(binary)
-            victim = api.create(
-                container,
+            victim = create(
                 [
                     "/jetski-supervisor",
                     "/bin/sh",
@@ -77,8 +112,7 @@ def main():
                     "sleep 120 & echo $! > /workspace/victim-child; printf ready; wait",
                 ],
             )
-            survivor = api.create(
-                container,
+            survivor = create(
                 ["/jetski-supervisor", "/bin/sh", "-c", "printf live; sleep 3; printf survived"],
             )
             sessions.extend([victim, survivor])
@@ -86,7 +120,7 @@ def main():
 
             def consume(session):
                 collected = b""
-                for channel, chunk in api.output(session, timeout=40):
+                for channel, chunk in output(session, timeout=40):
                     assert channel == "stdout"
                     collected += chunk
                     ready[session].set()
@@ -111,10 +145,10 @@ def main():
                     "test ! -e /proc/$(cat /workspace/victim-child)/stat",
                 ]
             )
+            assert completions[victim] == dict(cancelled=True, exitCode=143, descendantsReaped=True)
             assert child_check["exitCode"] == 0, "Cancelled session left a live descendant"
             assert api.inspect(survivor)["ExitCode"] == 0
-            detached = api.create(
-                container,
+            detached = create(
                 [
                     "/jetski-supervisor",
                     "/bin/sh",
@@ -127,7 +161,7 @@ def main():
 
             def detached_stream():
                 data = b""
-                for channel, chunk in api.output(detached, timeout=40):
+                for channel, chunk in output(detached, timeout=40):
                     assert channel == "stdout"
                     data += chunk
                     detached_ready.set()
@@ -148,6 +182,9 @@ def main():
                     "test ! -e /proc/$(cat /workspace/detached-child)/stat",
                 ]
             )
+            assert completions[detached] == dict(
+                cancelled=True, exitCode=143, descendantsReaped=True
+            )
             assert detached_check["exitCode"] == 0, "Detached descendant was not reaped"
             assert (
                 run(["inspect", "--format", "{{.State.Running}}", container])["stdout"].strip()
@@ -159,6 +196,8 @@ def main():
                     dict(
                         rootless=True,
                         binaryStreams=True,
+                        authenticatedCompletion=True,
+                        killedSupervisorRejected=True,
                         independentSessionRemoval=True,
                         ordinaryDescendantReaped=True,
                         detachedDescendantReaped=True,

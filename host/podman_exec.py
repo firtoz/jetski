@@ -92,13 +92,13 @@ class ExecApi:
         finally:
             connection.close()
 
-    def create(self, container, argv, cwd="/workspace", tty=False):
+    def create(self, container, argv, cwd="/workspace", tty=False, stdin=False):
         from commands import specification
 
         specification(argv, cwd, 120)
         if not isinstance(container, str) or not re.fullmatch("jetski-[a-f0-9-]{36}", container):
             raise ValueError("invalid_exec_container")
-        if type(tty) is not bool:
+        if type(tty) is not bool or type(stdin) is not bool:
             raise ValueError("invalid_exec_tty")
         _, result = self.request(
             "POST",
@@ -108,7 +108,7 @@ class ExecApi:
                 "WorkingDir": cwd,
                 "User": "1000:1000",
                 "Privileged": False,
-                "AttachStdin": False,
+                "AttachStdin": stdin,
                 "AttachStdout": True,
                 "AttachStderr": True,
                 "Tty": tty,
@@ -131,7 +131,7 @@ class ExecApi:
         if status != 404:
             raise ValueError("exec_removal_unconfirmed")
 
-    def output(self, session, timeout=150):
+    def output(self, session, timeout=150, initial_input=b""):
         """Starts once; yields binary stdout/stderr frames until remote closure.
 
         Do not call again after an exception. EOF is not exit-status evidence;
@@ -140,6 +140,8 @@ class ExecApi:
         session_id(session)
         if type(timeout) is not int or not 1 <= timeout <= 3630:
             raise ValueError("invalid_exec_stream_deadline")
+        if not isinstance(initial_input, bytes) or len(initial_input) > 4096:
+            raise ValueError("exec_initial_input_bound")
         connection = self.connection(timeout)
         response = None
         try:
@@ -149,9 +151,12 @@ class ExecApi:
                 json.dumps({"Detach": False, "Tty": False}),
                 {"Content-Type": "application/json", "Connection": "Upgrade", "Upgrade": "tcp"},
             )
+            wire = connection.sock
             response = connection.getresponse()
             if response.status not in (101, 200) or response.fp is None:
                 raise ValueError("exec_attach_failed")
+            if initial_input:
+                wire.sendall(initial_input)
             # HTTP upgrade's body has no Content-Length; use its buffered socket
             # stream directly rather than HTTPResponse's zero-length 101 body.
             yield from frames(response.fp)
@@ -159,3 +164,42 @@ class ExecApi:
             if response is not None:
                 response.close()
             connection.close()
+
+
+class CompletionDecoder:
+    """Keep only a fixed stderr tail; a missing/forged receipt is uncertainty.
+
+    Workload stdout is untouched. The authenticated control tail never reaches
+    client output. Feed all stderr, then finish only after the attach stream ends.
+    """
+
+    def __init__(self, nonce):
+        if not isinstance(nonce, bytes) or len(nonce) != 32:
+            raise ValueError("invalid_completion_nonce")
+        self.prefix = b"\0jetski-complete-v1:" + nonce.hex().encode() + b":"
+        self.extent = len(self.prefix) + 6
+        self.tail = b""
+        self.done = False
+
+    def feed(self, data):
+        if self.done or not isinstance(data, bytes):
+            raise ValueError("invalid_completion_stream")
+        full = self.tail + data
+        boundary = max(0, len(full) - self.extent)
+        self.tail = full[boundary:]
+        return full[:boundary]
+
+    def finish(self):
+        if self.done:
+            raise ValueError("completion_already_consumed")
+        self.done = True
+        if len(self.tail) != self.extent or not self.tail.startswith(self.prefix):
+            raise ValueError("supervisor_completion_unconfirmed")
+        suffix = self.tail[len(self.prefix) :]
+        if not re.fullmatch(rb"[01]:[0-9]{3}\x00", suffix):
+            raise ValueError("invalid_supervisor_completion")
+        code = int(suffix[2:5])
+        if code > 255 or (suffix[0:1] == b"1" and code != 143):
+            raise ValueError("invalid_supervisor_exit")
+        self.tail = b""
+        return {"cancelled": suffix[0:1] == b"1", "exitCode": code, "descendantsReaped": True}

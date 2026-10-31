@@ -93,6 +93,34 @@ workload-specific products.
 
 ## Latest continuation status
 
+Completion-proof continuation: prior supervisor turn was verified progress with
+all five CI jobs passing. Added a 256-bit per-command nonce delivered over private
+attach stdin only after the supervisor disables dumpability. The child erases its
+copy and receives /dev/null stdin; no nonce appears in argv/environment. After
+ECHILD, the supervisor writes an authenticated trailing stderr receipt distinguishing
+normal exit from cancellation. A bounded decoder removes that control tail from
+user output and rejects absent, truncated, altered or trailing-data receipts.
+Local46Python tests include all marker split points and wrong-nonce rejection.
+The disposable fixture now requires exact receipts for natural and cancelled exits,
+checks workload stdin is empty, and kills the supervisor to prove missing completion
+cannot be accepted. Public worker/core/API cancellation integration remains pending;
+this is a required integrity prerequisite, not a replacement for the full gate.
+No paid host, desktop runtime or protected GC experiment changes occurred.
+
+Current candidate **d4de9c120d78260177f530608c785741642e6d88**, CI **41225207351**
+passed all five jobs; watcher45820 exited0. Rootless job124607809083 confirms
+ordinary and detached descendants fully reaped, exact binary streams, repeated
+removal, surviving independent command and running sandbox. Cleanup completed.
+Retained failure41224774233 is terminal and must not be restarted. Native C was
+compiled/run only in disposable CI; local check was syntax-only.
+
+Next integrate the verified supervisor into host installation and command workers,
+with durable session/start/cancel identities and completion proof. Do not infer
+successful cancellation solely from an absent exec session: forced supervisor death
+or a failed cleanup can remove the session without proving descendants are gone.
+Then expose cancel through core/API/SDK/CLI with owner/generation checks and lost-ACK
+replay tests. Interactive/PTy/network, hosted replacement/client/benchmark gates remain.
+
 Supervisor continuation: prior failed run41224774233 is terminal failure, with the
 new live-descendant assertion as its root cause; this was verified progress, not a
 passing cancellation qualification. Implemented a tiny Linux C subreaper prototype.

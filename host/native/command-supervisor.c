@@ -4,6 +4,8 @@
  */
 #define _GNU_SOURCE
 #include <errno.h>
+#include <fcntl.h>
+#include <string.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,9 +52,21 @@ int main(int argc, char **argv) {
     action.sa_handler = cancel;
     sigemptyset(&action.sa_mask);
     if (sigaction(SIGTERM, &action, NULL) || sigaction(SIGINT, &action, NULL)) return 125;
+    unsigned char nonce[32];
+    size_t received = 0;
+    while (received < sizeof(nonce)) {
+        ssize_t n = read(STDIN_FILENO, nonce + received, sizeof(nonce) - received);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return 125;
+        received += (size_t)n;
+    }
     pid_t leader = fork();
     if (leader < 0) return 125;
     if (leader == 0) {
+        explicit_bzero(nonce, sizeof(nonce));
+        int null_input = open("/dev/null", O_RDONLY);
+        if (null_input < 0 || dup2(null_input, STDIN_FILENO) < 0) _exit(125);
+        if (null_input != STDIN_FILENO) close(null_input);
         signal(SIGTERM, SIG_DFL);
         signal(SIGINT, SIG_DFL);
         if (setsid() < 0) _exit(125);
@@ -77,7 +91,20 @@ int main(int argc, char **argv) {
                 else if (WIFSIGNALED(status)) leader_result = 128 + WTERMSIG(status);
             }
         }
-        if (child < 0 && errno == ECHILD) return cancelling ? 143 : leader_result;
+        if (child < 0 && errno == ECHILD) {
+            /* The nonce arrived only after dumpability was disabled, via the
+             * private attach input, and was erased from the child before exec.
+             * Only this supervisor can authenticate the final cleanup receipt.
+             */
+            char hex[65];
+            for (size_t i = 0; i < sizeof(nonce); i++) snprintf(hex + i * 2, 3, "%02x", nonce[i]);
+            int result = cancelling ? 143 : leader_result;
+            if (write(STDERR_FILENO, "\0", 1) != 1 ||
+                dprintf(STDERR_FILENO, "jetski-complete-v1:%s:%d:%03d", hex, !!cancelling, result) < 0 ||
+                write(STDERR_FILENO, "\0", 1) != 1) return 125;
+            explicit_bzero(nonce, sizeof(nonce));
+            return result;
+        }
         if (child < 0 && errno != EINTR) return 125;
         struct timespec delay = {0, 10000000};
         nanosleep(&delay, NULL);

@@ -1,7 +1,7 @@
 import io
 import struct
 import unittest
-from podman_exec import ExecApi, frames, session_id
+from podman_exec import ExecApi, CompletionDecoder, frames, session_id
 
 
 class ExecProtocolTests(unittest.TestCase):
@@ -33,3 +33,29 @@ class ExecProtocolTests(unittest.TestCase):
         for value in (0, True, "1000"):
             with self.assertRaises(ValueError):
                 ExecApi(value)
+
+    def test_completion_proof_is_required_and_not_output(self):
+        nonce = bytes(range(32))
+        marker = b"\0jetski-complete-v1:" + nonce.hex().encode() + b":1:143\0"
+        output = b"binary\0\xff" * 100
+        for split in range(1, len(marker) + 1):
+            decoder = CompletionDecoder(nonce)
+            result = b""
+            data = output + marker
+            for offset in range(0, len(data), split):
+                result += decoder.feed(data[offset : offset + split])
+            self.assertEqual(result, output)
+            self.assertEqual(
+                decoder.finish(), dict(cancelled=True, exitCode=143, descendantsReaped=True)
+            )
+        for tail in (
+            b"",
+            marker[:-1],
+            marker.replace(b":143", b":000"),
+            marker + b"unexpected",
+            marker.replace(b"000102", b"ffffff"),
+        ):
+            decoder = CompletionDecoder(nonce)
+            decoder.feed(tail)
+            with self.assertRaises(ValueError):
+                decoder.finish()
