@@ -16,6 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from archive import capture  # noqa: E402
 from commands import Commands  # noqa: E402
+from files import Files  # noqa: E402
 from import_checkpoint import CheckpointImport  # noqa: E402
 from fence import Fence, identity  # noqa: E402
 from runtime import PodmanRuntime  # noqa: E402
@@ -71,6 +72,23 @@ def dispatch(request, config, account, run, launch=None):
         )
     if action == "import-finish":
         return importer.finish(lease)
+    files = Files(fence, DATA_ROOT, account.pw_uid)
+    if action == "file-read":
+        return files.read(
+            lease,
+            payload.get("path"),
+            payload.get("offset"),
+            payload.get("bytes"),
+            payload.get("expectedVersion"),
+        )
+    if action == "file-list":
+        return files.listing(
+            lease,
+            payload.get("path"),
+            payload.get("after", ""),
+            payload.get("limit", 256),
+            payload.get("expectedVersion"),
+        )
     commands = Commands(fence, CONTROL_ROOT / "commands", launch)
     if action == "command-start":
         if launch is None:

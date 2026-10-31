@@ -78,3 +78,15 @@ cancels its placement without executing it. Undispatched allocation reservations
 are discarded; already dispatched allocations are reconciled under their original
 identity and any resulting idle host is retired normally. Starting and quarantined
 placements must currently resolve before deletion is accepted.
+
+Persistent-file inspection uses `GET /v1/sandboxes/{id}/files/read` and `files/list`.
+The SDK exposes `readFile`, `readFileStream` and `listFiles`. Reads return bounded
+256 KiB base64 chunks with digest, extent and version tokens. The streaming helper
+verifies each digest and rejects a changed version or stalled cursor. Listings
+return at most 256 entries per page and reject directories exceeding 10,000 entries.
+Pass the prior version on subsequent pages to detect directory-entry changes.
+These are observations of live files, not consistent snapshots of active workloads.
+The API exposes only declared persistent paths, rejects symlink traversal and
+special-file reads, and never resolves arbitrary host paths. Symlinks are listed
+as metadata. Invalid UTF-8 names fail listing rather than being silently changed.
+File writes and a dedicated CLI file command remain unimplemented.

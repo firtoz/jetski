@@ -93,6 +93,9 @@ export function createHttpServer(
           releaseQualified: false,
           commands: true,
           outputCursors: true,
+          fileRead: true,
+          fileList: true,
+          fileWrite: false,
           pty: false,
           previews: false,
           tcpForwarding: false,
@@ -187,6 +190,42 @@ export function createHttpServer(
           await manager.resume(scope, string(input.operationId)),
         );
         return;
+      }
+      if (
+        parts.length === 5 &&
+        parts[3] === "files" &&
+        request.method === "GET"
+      ) {
+        const path = string(url.searchParams.get("path"));
+        const expectedVersion = url.searchParams.get("version") ?? undefined;
+        if (parts[4] === "read") {
+          send(
+            response,
+            200,
+            await manager.readFile(
+              scope,
+              path,
+              Number(url.searchParams.get("offset") ?? 0),
+              Number(url.searchParams.get("bytes") ?? 65536),
+              expectedVersion,
+            ),
+          );
+          return;
+        }
+        if (parts[4] === "list") {
+          send(
+            response,
+            200,
+            await manager.listFiles(
+              scope,
+              path,
+              url.searchParams.get("after") ?? "",
+              Number(url.searchParams.get("limit") ?? 256),
+              expectedVersion,
+            ),
+          );
+          return;
+        }
       }
       if (parts[3] === "commands") {
         if (parts.length === 4 && request.method === "POST") {

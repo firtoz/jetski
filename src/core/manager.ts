@@ -11,6 +11,7 @@ import {
   type StateStore,
   scopeKey,
 } from "./contracts.js";
+import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
 import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
 import { restoreCheckpoint } from "./restore.js";
@@ -636,6 +637,63 @@ export class SandboxManager {
       image: admission.record.image,
       commandId: id,
       ...spec,
+    });
+  }
+  async readFile(
+    scope: Scope,
+    path: string,
+    offset = 0,
+    bytes = FILE_CHUNK_BYTES,
+    expectedVersion?: string,
+  ): Promise<Json> {
+    persistentPath(path);
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(bytes) ||
+      bytes < 1 ||
+      bytes > FILE_CHUNK_BYTES
+    )
+      throw Error("Invalid file range");
+    const sandbox = await this.get(scope);
+    if (!sandbox?.lease || sandbox.phase !== "running" || sandbox.pendingResume)
+      throw Error("Sandbox unavailable");
+    return this.request(sandbox.lease, "file-read", {
+      lease: sandbox.lease,
+      image: sandbox.image,
+      path,
+      offset,
+      bytes,
+      expectedVersion: expectedVersion ?? null,
+    });
+  }
+  async listFiles(
+    scope: Scope,
+    path: string,
+    after = "",
+    limit = 256,
+    expectedVersion?: string,
+  ): Promise<Json> {
+    persistentPath(path);
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 256 ||
+      after.includes("/") ||
+      after.includes("\0") ||
+      new TextEncoder().encode(after).length > 255
+    )
+      throw Error("Invalid listing range");
+    const sandbox = await this.get(scope);
+    if (!sandbox?.lease || sandbox.phase !== "running" || sandbox.pendingResume)
+      throw Error("Sandbox unavailable");
+    return this.request(sandbox.lease, "file-list", {
+      lease: sandbox.lease,
+      image: sandbox.image,
+      path,
+      after,
+      limit,
+      expectedVersion: expectedVersion ?? null,
     });
   }
   private async command(scope: Scope, id: string) {

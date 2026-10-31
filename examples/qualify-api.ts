@@ -179,6 +179,19 @@ try {
     `/v1/sandboxes/${id}/commands/${commandId}/output`,
   );
   assert.equal(Buffer.from(output.base64, "base64").toString(), "api-ok");
+  const fileParts: Uint8Array[] = [];
+  for await (const part of client.readFileStream(id, "/workspace/api-counter"))
+    fileParts.push(part);
+  assert.equal(Buffer.concat(fileParts).toString(), "1");
+  const files = await client.listFiles(id, "/workspace");
+  assert.ok(
+    files.entries.some(
+      (entry) => entry.name === "api-counter" && entry.kind === "file",
+    ),
+  );
+  await assert.rejects(
+    new JetskiClient(url, foreignToken).readFile(id, "/workspace/api-counter"),
+  );
   await manager.retainCommand(
     { owner: "qualification", sandbox: id },
     commandId,
@@ -494,6 +507,7 @@ try {
       assignedDeletion: true,
       queuedDeletion: true,
       proactiveExpiryCheckpoint: true,
+      boundedFileReadAndList: true,
       completeLifecycle: false,
     }),
   );

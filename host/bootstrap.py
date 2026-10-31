@@ -34,6 +34,7 @@ MODULES = (
     "supervisor.py",
     "control.py",
     "commands.py",
+    "files.py",
     "import_checkpoint.py",
 )
 

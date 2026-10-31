@@ -1,5 +1,6 @@
 export * from "./checkpoints.js";
 export * from "./contracts.js";
+export * from "./files.js";
 export * from "./manager.js";
 export * from "./operations.js";
 export type { HostLease } from "./pool.js";

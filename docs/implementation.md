@@ -91,6 +91,29 @@ modifications. Local qualification first. Keep private operational receipts outs
 this repository. Public content must not name downstream private applications or
 workload-specific products.
 
+## Latest continuation status
+
+Current implementation remains a preview, not a completed release. Expiry draining
+is verified at **4c3f2a0917f260e1d13703ff4481edbb5e33abca**, CI **41215226690**:
+all four jobs successful; API logs confirm proactiveExpiryCheckpoint=true. The test
+uses an injected controller clock, not a real provider forced deadline.
+
+The next change adds bounded persistent-file read/list host handlers, owner-scoped
+API routes and SDK download iteration. Descriptor-relative traversal refuses links,
+special files and foreign-owned inodes; the final inode is pinned before opening
+for data. Chunk digests/version tokens detect changed/corrupt reads; pagination is
+bounded and fails closed on changed directories. Tests cover binary/Unicode/empty
+files, stale scopes, traversal, FIFO rejection and path-replacement races. All 66
+unit tests, build/typecheck/Biome/Ruff pass. Real SSH/API file-read qualification is
+pending CI. File writes, dedicated CLI file commands and complete interactive
+transports remain open. Live reads do not promise a filesystem snapshot.
+
+Next: observe exact-SHA CI, then complete replay-safe file writes and remaining
+interactive/API scope; preserve the orphan-reader/multi-controller, full GC,
+Boat/S3/R2, physical replacement, staging integration and matched benchmark gates.
+No paid host resources or separate GC experiment changes occurred. Do not claim
+release completion from the currently green subset.
+
 ## Current evidence and next actions
 
 2026-10-31: initialized empty main branch; no historical source imported. No host

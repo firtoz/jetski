@@ -572,6 +572,132 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{sandbox}/files/read": {
+      "get": {
+        "summary": "Read a bounded binary file chunk",
+        "description": "Live persistent-path observations; no symlink following. No snapshot guarantee. Directory scans are capped at 10000 entries.",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Previous observation token; rejects detectable changes"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "bytes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 262144
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Base64 chunk with SHA-256, offsets, size, EOF and version"
+          },
+          "400": {
+            "description": "Invalid path, stale version or unavailable assignment"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sandbox outside principal scope"
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{sandbox}/files/list": {
+      "get": {
+        "summary": "List a bounded directory page",
+        "description": "Live persistent-path observations; no symlink following. No snapshot guarantee. Directory scans are capped at 10000 entries.",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Previous observation token; rejects detectable changes"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entries, next cursor and version"
+          },
+          "400": {
+            "description": "Invalid path, stale version or unavailable assignment"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sandbox outside principal scope"
+          }
+        }
+      }
     }
   },
   "components": {
