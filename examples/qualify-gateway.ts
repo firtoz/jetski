@@ -6,6 +6,7 @@ import ssh2 from "ssh2";
 import type { SandboxManager } from "../src/core/manager.js";
 import type { JetskiClient } from "../src/sdk.js";
 import { createSshGateway } from "../src/server/ssh.js";
+import { fixtureSshKey } from "./fixture-ssh-key.js";
 
 export async function qualifyGateway(
   manager: SandboxManager,
@@ -14,8 +15,8 @@ export async function qualifyGateway(
 ) {
   if (process.env.GITHUB_ACTIONS !== "true")
     throw Error("disposable_ci_required");
-  const host = ssh2.utils.generateKeyPairSync("ed25519"),
-    key = ssh2.utils.generateKeyPairSync("ed25519");
+  const host = fixtureSshKey(),
+    key = fixtureSshKey();
   const parsed = ssh2.utils.parseKey(host.public);
   assert.ok(!(parsed instanceof Error) && !Array.isArray(parsed));
   const hostBytes = parsed.getPublicSSH();

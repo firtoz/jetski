@@ -13,6 +13,7 @@ import ssh2, {
   type ParsedKey,
   type Client as SshClient,
 } from "ssh2";
+import { fixtureSshKey } from "../examples/fixture-ssh-key.js";
 
 const { Client, utils } = ssh2;
 
@@ -20,10 +21,10 @@ import { forwardTcp } from "../src/client/forward.js";
 import type { Json, Scope } from "../src/core/contracts.js";
 import { createSshGateway, type SshGatewayBackend } from "../src/server/ssh.js";
 
-const host = utils.generateKeyPairSync("ed25519");
-const alice = utils.generateKeyPairSync("ed25519");
-const bob = utils.generateKeyPairSync("ed25519");
-const stranger = utils.generateKeyPairSync("ed25519");
+const host = fixtureSshKey();
+const alice = fixtureSshKey();
+const bob = fixtureSshKey();
+const stranger = fixtureSshKey();
 
 test("SSH gateway authenticates keys, scopes attachments, denies host commands and forwards bounded input", {
   timeout: 15000,

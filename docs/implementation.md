@@ -113,7 +113,17 @@ preserve real SSH/Podman helper half-close qualification and owned fixture clean
 Actual CLI subprocess/config/stream-ID/byte transfer/SIGTERM listener cleanup now
 passes locally (93TS full suite, /tmp/jetski-cli-subprocess-full.log).
 Documentation no longer claims the implemented SSH gateways are absent.
-These additional test/docs changes are ready for publication; final exact-SHA CI pending.
+Final source3255382d6d7c702a9ca1384efe4015f1003d7315 published;
+CI41246931975 failed SSH job124672196252; other four jobs passed.
+/tmp/jetski-cli-final-ssh-failure.log preserves fixture key parse failure before
+forwarding. Installed ssh2/lib/keygen.js trims all leading zeros from Ed25519
+BIT STRING content, reducing a32byte key when its first byte is0. This explains
+the earlier intermittent local key parse failure. Replaced qualification-only key
+generation with Node crypto plus fixed-width OpenSSH serialization; all runtime
+key parsers remain strict and unchanged. Added deterministic leading-zero fixture
+with parse/public-private equality/signature verification.94TS/build/typecheck/lint
+pass (/tmp/jetski-cli-key-fix-tests.log); prior70Python checks passed unchanged.
+Next publish key fixture fix and observe exactCI before proceeding.
 Capability discovery, HTTP/WS previews,
 full gateway lifecycle and remaining provider/client/benchmark gates remain open.
 No paid hosts, operator runtime changes or protected experiment changes.
