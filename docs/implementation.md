@@ -93,16 +93,43 @@ workload-specific products.
 
 ## Latest continuation status
 
-Published correction c5c4031efd939e27282d8a1b878f9cc55ab22507 is running
-CI41241791737; watcher15220 logs /tmp/jetski-stream-fix-ci.log. Local73TS/70Python
-checks pass. Follow-up portable frame decoder uses fixed16KiB pending storage,
-strict readiness/direction/FIN validation and immutable yielded bytes. Truncation,
-invalid lengths/tags, post-FIN bytes and abandoned iteration fail closed. The
-installed SSH fixture now uses this same codec instead of a separate parser.
-Local77TS tests/build/typecheck/lint pass; hosted codec verification pending.
-Public forwarding stays disabled until core permission/revocation, bounded SSH
-stream transport and lifecycle cleanup are integrated. Next qualify fixes/codec,
-then implement that transport without retries or unbounded queues.
+Reusable SSH duplex transport candidate: portable HostConnection contract plus
+SshTransport.open with pinned host keys, scrubbed child environment, fixed host
+control command, immutable stream UUID/header and exact host-lease match. Node
+bridge awaits authenticated R before returning, bounds writes16KiB with a5second
+backpressure deadline, rejects concurrent writes, and exposes one pull-driven
+output reader. Both FINs plus host exit0 are required for completion; abort,
+malformed data, nonzero exit or abandoned iteration retain uncertainty and never
+reopen/replay. Admission30seconds and lifetime1hour bound owned SSH processes.
+Local bridge tests use in-memory streams only; installed CI fixture now exercises
+the reusable adapter against the real container listener and rejects duplicate
+stream IDs. Existing raw-wire cancellation tests remain. Local81TS/70Python tests/build/typecheck/lint pass; hosted
+qualification pending for this candidate. No paid resources or desktop workloads.
+Next wire durable core stream admission and active permission revocation before
+public TCP/preview availability; physical provider and all full release gates stay
+open. Previous turn classified as progress: verified fixes and portable framing.
+
+
+Current published source4fa662bf1cc06473bf035882b16c3d73577593ec, CI41241951403.
+All five jobs passed; watcher65078 exited0. /tmp/jetski-stream-codec-ci.log
+and /tmp/jetski-stream-codec-api.log retain terminal CI and API recovery evidence.
+SSH job124657475978 receipt /tmp/jetski-stream-codec-ssh.log confirms
+authenticatedRelayBytesAndCancellation=true with the shared portable decoder.
+Local77TS/70Python tests/build/typecheck/linters pass. Decoder uses fixed16KiB
+pending storage, strict readiness/direction/FIN validation and immutable yielded
+bytes; malformed/truncated frames and abandoned iteration fail closed.
+Next implement bounded authenticated SSH streaming and connect
+core port authorization/revocation with durable stream identities. Keep public
+forwarding/previews disabled until this whole path and cleanup are qualified.
+Physical Boat streaming, provider/cache/benchmark/client/release gates remain open.
+No paid hosts, desktop runtime execution or protected experiment changes.
+Executable source is published; this verified scratchpad update is uncommitted.
+
+Prior correction c5c4031efd939e27282d8a1b878f9cc55ab22507 passed all five jobs
+in CI41241791737; watcher15220 exited0. Logs /tmp/jetski-stream-fix-ci.log,
+/tmp/jetski-stream-fix-ssh.log and /tmp/jetski-stream-fix-boat.log confirm
+relay bytes/cancellation plus emulated-provider bootstrap ACK recovery and cleanup.
+Boat fixture is real installed host control on disposable CI, not live Boat.
 
 
 CI41241321510 at e36a041 completed with three passing jobs and two failures.

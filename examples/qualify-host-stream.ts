@@ -10,7 +10,11 @@ import {
   STREAM_MAGIC,
   StreamDecoder,
 } from "../src/core/stream-protocol.js";
-import { type SshHost, sshArguments } from "../src/transport/ssh.js";
+import {
+  type SshHost,
+  SshTransport,
+  sshArguments,
+} from "../src/transport/ssh.js";
 
 export async function qualifyHostStream(
   host: SshHost,
@@ -209,4 +213,32 @@ export async function qualifyHostStream(
   const interruptedServer = await wait(next);
   assert.equal(interruptedServer.phase, "failed");
   assert.equal(interruptedServer.exitCode, 1);
+  const adapterServer = await startServer(false);
+  const transport = new SshTransport([host]);
+  const adapterId = randomUUID();
+  const connection = await transport.open(host.id, {
+    ...payload,
+    streamId: adapterId,
+    port: 18080,
+  });
+  await connection.send(
+    Buffer.from("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"),
+  );
+  await connection.end();
+  const adapterBytes: Uint8Array[] = [];
+  for await (const part of connection.output) adapterBytes.push(part);
+  await connection.completed;
+  assert.ok(Buffer.concat(adapterBytes).toString().endsWith("relay-container"));
+  assert.equal(
+    (
+      (await request("stream-status", { ...payload, streamId: adapterId })) as {
+        phase: string;
+      }
+    ).phase,
+    "closed",
+  );
+  await assert.rejects(
+    transport.open(host.id, { ...payload, streamId: adapterId, port: 18080 }),
+  );
+  await stopServer(adapterServer);
 }

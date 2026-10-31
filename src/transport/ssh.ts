@@ -1,6 +1,13 @@
 import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 import { identifier } from "../core/contracts.js";
+import type {
+  HostConnection,
+  HostStreamRequest,
+  HostStreamTransport,
+} from "../core/host-stream.js";
+import { tcpPort } from "../core/ports.js";
+import { STREAM_MAGIC } from "../core/stream-protocol.js";
 import {
   HOST_PROTOCOL_VERSION,
   type HostRequest,
@@ -8,6 +15,7 @@ import {
   type HostTransport,
   HostTransportError,
 } from "../core/transport.js";
+import { attachHostStream } from "./host-stream.js";
 
 export type SshHost = {
   id: string;
@@ -64,7 +72,7 @@ export function sshArguments(host: SshHost): string[] {
     "env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py",
   ];
 }
-export class SshTransport implements HostTransport {
+export class SshTransport implements HostTransport, HostStreamTransport {
   private readonly hosts: Map<string, SshHost>;
   constructor(
     hosts: SshHost[],
@@ -82,6 +90,60 @@ export class SshTransport implements HostTransport {
       if (this.hosts.has(host.id)) throw new Error("Duplicate SSH host");
       this.hosts.set(host.id, structuredClone(host));
     }
+  }
+  async open(
+    hostId: string,
+    request: HostStreamRequest,
+    signal?: AbortSignal,
+  ): Promise<HostConnection> {
+    const host = this.hosts.get(hostId);
+    if (!host) throw Error("SSH host not configured");
+    if (
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
+        request.streamId,
+      )
+    )
+      throw Error("Canonical stream UUID required");
+    tcpPort(request.port);
+    if (request.lease.machineId !== hostId) throw Error("Stream host mismatch");
+    const body = Buffer.from(
+      JSON.stringify({
+        version: HOST_PROTOCOL_VERSION,
+        id: request.streamId,
+        action: "stream-open",
+        payload: request,
+      }),
+    );
+    if (body.length > 16384) throw Error("Stream header bound exceeded");
+    signal?.throwIfAborted();
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(body.length);
+    const child = spawn("ssh", sshArguments(host), {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LANG: "C.UTF-8" },
+    });
+    let stderrBytes = 0;
+    const closed = new Promise<number | null>((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", resolve);
+      child.stderr.on("data", (bytes: Buffer) => {
+        stderrBytes += bytes.length;
+        if (stderrBytes > 65536)
+          reject(new HostTransportError("Host diagnostic bound exceeded"));
+      });
+    });
+    return attachHostStream(
+      {
+        input: child.stdin,
+        output: child.stdout,
+        closed,
+        terminate: () => {
+          child.kill("SIGKILL");
+        },
+      },
+      Buffer.concat([Buffer.from(STREAM_MAGIC), length, body]),
+      signal,
+    );
   }
   async request(
     hostId: string,
