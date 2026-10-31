@@ -143,3 +143,10 @@ transport, bootstrap and server integration remain open. Rootless runtime CI now
 uses a disposable runner, resolves an explicit fixture image to a digest, and tests
 source-deleted filesystem recovery into a fresh container. Its result is pending;
 this is not a replacement-host or remote-store test. No desktop runtime was used.
+
+First rootless CI run 41206794034 failed after successful container startup because
+the fixture attempted to create a hardlink across two bind mounts (Linux EXDEV).
+The runtime fixture now creates hardlinks within /workspace; independent archive
+tests still prove preservation of pre-existing cross-root hardlinks. Separate bind
+mounts retain normal Linux mount-boundary link semantics. This failure is retained
+in CI; it is not a checkpoint or Podman-start success claim.

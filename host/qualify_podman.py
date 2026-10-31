@@ -56,7 +56,7 @@ def main():
                     runtime.container(lease),
                     "/bin/sh",
                     "-ec",
-                    "test $(id -u) = 1000; printf 'hello\\000world' > /workspace/file; chmod 640 /workspace/file; ln /workspace/file /home/sandbox/hard; ln -s /workspace/file /home/sandbox/link; mkdir /workspace/dir; chmod 750 /workspace/dir",
+                    "test $(id -u) = 1000; printf 'hello\\000world' > /workspace/file; chmod 640 /workspace/file; ln /workspace/file /workspace/hard; ln -s /workspace/file /home/sandbox/link; mkdir /workspace/dir; chmod 750 /workspace/dir",
                 ]
             )
             if result["exitCode"]:
@@ -89,7 +89,7 @@ def main():
                     runtime.container(replacement),
                     "/bin/sh",
                     "-ec",
-                    'test "$(cat /home/sandbox/link | wc -c)" = 11; test "$(stat -c %a /workspace/file)" = 640; test "$(stat -c %i /workspace/file)" = "$(stat -c %i /home/sandbox/hard)"',
+                    'test "$(cat /home/sandbox/link | wc -c)" = 11; test "$(stat -c %a /workspace/file)" = 640; test "$(stat -c %i /workspace/file)" = "$(stat -c %i /workspace/hard)"',
                 ]
             )
             if result["exitCode"]:
