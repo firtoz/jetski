@@ -144,3 +144,83 @@ test("terminal frame validation bounds input and matches the host wire format", 
   ])
     assert.throws(() => terminalFrame(input as TerminalInput));
 });
+
+test("controller recovery preserves input admission order rather than UUID order", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "jetski-terminal-order-")),
+    path = join(directory, "state.sqlite");
+  let state = new SqliteState(path);
+  t.after(async () => {
+    state.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const scope = { owner: "alice", sandbox: randomUUID() },
+    command = randomUUID();
+  const lease: HostLease = {
+    owner: scope.owner,
+    sandboxId: scope.sandbox,
+    machineId: "host",
+    poolId: "pool",
+    slotId: randomUUID(),
+    assignmentId: randomUUID(),
+    generation: 1,
+  };
+  const context = {
+    ...scope,
+    command,
+    lease,
+    image: "example/linux@sha256:" + "a".repeat(64),
+  };
+  const ids = [
+    "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    "00000000-0000-4000-8000-000000000000",
+  ];
+  const disconnected = new TerminalInputJournal(state, async () => {
+    throw Error("offline");
+  });
+  for (const id of ids)
+    await assert.rejects(
+      disconnected.admit(
+        { ...context, id },
+        { kind: "stdin", base64: "YQ==" },
+        () => {},
+      ),
+      /offline/,
+    );
+  state.close();
+  state = new SqliteState(path);
+  const admissions: string[] = [],
+    outcomes = new Map<string, Json>();
+  const journal = new TerminalInputJournal(
+    state,
+    async (_lease, action, raw) => {
+      const input = raw as { inputId: string; input: TerminalInput };
+      if (action === "terminal-input-status")
+        return (
+          outcomes.get(input.inputId) ?? {
+            id: input.inputId,
+            phase: "absent",
+            closed: false,
+          }
+        );
+      assert.equal(action, "terminal-input");
+      admissions.push(input.inputId);
+      const frame = terminalFrame(input.input),
+        receipt = {
+          id: input.inputId,
+          sequence: admissions.length - 1,
+          kind: input.input.kind,
+          bytes: frame.length,
+          sha256: createHash("sha256").update(frame).digest("hex"),
+          phase: "sent",
+        };
+      outcomes.set(input.inputId, receipt);
+      return receipt;
+    },
+  );
+  // A new close request must first recover the older admitted bytes.
+  const closeId = randomUUID();
+  await journal.admit({ ...context, id: closeId }, { kind: "close" }, () => {});
+  assert.deepEqual(admissions, [...ids, closeId]);
+  await journal.reconcile(scope.owner);
+  assert.deepEqual(admissions, [...ids, closeId]);
+});

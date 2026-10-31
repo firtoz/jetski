@@ -93,6 +93,23 @@ workload-specific products.
 
 ## Latest continuation status
 
+Verified647cd1f41542d346c5cd80793d67c743bc25e101, CI41230397295 all five
+jobs passed; watcher57551 exited0. API job124623223677 confirms terminal input
+replay after lost admission ACK, and retained terminal outcomes/output available
+without host access through SDK/CLI, plus existing full fixture lifecycle checks.
+Private /tmp/jetski-terminal-api-qualified.log. Public endpoints remain experimental
+and PTY release qualification false pending remaining terminal gates.
+
+Ordering fix candidate: core persists a per-terminal admission sequence and drives
+earlier inputs before a later admission/close. Previously UUID scan order could
+reorder inputs after controller interruption before host admission. New SQLite
+reopen test uses reverse-sorting UUIDs and a later close to require original order;
+passes locally. Reconciliation/settlement use that sequence too. Full suite/CI next.
+No paid/provider/desktop/protected experiment changes. Full goal remains active;
+initial geometry, worker loss/backpressure, full attach/gateways and all provider/
+client/benchmark acceptance requirements remain open.
+
+
 Core/API terminal candidate: portable TerminalInputJournal freezes identity/payload,
 validates bounded host-wire hashes/receipts, reconciles stable admission IDs and
 retains sent/uncertain/cancelled outcomes in transactional state. Host status now

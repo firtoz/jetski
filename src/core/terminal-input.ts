@@ -79,6 +79,7 @@ export function terminalFrame(input: TerminalInput): Uint8Array {
 }
 type InputRecord = Scope & {
   command: string;
+  sequence: number;
   id: string;
   lease: HostLease;
   image: string;
@@ -129,14 +130,13 @@ export class TerminalInputJournal {
         return prior;
       }
       guard(tx);
-      if (
-        tx.scan(
-          `terminal-input/${scopeKey(context)}/${identifier(context.command)}/`,
-        ).length >= 4096
-      )
-        throw Error("Terminal input history bound");
+      const count = tx.scan(
+        `terminal-input/${scopeKey(context)}/${identifier(context.command)}/`,
+      ).length;
+      if (count >= 4096) throw Error("Terminal input history bound");
       const value: InputRecord = {
         ...context,
+        sequence: count,
         input: frozen,
         sha256,
         bytes: bytes.length,
@@ -145,7 +145,22 @@ export class TerminalInputJournal {
       tx.put(key, value);
       return value;
     });
-    return this.drive(record);
+    if (record.outcome !== null) return record.outcome;
+    // Stable core admission order survives a controller crash before host admission.
+    // Concurrent callers may observe/re-admit the same IDs, but never skip an
+    // earlier input that has not yet been acknowledged by the host journal.
+    const preceding = await this.state.transaction((tx) =>
+      tx
+        .scan<InputRecord>(
+          `terminal-input/${scopeKey(context)}/${identifier(context.command)}/`,
+        )
+        .map((row) => row.value)
+        .filter((item) => item.sequence <= record.sequence)
+        .sort((a, b) => a.sequence - b.sequence),
+    );
+    let result: Json = null;
+    for (const item of preceding) result = await this.drive(item);
+    return result;
   }
   async status(scope: Scope, command: string, id: string): Promise<Json> {
     const record = await this.state.transaction((tx) =>
@@ -245,6 +260,7 @@ export class TerminalInputJournal {
         .scan<InputRecord>(`terminal-input/${identifier(owner)}/`)
         .map((row) => row.value),
     );
+    records.sort((a, b) => a.sequence - b.sequence);
     for (const record of records)
       if (record.outcome === null) await this.drive(record);
   }
@@ -254,6 +270,7 @@ export class TerminalInputJournal {
         .scan<InputRecord>(`terminal-input/${scopeKey(scope)}/`)
         .map((row) => row.value),
     );
+    records.sort((a, b) => a.sequence - b.sequence);
     for (const record of records)
       if (record.outcome === null) await this.drive(record, true);
   }
