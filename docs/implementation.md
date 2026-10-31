@@ -93,6 +93,38 @@ workload-specific products.
 
 ## Latest continuation status
 
+Supervisor continuation: prior failed run41224774233 is terminal failure, with the
+new live-descendant assertion as its root cause; this was verified progress, not a
+passing cancellation qualification. Implemented a tiny Linux C subreaper prototype.
+SIGTERM/SIGINT request cancellation; its single reaping thread kills only unreaped
+owned children, adopts orphaned descendants and waits for ECHILD before exit. This
+avoids PID-reuse signalling of unrelated processes and handles setsid descendants.
+A static binary is built and mounted read-only only on disposable CI. The original
+ordinary-child test is stricter (no remaining zombie), and a detached orphan test
+was added while retaining independent session and binary-stream checks. No public
+command path uses this yet. Forced supervisor SIGKILL/host failure still require
+uncertain/quarantine semantics, not successful cancellation. Prototype qualification
+is pending; package/bootstrap integration and durable cancellation remain open.
+
+Current source **235a195297b458941c9738e0954ba0170089957a**, CI **41224774233**,
+watcher **31798**. Rootless-runtime job124606538529 failed the new exec-session
+qualification: forced session removal left a live child process. Actual binary
+streams, primary session removal, independent survivor and sandbox liveness ran
+before the child assertion. The failure is consequential: API removal is not a
+command-tree cancellation primitive. Do not remove/weaken the descendant assertion
+or expose per-command cancellation as qualified. Receipt log is privately retained
+at /tmp/jetski-exec-ci-failure.log; CI is authoritative for permanent evidence.
+
+Next: implement supervised process-tree cancellation (with PID-reuse safety and
+no cross-command effects), or a proven per-command kernel process boundary, then
+rerun this exact workload and integrate durable cancel intent into host/core/API/
+SDK. A likely approach is a tiny read-only mounted native subreaper supervising
+its own descendants; verify daemonized/reparented children as well as ordinary
+shell children. This is a design hypothesis, not implemented or proven. Do not
+substitute killing a CLI process, process group alone, or the whole assignment for
+the required per-command guarantee. Preserve current conservative assignment-wide
+behavior until the new path qualifies. No paid resource or desktop runtime change.
+
 Exec-session continuation: prior bootstrap turn was verified progress; CI41224293047
 passed. Podman4.9's API supports immutable exec session IDs, multiplexed output and
 forced session removal. Added a bounded Unix-socket protocol implementation plus

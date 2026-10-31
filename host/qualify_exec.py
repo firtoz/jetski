@@ -18,8 +18,19 @@ def main():
         raise ValueError("disposable_nonroot_ci_required")
     image = os.environ["JETSKI_TEST_IMAGE"]
     api = ExecApi(os.getuid())
+    supervisor = pathlib.Path(os.environ["JETSKI_TEST_SUPERVISOR"]).resolve()
+    if not supervisor.is_file():
+        raise ValueError("missing_supervisor_fixture")
 
     def run(args):
+        if args[0] == "run":
+            # Fixture-only mount: public runtime wiring follows qualification.
+            args = [
+                *args[:1],
+                "--mount",
+                f"type=bind,src={supervisor},dst=/jetski-supervisor,ro",
+                *args[1:],
+            ]
         proc = subprocess.run(["podman", *args], capture_output=True, text=True, timeout=120)
         return dict(exitCode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
 
@@ -46,7 +57,8 @@ def main():
         try:
             runtime.create(lease)
             binary = api.create(
-                container, ["/bin/sh", "-c", "printf 'a\\000b'; printf 'err\\377' >&2"]
+                container,
+                ["/jetski-supervisor", "/bin/sh", "-c", "printf 'a\\000b'; printf 'err\\377' >&2"],
             )
             sessions.append(binary)
             output = {"stdout": b"", "stderr": b""}
@@ -59,13 +71,15 @@ def main():
             victim = api.create(
                 container,
                 [
+                    "/jetski-supervisor",
                     "/bin/sh",
                     "-c",
                     "sleep 120 & echo $! > /workspace/victim-child; printf ready; wait",
                 ],
             )
             survivor = api.create(
-                container, ["/bin/sh", "-c", "printf live; sleep 3; printf survived"]
+                container,
+                ["/jetski-supervisor", "/bin/sh", "-c", "printf live; sleep 3; printf survived"],
             )
             sessions.extend([victim, survivor])
             ready = {session: threading.Event() for session in (victim, survivor)}
@@ -94,11 +108,47 @@ def main():
                     container,
                     "/bin/sh",
                     "-c",
-                    'test ! -e /proc/$(cat /workspace/victim-child)/stat || test $(cut -d " " -f3 /proc/$(cat /workspace/victim-child)/stat) = Z',
+                    "test ! -e /proc/$(cat /workspace/victim-child)/stat",
                 ]
             )
             assert child_check["exitCode"] == 0, "Cancelled session left a live descendant"
             assert api.inspect(survivor)["ExitCode"] == 0
+            detached = api.create(
+                container,
+                [
+                    "/jetski-supervisor",
+                    "/bin/sh",
+                    "-c",
+                    "setsid sh -c 'sleep 120 & echo $! > /workspace/detached-child; exit 0' >/dev/null 2>&1 & wait; printf detached",
+                ],
+            )
+            sessions.append(detached)
+            detached_ready = threading.Event()
+
+            def detached_stream():
+                data = b""
+                for channel, chunk in api.output(detached, timeout=40):
+                    assert channel == "stdout"
+                    data += chunk
+                    detached_ready.set()
+                return data
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                stream = pool.submit(detached_stream)
+                assert detached_ready.wait(15)
+                assert api.inspect(detached)["Running"] is True
+                api.remove(detached)
+                assert stream.result(timeout=20) == b"detached"
+            detached_check = run(
+                [
+                    "exec",
+                    container,
+                    "/bin/sh",
+                    "-c",
+                    "test ! -e /proc/$(cat /workspace/detached-child)/stat",
+                ]
+            )
+            assert detached_check["exitCode"] == 0, "Detached descendant was not reaped"
             assert (
                 run(["inspect", "--format", "{{.State.Running}}", container])["stdout"].strip()
                 == "true"
@@ -110,6 +160,8 @@ def main():
                         rootless=True,
                         binaryStreams=True,
                         independentSessionRemoval=True,
+                        ordinaryDescendantReaped=True,
+                        detachedDescendantReaped=True,
                         repeatedRemoval=True,
                         sandboxRemainsRunning=True,
                         commandApiIntegrated=False,

@@ -43,6 +43,10 @@ jobs:
           echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
       - name: Qualify rootless lifecycle and filesystem recovery
         run: python3 host/qualify_podman.py
+      - name: Build disposable command supervisor
+        run: |
+          cc -static -O2 -Wall -Wextra -Werror host/native/command-supervisor.c -o "$RUNNER_TEMP/jetski-supervisor"
+          echo "JETSKI_TEST_SUPERVISOR=$RUNNER_TEMP/jetski-supervisor" >> "$GITHUB_ENV"
       - name: Qualify isolated exec sessions
         run: python3 host/qualify_exec.py
   ssh-control:
