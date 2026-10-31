@@ -39,12 +39,23 @@ class PodmanRuntime:
             self.fence.match(state, lease)
             if state["phase"] != "open":
                 raise ValueError("closed_lease")
-            if state.get("runtime"):
+            existing = state.get("runtime")
+            requested = dict(image=self.image, memoryMb=memory_mb, cpus=cpus)
+            if existing:
+                if existing.get("configuration") != requested:
+                    raise ValueError("runtime_configuration_conflict")
+                if existing["phase"] == "running":
+                    return existing
                 raise ValueError("runtime_already_admitted")
             name = self.container(lease)
             # No replay following a lost provider/runtime acknowledgement.
             self.fence.write(
-                {**state, "runtime": dict(name=name, phase="creating", image=self.image)}
+                {
+                    **state,
+                    "runtime": dict(
+                        name=name, phase="creating", image=self.image, configuration=requested
+                    ),
+                }
             )
             try:
                 for root in ("workspace", "home"):
@@ -99,7 +110,9 @@ class PodmanRuntime:
                     raise RuntimeError("runtime_create_failed")
                 next_state = {
                     **self.fence.read(),
-                    "runtime": dict(name=name, phase="running", image=self.image),
+                    "runtime": dict(
+                        name=name, phase="running", image=self.image, configuration=requested
+                    ),
                 }
                 self.fence.write(next_state)
                 return next_state["runtime"]

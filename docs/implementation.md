@@ -174,3 +174,17 @@ capabilities describe its intended runtime requirement, not observed host readin
 Progress classification: this continuation implemented source and generated real
 rootless recovery evidence. No paid provider requests, original client changes,
 GC experiment changes or desktop workload execution occurred.
+
+2026-10-31 bootstrap continuation: added root-only host configuration, dedicated
+rootless account validation, bounded subprocess supervision, capability preflight
+and SSH protocol dispatch. Host control uses one physical-host fence, checks
+machine/pool identity, supports create/inspect/quiesce/capture/remove, and rejects
+unknown actions. Creation replay returns an existing matching receipt; changed
+configuration conflicts. Bootstrap requires preinstalled prerequisites, explicit
+image digests and no existing assignment; it does not install system packages.
+Twenty Python unit tests now pass, including malformed protocol, physical fencing,
+create replay and subprocess output/time limits. Ten TypeScript tests pass.
+A new disposable CI job exercises bootstrap and real encrypted SSH control with a
+forced command, correct/wrong host keys and stale-generation rejection. Its result
+must be observed before claiming SSH qualification. No desktop host was modified.
+Full execute/PTY/network/transfer handlers and standalone lifecycle remain open.

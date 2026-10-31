@@ -60,7 +60,11 @@ test("adopted hosts retain owner binding and stale retirement cannot free new wo
   const transport: HostTransport = {
     request: async (_host: string, request: HostRequest) => {
       requests++;
-      return { version: 1, id: request.id, result: { ready: true } };
+      return {
+        version: 1,
+        id: request.id,
+        result: { ready: true, machineId: _host },
+      };
     },
   };
   const provider = new SshHostProvider(["host"], state, transport);

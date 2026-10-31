@@ -1,0 +1,111 @@
+"""Protocol v1 over authenticated SSH stdin/stdout; installed root-owned."""
+
+import json
+import os
+import stat
+import pathlib
+import sys
+
+# Python -I excludes the script directory. Installation makes this directory
+# root-owned and not group/world writable before enabling the SSH command.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from archive import capture  # noqa: E402
+from fence import Fence, identity  # noqa: E402
+from runtime import PodmanRuntime  # noqa: E402
+from supervisor import (  # noqa: E402
+    ARCHIVE_ROOT,
+    CONTROL_ROOT,
+    DATA_ROOT,
+    bounded_command,
+    configuration,
+    preflight,
+    runtime_account,
+    runtime_argv,
+)
+
+
+def dispatch(request, config, account, run):
+    if (
+        not isinstance(request, dict)
+        or set(request) != {"version", "id", "action", "payload"}
+        or request["version"] != 1
+    ):
+        raise ValueError("invalid_protocol_request")
+    if not isinstance(request["id"], str) or not 1 <= len(request["id"]) <= 128:
+        raise ValueError("invalid_request_id")
+    action = request["action"]
+    if action == "status":
+        return preflight(config, account, run)
+    payload = request["payload"]
+    if not isinstance(payload, dict) or "lease" not in payload:
+        raise ValueError("missing_lease")
+    lease = identity(payload["lease"])
+    if lease["machineId"] != config["machineId"] or lease["poolId"] != config["poolId"]:
+        raise ValueError("physical_identity_conflict")
+    # One fence per host: caller-selected slot IDs cannot create parallel assignments.
+    fence = Fence(CONTROL_ROOT / "slot")
+    if action == "claim":
+        return fence.claim(lease)
+    if action == "inspect":
+        with fence.locked():
+            state = fence.read()
+            fence.match(state, lease)
+            return state
+    image = payload.get("image")
+    runtime = PodmanRuntime(fence, run, image, DATA_ROOT, config["images"])
+    if action == "create":
+        with fence.locked():
+            state = fence.read()
+            fence.match(state, lease)
+            if state["phase"] != "open":
+                raise ValueError("closed_lease")
+            # Root-owned parent prevents a workload from replacing assignment roots.
+            assignment = DATA_ROOT / lease["assignmentId"]
+            assignment.mkdir(mode=0o700, exist_ok=True)
+            for path in [assignment, assignment / "workspace", assignment / "home"]:
+                path.mkdir(mode=0o700, exist_ok=True)
+                meta = path.lstat()
+                if not stat.S_ISDIR(meta.st_mode) or meta.st_uid not in (0, account.pw_uid):
+                    raise ValueError("unsafe_persistent_root")
+                os.chown(path, account.pw_uid, account.pw_gid, follow_symlinks=False)
+        return runtime.create(lease, payload.get("memoryMb", 512), payload.get("cpus", 1))
+    if action == "quiesce":
+        return runtime.quiesce(lease)
+    if action == "remove":
+        return runtime.remove(lease)
+    if action == "capture":
+        with fence.locked():
+            state = fence.read()
+            fence.match(state, lease)
+            if state["phase"] != "closed" or state.get("runtime", {}).get("phase") != "stopped":
+                raise ValueError("capture_requires_quiescence")
+            roots = {
+                name: DATA_ROOT / lease["assignmentId"] / name for name in ("workspace", "home")
+            }
+            return capture(roots, ARCHIVE_ROOT / (lease["assignmentId"] + ".tgz"))
+    # restore/release require durable publication and ownership preparation;
+    # unsupported requests fail closed until their handlers are installed.
+    raise ValueError("unsupported_host_action")
+
+
+def main():
+    raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+    if len(raw) > 1024 * 1024:
+        raise ValueError("host_request_limit")
+    request = json.loads(raw)
+    config = configuration()
+    account = runtime_account()
+
+    def run(args):
+        return bounded_command(runtime_argv(account) + args, CONTROL_ROOT)
+
+    result = dispatch(request, config, account, run)
+    output = json.dumps(dict(version=1, id=request["id"], result=result), separators=(",", ":"))
+    if len(output.encode("utf8")) > 2 * 1024 * 1024:
+        raise ValueError("host_response_limit")
+    print(output)
+
+
+if __name__ == "__main__":
+    main()

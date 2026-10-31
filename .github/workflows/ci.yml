@@ -39,3 +39,56 @@ jobs:
           echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
       - name: Qualify rootless lifecycle and filesystem recovery
         run: python3 host/qualify_podman.py
+  ssh-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Prepare disposable SSH host
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session openssh-server
+          podman pull docker.io/library/alpine:3.22
+          image=$(podman image inspect docker.io/library/alpine:3.22 --format '{{index .RepoDigests 0}}')
+          echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
+          python3 -c 'import json,sys; json.dump(dict(version=1,machineId="ssh-ci",poolId="ci",images=[sys.argv[1]]),open("/tmp/jetski-host.json","w"))' "$image"
+          sudo python3 host/bootstrap.py --config /tmp/jetski-host.json
+          mkdir -m 700 "$RUNNER_TEMP/jetski-ssh"
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/jetski-ssh/client"
+          sudo mkdir -p -m 700 /etc/ssh/jetski-test
+          sudo ssh-keygen -q -t ed25519 -N '' -f /etc/ssh/jetski-test/host
+          sudo cp "$RUNNER_TEMP/jetski-ssh/client.pub" /etc/ssh/jetski-test/authorized_keys
+          sudo chmod 600 /etc/ssh/jetski-test/authorized_keys
+          sudo mkdir -p /run/sshd
+          sudo tee /etc/ssh/jetski-test/config >/dev/null <<'CONFIG'
+          Port 2222
+          ListenAddress 127.0.0.1
+          HostKey /etc/ssh/jetski-test/host
+          PidFile /run/jetski-test-sshd.pid
+          AuthorizedKeysFile /etc/ssh/jetski-test/authorized_keys
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin prohibit-password
+          AuthenticationMethods publickey
+          AllowUsers root
+          AllowTcpForwarding no
+          X11Forwarding no
+          ForceCommand env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py
+          CONFIG
+          sudo /usr/sbin/sshd -f /etc/ssh/jetski-test/config
+          sudo cat /etc/ssh/jetski-test/host.pub | awk '{print "[127.0.0.1]:2222 " $1 " " $2}' > "$RUNNER_TEMP/jetski-ssh/known_hosts"
+          awk '{print "[127.0.0.1]:2222 " $1 " " $2}' "$RUNNER_TEMP/jetski-ssh/client.pub" > "$RUNNER_TEMP/jetski-ssh/wrong_hosts"
+          echo "JETSKI_TEST_SSH_KEY=$RUNNER_TEMP/jetski-ssh/client" >> "$GITHUB_ENV"
+          echo "JETSKI_TEST_KNOWN_HOSTS=$RUNNER_TEMP/jetski-ssh/known_hosts" >> "$GITHUB_ENV"
+          echo "JETSKI_TEST_WRONG_HOSTS=$RUNNER_TEMP/jetski-ssh/wrong_hosts" >> "$GITHUB_ENV"
+      - name: Qualify encrypted control and bootstrap
+        run: npx tsx examples/qualify-ssh.ts
+      - name: Retire disposable listener
+        if: always()
+        run: |
+          if sudo test -f /run/jetski-test-sshd.pid; then sudo kill "$(sudo cat /run/jetski-test-sshd.pid)"; fi

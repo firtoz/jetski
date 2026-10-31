@@ -71,7 +71,8 @@ export class SshHostProvider implements HostProvider {
         response.result &&
         typeof response.result === "object" &&
         !Array.isArray(response.result) &&
-        response.result.ready === true
+        response.result.ready === true &&
+        response.result.machineId === id
       )
         return { state: "ready" };
       return { state: "unknown" };

@@ -1,0 +1,97 @@
+import os
+import pathlib
+import tempfile
+import types
+import unittest
+import uuid
+from unittest.mock import patch
+import control
+from supervisor import bounded_command
+
+
+class ControlTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = pathlib.Path(self.temp.name)
+        self.data = self.root / "data"
+        self.data.mkdir()
+        self.calls = []
+        self.config = dict(
+            version=1, machineId="host", poolId="pool", images=["example/linux@sha256:" + "a" * 64]
+        )
+        self.lease = dict(
+            owner="alice",
+            machineId="host",
+            poolId="pool",
+            slotId=str(uuid.uuid4()),
+            sandboxId=str(uuid.uuid4()),
+            assignmentId=str(uuid.uuid4()),
+            generation=1,
+        )
+        self.account = types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid())
+        for field, path in (
+            ("CONTROL_ROOT", self.root / "control"),
+            ("DATA_ROOT", self.data),
+            ("ARCHIVE_ROOT", self.root / "archives"),
+        ):
+            patcher = patch.object(control, field, path)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def run_command(self, args):
+        self.calls.append(args)
+        return dict(exitCode=0, stdout="container", stderr="")
+
+    def request(self, action, payload):
+        return control.dispatch(
+            dict(version=1, id=str(uuid.uuid4()), action=action, payload=payload),
+            self.config,
+            self.account,
+            self.run_command,
+        )
+
+    def test_single_host_fence_and_physical_identity(self):
+        self.request("claim", dict(lease=self.lease))
+        with self.assertRaisesRegex(ValueError, "physical_identity_conflict"):
+            self.request(
+                "claim",
+                dict(
+                    lease=dict(self.lease, slotId=str(uuid.uuid4()), assignmentId=str(uuid.uuid4()))
+                ),
+            )
+        with self.assertRaisesRegex(ValueError, "physical_identity_conflict"):
+            self.request("claim", dict(lease=dict(self.lease, machineId="different")))
+        self.assertEqual(self.calls, [])
+
+    def test_create_receipt_replay_never_restarts_workload(self):
+        self.request("claim", dict(lease=self.lease))
+        payload = dict(lease=self.lease, image=self.config["images"][0])
+        first = self.request("create", payload)
+        self.assertEqual(self.request("create", payload), first)
+        self.assertEqual(len(self.calls), 1)
+        with self.assertRaisesRegex(ValueError, "configuration_conflict"):
+            self.request("create", dict(payload, memoryMb=1024))
+        self.assertEqual(len(self.calls), 1)
+
+    def test_invalid_protocol_and_unknown_actions_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "invalid_protocol"):
+            control.dispatch(dict(version=2), self.config, self.account, self.run_command)
+        self.request("claim", dict(lease=self.lease))
+        with self.assertRaisesRegex(ValueError, "unsupported_host_action"):
+            self.request("outer-shell", dict(lease=self.lease, image=self.config["images"][0]))
+        self.assertEqual(self.calls, [])
+
+    def test_bounded_runner_stops_excess_output_and_timeout(self):
+        with self.assertRaisesRegex(ValueError, "output_limit"):
+            bounded_command(["python3", "-c", 'print("x"*100000)'], self.root, max_output=100)
+        with self.assertRaisesRegex(TimeoutError, "timeout"):
+            bounded_command(
+                ["python3", "-c", "import time; time.sleep(30)"], self.root, timeout=0.05
+            )
+        result = bounded_command(["python3", "-c", 'print("ok")'], self.root)
+        self.assertEqual(result["stdout"], "ok\n")
+
+
+if __name__ == "__main__":
+    unittest.main()
