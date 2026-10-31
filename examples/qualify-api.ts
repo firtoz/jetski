@@ -332,6 +332,10 @@ try {
     { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
   );
   assert.equal(cliRead.stdout, "1");
+  // Keep the checkpoint fault targeted at filesystem publication, not the
+  // additional command-output objects introduced by cancellation qualification.
+  for (const extra of [victim, survivor, cleanupCheck])
+    await manager.retainCommand({ owner: "qualification", sandbox: id }, extra);
   loseSaveAck = true;
   const stopId = randomUUID();
   await client.request(`/v1/sandboxes/${id}/stop`, "POST", {
@@ -343,7 +347,18 @@ try {
     // Publication recovery must reuse the committed frame after lost store ACK.
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  assert.equal((await client.operation(id, stopId)).phase, "succeeded");
+  assert.equal(
+    (await client.operation(id, stopId)).phase,
+    "succeeded",
+    JSON.stringify({
+      errors: errors
+        .slice(-5)
+        .map((error) =>
+          error instanceof Error ? error.message : String(error),
+        ),
+      operation: await client.operation(id, stopId),
+    }),
+  );
   assert.equal((await client.operation(id, uploadId)).phase, "succeeded");
   assert.equal((await client.operation(id, partialId)).phase, "failed");
   assert.equal((await client.uploadStatus(id, uploadId)).phase, "committed");

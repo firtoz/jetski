@@ -93,6 +93,15 @@ workload-specific products.
 
 ## Latest continuation status
 
+CI41227207124 at805459a: service environment fix passes bootstrap; API progressed
+through cancelled victim, surviving independent command, descendant absence and
+lost cancel ACK before later durable-stop failure. No full integration pass yet.
+Rootless/unit/Boat fixtures passed; SSH still running at observation. API fixture
+must retain new command outputs before injecting its pre-existing filesystem-save
+fault so it still targets the same durability boundary. Add bounded operation/error
+diagnostics for remaining stop failure. Preserve /tmp/jetski-service-allowlist-api.log.
+
+
 CI41227046559 failed installed bootstrap API readiness: correcting XDG runtime
 revealed another inherited path, /home/runner/.config/containers/storage.conf.
 Private evidence /tmp/jetski-runtime-owner-api.log. Replace incremental environment
