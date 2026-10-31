@@ -82,8 +82,7 @@ class CommandTests(unittest.TestCase):
             state = self.fence.read()
             state["commands"][self.command]["phase"] = "running"
             self.fence.write(state)
-        with self.assertRaisesRegex(RuntimeError, "outcome_unresolved"):
-            self.commands.prepare_quiesce(self.lease)
+        self.commands.prepare_quiesce(self.lease)
         self.assertEqual(self.commands.status(self.lease, self.command)["phase"], "uncertain")
 
     def test_lost_running_worker_quarantines_without_replay(self):

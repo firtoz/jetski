@@ -154,7 +154,8 @@ class Commands:
 
         The fence lock must be released while waiting: workers need it to observe
         cancellation and persist authenticated completion/output synchronization.
-        Uncertain outcomes never become successful cleanup merely because we wait.
+        Uncertain receipts remain unchanged: container termination is still safe,
+        but the control-plane publication gate must not treat them as completed work.
         """
         lease = identity(raw)
         self.fence.close(lease)
@@ -178,7 +179,7 @@ class Commands:
                     elif phase == "running":
                         state["commands"][command] = {**receipt, "cancelRequested": True}
                         pending = True
-                    elif phase not in ("succeeded", "failed", "cancelled"):
+                    elif phase not in ("succeeded", "failed", "cancelled", "uncertain"):
                         unresolved = True
                 self.fence.write(state)
                 if unresolved:
