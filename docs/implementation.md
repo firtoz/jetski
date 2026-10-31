@@ -93,6 +93,24 @@ workload-specific products.
 
 ## Latest continuation status
 
+Exec-session continuation: prior bootstrap turn was verified progress; CI41224293047
+passed. Podman4.9's API supports immutable exec session IDs, multiplexed output and
+forced session removal. Added a bounded Unix-socket protocol implementation plus
+binary/truncated-header tests. A new disposable rootless CI fixture will verify
+binary output, repeated removal, concurrent-session survival, live-descendant cleanup
+and continued sandbox use. No desktop runtime or paid host is used. This is the
+runtime foundation; public command cancellation is not integrated or advertised yet.
+The experiment must pass before replacing assignment-wide cancellation. Local45Python
+tests and lint pass; hosted CI pending. Full objective/gates remain unchanged.
+
+Current source **475b4185fdcda3ae32acc51c7572a11b7a4b5110**, CI **41224293047**
+passed all five jobs. Watcher39981 exited0. Boat log confirms nonRootProviderCommands,
+automaticBootstrap, bootstrapAcknowledgementRecovery, policy-conflict rejection,
+large-input integrity and four private-directory cleanups. This is disposable Linux
+behind an emulated Boat envelope; no live Boat resource exists. Next: per-command
+cancellation and interactive transports, then full remote-store/physical-host/client
+qualification and matched benchmarks. Do not mark the full release complete.
+
 Bootstrap continuation: the previous turn made verified progress (live R2 storage
 and recovery plus green CI41223577252). Inspection found that earlier Boat CI ran
 provider commands as root, masking the documented non-root guest boundary. Fixed
@@ -106,7 +124,7 @@ conflicting policy/code. Missing runtime prerequisites install only on owned VMs
 The new CI fixture starts without a preinstalled agent, injects a committed bootstrap
 ACK loss, then requires recovery, unchanged replay without commands, policy conflict
 rejection and all prior large-input/corruption/cleanup checks. Local55TypeScript+
-42Python tests, build/typecheck/lints pass. Real revised fixture CI is pending.
+42Python tests, build/typecheck/lints pass. The revised real host-script fixture passed inCI41224293047.
 No live Boat call, paid allocation or protected real-grace test changes occurred.
 
 Current published source **890533a2c5aa9e8bb117107134db23e23261928a**, CI

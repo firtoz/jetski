@@ -43,6 +43,8 @@ jobs:
           echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
       - name: Qualify rootless lifecycle and filesystem recovery
         run: python3 host/qualify_podman.py
+      - name: Qualify isolated exec sessions
+        run: python3 host/qualify_exec.py
   ssh-control:
     strategy:
       fail-fast: false
