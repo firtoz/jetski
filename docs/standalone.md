@@ -398,7 +398,7 @@ not resolve or connect to arbitrary destinations. Each route has its own origin,
 owner, sandbox and exposure. Shared origins across routes and reuse of a declared
 control origin are rejected. Reusing a stale exposure never authorizes a replacement
 assignment. Static operator mappings support scoped session grants. Automated origin
-provisioning and real-browser qualification remain release work.
+provisioning remains operator-owned. Browser/container qualification is described below.
 
 `serve` accepts an optional preview configuration:
 
@@ -430,7 +430,7 @@ Authorization, Cookie, forwarding metadata and hop-by-hop credentials are stripp
 before workload delivery. Workload Set-Cookie is stripped too. Responses receive a
 sandbox CSP with workers and framing disabled, no-store, no-referrer and nosniff.
 Application cookies, service workers and iframe embedding remain unsupported.
-Browser sessions are experimental and still require real-browser qualification.
+Browser sessions remain experimental; tested browser behavior is described below.
 Embedded deployments can provide their own identity adapter, but must qualify the
 browser/session boundary before enabling it for users.
 
@@ -473,5 +473,13 @@ automatically deleted. Browser or workload cookies are never forwarded upstream.
 
 Local protocol tests cover restart, concurrency, lost acknowledgements, fixed
 expiry, malformed metadata, cross-owner/origin denial and active WebSocket
-revocation. These do not yet prove browser navigation, cookie acceptance or CSP
-execution. Do not enable browser sessions for users until that qualification passes.
+revocation. Disposable CI additionally qualifies Chrome 156 bootstrap navigation,
+fragment removal, cookie acceptance and script execution. A combined HTTPS test
+loads a page and asset from a real rootless container through encrypted host
+control, verifies exact binary HTTP/WSS payloads and durable closed receipts, and
+rejects revoked requests without a new host admission. The fixture pins its
+one-day certificate key in a fresh browser profile; this does not test public CA
+issuance or an operator's reverse-proxy deployment. See CI run41252297444 at
+commit fc3298b and the evidence in implementation.md. Other browsers, application
+cookies, embedding and full live-provider lifecycle qualification remain outside
+this evidence. No universal browser or production-readiness claim is implied.

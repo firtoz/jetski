@@ -633,6 +633,72 @@ try {
     { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
   );
   assert.equal(cliRead.stdout, "1");
+  // Keep an admitted workload connection alive across the real stop operation.
+  // No persistent fixture files are introduced into the checkpoint oracle.
+  const streamScope = { owner: "qualification", sandbox: id };
+  const listenerCommand = randomUUID(),
+    listenerReady = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
+    id: listenerCommand,
+    argv: ["/bin/sh", "-ec", "sleep 120 | nc -l -p 18082"],
+    timeout: 120,
+  });
+  await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
+    id: listenerReady,
+    argv: [
+      "/bin/sh",
+      "-ec",
+      "for i in $(seq 1 50); do grep -q ':46A2 .* 0A ' /proc/net/tcp && exit 0; sleep 0.1; done; exit 1",
+    ],
+    timeout: 10,
+  });
+  async function awaitFixture(command: string) {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const observed = await client.request<{ phase: string }>(
+        `/v1/sandboxes/${id}/commands/${command}`,
+      );
+      if (observed.phase === "succeeded") return;
+      assert.ok(
+        !["failed", "cancelled", "uncertain"].includes(observed.phase),
+        `Fixture command ${observed.phase}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw Error("Fixture command deadline");
+  }
+  await awaitFixture(listenerReady);
+  const activeExposure = randomUUID(),
+    activeStreamId = randomUUID();
+  await client.exposePort(id, activeExposure, 18082);
+  const activeStream = await manager.streams!.open(
+    streamScope,
+    activeExposure,
+    activeStreamId,
+  );
+  void activeStream.completed.catch(() => {});
+  assert.equal((await client.streamStatus(id, activeStreamId)).phase, "open");
+  const previewBinding = {
+    exposureId: activeExposure,
+    origin: "https://preview.example",
+  };
+  const activeGrant = await manager.previewSessions.mint(
+    streamScope,
+    randomUUID(),
+    previewBinding,
+  );
+  const activeSession = await manager.previewSessions.redeem(
+    streamScope,
+    previewBinding,
+    activeGrant.token,
+    "lifecycle-redemption",
+  );
+  assert.ok(
+    await manager.previewSessions.authenticate(
+      streamScope,
+      previewBinding,
+      activeSession.cookie,
+    ),
+  );
   // Target two distinct publication boundaries: an output object first, then
   // the filesystem archive only after its source read begins.
   loseMultiOutputAck = true;
@@ -682,6 +748,21 @@ try {
   assert.equal(lostSaveAcks, 1);
   const stopped = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
   assert.equal(stopped.phase, "stopped");
+  await assert.rejects(activeStream.completed);
+  assert.equal(
+    (await client.streamStatus(id, activeStreamId)).phase,
+    "cancelled",
+  );
+  assert.equal((await client.portStatus(id, activeExposure)).available, false);
+  assert.equal(
+    await manager.previewSessions.authenticate(
+      streamScope,
+      previewBinding,
+      activeSession.cookie,
+    ),
+    undefined,
+  );
+
   assert.equal(
     (await client.streamStatus(id, refusedStream)).phase,
     "cancelled",
@@ -792,6 +873,34 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal(replacement?.phase, "running");
+  assert.equal((await client.portStatus(id, activeExposure)).available, false);
+  assert.equal(
+    await manager.previewSessions.authenticate(
+      streamScope,
+      previewBinding,
+      activeSession.cookie,
+    ),
+    undefined,
+  );
+  await assert.rejects(
+    manager.streams!.open(streamScope, activeExposure, activeStreamId),
+  );
+  const listenerAbsent = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
+    id: listenerAbsent,
+    argv: ["/bin/sh", "-ec", "! grep -q ':46A2 .* 0A ' /proc/net/tcp"],
+  });
+  await awaitFixture(listenerAbsent);
+  const replacementExposure = randomUUID();
+  await client.exposePort(id, replacementExposure, 18082);
+  assert.equal(
+    (await client.portStatus(id, replacementExposure)).available,
+    true,
+  );
+  console.log(
+    "Active stream stop/recovery: verified cancellation, listener absence and stale exposure/session rejection",
+  );
+
   await client.pinCheckpoint(
     id,
     stopped.checkpoint,
@@ -1147,6 +1256,7 @@ try {
       incompleteUploadAbortedOnStop: true,
       checkpointHistoryAndReplaySafePins: true,
       historicalCheckpointSelection: true,
+      activeStreamStopAndGenerationFencing: true,
       completeLifecycle: false,
     }),
   );

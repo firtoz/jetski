@@ -64,22 +64,22 @@ or public hosted-compute service in this implementation.
 
 ## Acceptance matrix
 
-| Gate                       | Required evidence                                                                                                    | Status                             |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Independent repository     | MIT, clean history, provenance, CI, exports, executable generic example                                              | In progress                        |
-| Independent vertical slice | SQLite/local storage, SSH-adopted Linux, Podman, server/SDK/CLI shell+file checkpoint/recovery                       | Verified SSH/local; CI 41217621891 |
-| Boat and S3                | Both host/store adapters pass contracts; R2 and fresh-host recovery                                                  | Open                               |
-| Pool lifecycle             | owner exclusivity, one assignment, bounded queue/idle/expiry, restart/fencing                                        | Open                               |
-| Durable execution          | replay/lost ACK/restart/uncertainty/cancel/resumable streams                                                         | Open                               |
-| Filesystem fidelity        | bytes/modes/symlink/hardlink/Unicode/empty/rename/delete/large/partial transfer                                      | Open                               |
-| Incremental checkpoints    | cold/cache hit/miss/corruption/changed frames/fresh replacement                                                      | Open                               |
-| Safe GC                    | reader/writer/publication races, complete paginated listings, corrupt metadata, repeated/failed deletion, real grace | Open                               |
-| Security                   | cross-owner denial, secrets isolation, process/listener/mount cleanup, unsupported capability rejection              | Open                               |
-| Interactive transports     | SSH auth, PTY resize/signals, streams, HTTP/WS previews, binary TCP                                                  | Open                               |
-| Server recovery            | SQLite atomicity, restart pending operations, scheduler recovery, local/S3 parity                                    | Open                               |
-| Staging integration        | independent client workflow and replacement recovery, pinned dependency                                              | Open                               |
-| Matched benchmark          | same durability boundary; starts/sessions/readiness/save/bytes/requests/idle compute, failures retained              | Open                               |
-| Release                    | main CI green, test resources cleaned, limitations documented                                                        | Open                               |
+| Gate                       | Required evidence                                                                                                    | Status                                                 |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Independent repository     | MIT, clean history, provenance, CI, exports, executable generic example                                              | In progress                                            |
+| Independent vertical slice | SQLite/local storage, SSH-adopted Linux, Podman, server/SDK/CLI shell+file checkpoint/recovery                       | Verified SSH/local; CI 41217621891                     |
+| Boat and S3                | Both host/store adapters pass contracts; R2 and fresh-host recovery                                                  | Open                                                   |
+| Pool lifecycle             | owner exclusivity, one assignment, bounded queue/idle/expiry, restart/fencing                                        | Open                                                   |
+| Durable execution          | replay/lost ACK/restart/uncertainty/cancel/resumable streams                                                         | Open                                                   |
+| Filesystem fidelity        | bytes/modes/symlink/hardlink/Unicode/empty/rename/delete/large/partial transfer                                      | Open                                                   |
+| Incremental checkpoints    | cold/cache hit/miss/corruption/changed frames/fresh replacement                                                      | Open                                                   |
+| Safe GC                    | reader/writer/publication races, complete paginated listings, corrupt metadata, repeated/failed deletion, real grace | Open                                                   |
+| Security                   | cross-owner denial, secrets isolation, process/listener/mount cleanup, unsupported capability rejection              | Open                                                   |
+| Interactive transports     | SSH auth, PTY resize/signals, streams, HTTP/WS previews, binary TCP                                                  | Browser/container verified; lifecycle/replacement open |
+| Server recovery            | SQLite atomicity, restart pending operations, scheduler recovery, local/S3 parity                                    | Open                                                   |
+| Staging integration        | independent client workflow and replacement recovery, pinned dependency                                              | Open                                                   |
+| Matched benchmark          | same durability boundary; starts/sessions/readiness/save/bytes/requests/idle compute, failures retained              | Open                                                   |
+| Release                    | main CI green, test resources cleaned, limitations documented                                                        | Open                                                   |
 
 ## Operational boundaries
 
@@ -92,6 +92,22 @@ this repository. Public content must not name downstream private applications or
 workload-specific products.
 
 ## Latest continuation status
+
+Lifecycle audit continuation: previous fc3298b turn was verified progress with
+all five CI jobs green. Current API fixture already proves durable stop, warm-host
+reuse, source-deleted restore, held/historical checkpoints, lost output/import/
+checkpoint ACK recovery and proactive expiry, but only a refused stream crossed
+its stop boundary. Added an admitted live listener/stream across actual API stop,
+requiring rejected live completion plus verified cancelled durable receipt before
+release. A redeemed preview session must fail after stop and resume; stale exposure
+and stream IDs cannot authorize the replacement generation. The reconstructed
+container must have no old listener, while a fresh exposure can be admitted. This
+is same-host fresh-container recovery, not physical-provider replacement. Existing
+fault injections and filesystem oracle remain unchanged. Updated operator browser
+docs with actual Chrome/container evidence and pinned test certificate limits.
+Build/typecheck/lint pass; local and hosted verification pending. No paid resources,
+desktop workloads, downstream changes or protected experiment changes.
+
 
 Combined browser/container continuation: prior cf8e0a8 turn was verified progress,
 all five CI jobs passed. Added a disposable C multi-request HTTP/WS workload using
@@ -113,7 +129,17 @@ Fix moves that owned fixture into /tmp before execution, matching the existing
 fixture; the checkpoint assertion remains unchanged. Browser page/asset/exact
 binary HTTP/WSS, closed receipts and revoked admission already passed. Local
 checks and a fresh exact-SHA run are required for the corrected fixture cleanup.
-Watcher91248 still observes the original run until terminal; preserve it.
+Original run41252044899 ended failure; watcher91248 exited1. Corrected source
+fc3298b2f2e541b67aafb59c57e63f00ebb74462 published;104local tests/build/typecheck/
+lint pass in /tmp/jetski-browser-container-fix-local.log. CI41252297444 passed all five jobs; watcher29294 exited0.
+Log /tmp/jetski-browser-container-fix-ci.log; SSH job124688129066 log
+/tmp/jetski-browser-container-fixed-ssh.log confirms the combined HTTPS browser/
+container flow, then unchanged checkpoint/recovery checks and owned cleanup.
+Preserve both run results. Current turn is verified progress; main fc3298b is green.
+Next update operator docs with the exact browser evidence/limits and audit the
+remaining interactive lifecycle/replacement and provider/storage gates against
+current tests. Do not keep expanding preview fixtures after their stated checks
+pass; advance the full acceptance matrix and downstream staging preparation.
 Old run41250945239 ended cancelled at the15-minute setup bound; preserved
 /tmp/jetski-browser-old-boat-stall.log. Cleanup and orphan process retirement ran.
 The old setup produced no diagnostic output, so the precise dependency stall is
