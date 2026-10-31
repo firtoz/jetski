@@ -70,7 +70,18 @@ test("checkpoint history pages and pins are owner scoped, atomic and replay safe
       `write-${id}`,
       id,
       [frame],
-      id === "output" ? { kind: "command-output" } : metadata,
+      id === "output"
+        ? {
+            kind: "command-output",
+            version: 1,
+            commandId: "00000000-0000-0000-0000-000000000001",
+            status: {
+              id: "00000000-0000-0000-0000-000000000001",
+              phase: "succeeded",
+            },
+            channels: { stdout: [0], stderr: [] },
+          }
+        : metadata,
     );
   }
   const history = new CheckpointHistory(state, registry, operations);

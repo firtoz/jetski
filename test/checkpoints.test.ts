@@ -278,3 +278,119 @@ test("collection resumes its persisted plan after lost deletion acknowledgement"
   await registry.admit(fence, "unblocked", "writer");
   await registry.close(fence, "unblocked");
 });
+
+test("typed payload corruption blocks publication and collection before storage I/O", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "jetski-payload-"));
+  const state = new SqliteState(join(dir, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const store = new LocalCheckpointStore(join(dir, "objects"));
+  let calls = 0;
+  store.head = async () => {
+    calls++;
+    throw Error("unexpected storage access");
+  };
+  store.delete = async () => {
+    calls++;
+    throw Error("unexpected deletion");
+  };
+  const fence = { owner: "owner", sandbox: "box", generation: 1 };
+  const registry = new CheckpointRegistry(
+    state,
+    store,
+    () => DEFAULTS.gcGraceMs + 100,
+  );
+  const frame = {
+    owner: fence.owner,
+    sandbox: fence.sandbox,
+    id: "frame",
+    bytes: 1,
+    sha256: "a".repeat(64),
+  };
+  const archive = {
+    version: 1,
+    sha256: frame.sha256,
+    bytes: 1,
+    expandedBytes: 1,
+    entries: 2,
+    frames: [
+      {
+        offset: 0,
+        bytes: 1,
+        expandedBytes: 1,
+        sha256: frame.sha256,
+        expandedSha256: frame.sha256,
+      },
+    ],
+  };
+  const commandId = "00000000-0000-0000-0000-000000000001";
+  const output = {
+    kind: "command-output",
+    version: 1,
+    commandId,
+    status: { id: commandId, phase: "succeeded" },
+    channels: { stdout: [0], stderr: [] },
+  };
+  const invalid = [
+    { metadata: { kind: "future-format", version: 2 }, frames: [frame] },
+    { metadata: archive, frames: [] },
+    { metadata: archive, frames: [{ ...frame, sha256: "b".repeat(64) }] },
+    { metadata: archive, frames: [{ ...frame, bytes: 2 }] },
+    { metadata: { ...output, version: 2 }, frames: [frame] },
+    {
+      metadata: { ...output, status: { id: commandId, phase: "running" } },
+      frames: [frame],
+    },
+    {
+      metadata: { ...output, channels: { stdout: [], stderr: [] } },
+      frames: [frame],
+    },
+    {
+      metadata: { ...output, channels: { stdout: [0], stderr: [0] } },
+      frames: [frame],
+    },
+    {
+      metadata: { ...output, channels: { stdout: [1, 0], stderr: [] } },
+      frames: [frame, frame],
+    },
+    { metadata: output, frames: [{ ...frame, bytes: 0 }] },
+  ];
+  for (const [index, patch] of invalid.entries()) {
+    await state.transaction((tx) => tx.delete("checkpoint/owner/box"));
+    await registry.initialize(fence);
+    await registry.admit(fence, `writer-${index}`, "writer");
+    await assert.rejects(
+      registry.publish(
+        fence,
+        `writer-${index}`,
+        "bad",
+        patch.frames,
+        patch.metadata,
+      ),
+    );
+    assert.equal(await registry.root(fence, "bad"), undefined);
+    await assert.rejects(registry.collect(fence, "writer-blocked"), /Active/);
+    await state.transaction((tx) =>
+      tx.put("checkpoint/owner/box", {
+        generation: 1,
+        collection: null,
+        accesses: [],
+        roots: [
+          {
+            id: "old",
+            frames: [frame],
+            metadata: null,
+            publishedAt: 1,
+            retiredAt: 2,
+            pins: [],
+          },
+          { id: "bad", ...patch, publishedAt: 1, retiredAt: null, pins: [] },
+        ],
+      }),
+    );
+    await assert.rejects(registry.collect(fence, "sweep"));
+    assert.equal(calls, 0);
+  }
+});

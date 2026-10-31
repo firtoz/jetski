@@ -58,7 +58,18 @@ test("selected restore references survive fencing and cannot be removed with use
       id,
       id,
       [info],
-      id === "output" ? { kind: "command-output" } : archive,
+      id === "output"
+        ? {
+            kind: "command-output",
+            version: 1,
+            commandId: "00000000-0000-0000-0000-000000000001",
+            status: {
+              id: "00000000-0000-0000-0000-000000000001",
+              phase: "succeeded",
+            },
+            channels: { stdout: [0], stderr: [] },
+          }
+        : archive,
     );
   }
   const image = "example/linux@sha256:" + "a".repeat(64);

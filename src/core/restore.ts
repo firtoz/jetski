@@ -1,6 +1,7 @@
 import type { CheckpointRegistry } from "./checkpoints.js";
 import { encodeBase64 } from "./command-output.js";
 import type { CheckpointStore, Fence, Json } from "./contracts.js";
+import { validateRootPayload } from "./root-payload.js";
 import { parseArchive } from "./transfer.js";
 
 const sha = async (bytes: Uint8Array) =>
@@ -24,6 +25,7 @@ export async function restoreCheckpoint(
   try {
     const root = await registry.root(fence, id);
     if (!root) throw Error("Checkpoint missing");
+    validateRootPayload(root);
     const archive = parseArchive(root.metadata);
     if (root.frames.length !== archive.frames.length)
       throw Error("Restore frame count mismatch");

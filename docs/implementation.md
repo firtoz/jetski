@@ -724,3 +724,27 @@ tests pass before the final journal-shape strengthening; final checks/CI pending
 This remains known-frame collection: complete orphan inventory/pagination, full
 concurrent-controller qualification and real-grace hosted tests remain open. No
 paid-host or remote storage activity and no changes to the protected experiment.
+
+Current published source **ba42eab9774694fb9442624a055b7e32cc3c864b**, CI
+**41220566212**. Watcher **39107** is live; unit/build/lint, rootless-runtime and
+SSH-control jobs passed, API job124594046402 still running at last bounded poll.
+Do not restart this workflow after observation timeouts. Local final41TypeScript
+tests pass; Python42tests pass in CI. Next continuation first poll watcher39107
+or exact run; investigate any terminal failure and retain evidence. Remaining GC
+work includes root payload/manifest consistency, complete inventory/orphan marking,
+bounded pagination and concurrent-controller proof. Live R2 credentials still
+pending; other provider/interactive/client/benchmark gates unchanged.
+
+Verified prior GC source ba42eab9774694fb9442624a055b7e32cc3c864b: CI41220566212
+completed all four jobs successfully; watcher39107 exited0. API qualification took
+3m53s and completed cleanup. No workflow restart was needed.
+
+Payload-consistency continuation: recognized filesystem manifests must exactly match
+the stored frame descriptors before publication, restore-host contact or GC. Command
+output roots require terminal identity/status, complete ordered channel indices and
+bounded frame extents. Unknown typed formats fail closed; metadata-free roots retain
+only their explicitly listed objects. Publication freezes metadata before asynchronous
+verification. Added malformed payload/index tests proving zero storage calls, plus
+a restore test proving no host contact on a corrupt map. Two old test fixtures now
+use complete valid output metadata instead of partial sentinels. Final checks/CI
+pending. Full inventory GC, interactive/provider/client qualification remain open.

@@ -11,6 +11,7 @@ import {
   scopeKey,
   type Transaction,
 } from "./contracts.js";
+import { validateRootPayload } from "./root-payload.js";
 
 export type CheckpointRoot = {
   id: string;
@@ -101,6 +102,7 @@ function validateCollectionState(state: Registry, fence: Fence): void {
       root.frames.length > 16384
     )
       invalid();
+    validateRootPayload(root);
     roots.add(root.id);
     for (const frame of root.frames) {
       if (
@@ -226,6 +228,15 @@ export class CheckpointRegistry {
     identifier(rootId);
     if (frames.length > 16384) throw new Error("Manifest bound exceeded");
     const frozen = structuredClone(frames);
+    const frozenMetadata = structuredClone(metadata);
+    validateRootPayload({
+      id: rootId,
+      frames: frozen,
+      metadata: frozenMetadata,
+      publishedAt: 0,
+      retiredAt: null,
+      pins: [],
+    });
     await this.state.transaction((tx) => {
       const state = this.load(tx, fence);
       if (
@@ -261,7 +272,7 @@ export class CheckpointRegistry {
       state.roots.push({
         id: rootId,
         frames: frozen,
-        metadata: structuredClone(metadata),
+        metadata: frozenMetadata,
         publishedAt: this.now(),
         retiredAt: null,
         pins: [],

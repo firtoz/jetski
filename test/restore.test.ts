@@ -114,3 +114,69 @@ test("restore resumes a durable partial frame after lost acknowledgement and val
     /completed import receipt/,
   );
 });
+
+test("restore rejects a corrupt frame map before contacting the host", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "jetski-restore-invalid-"));
+  const state = new SqliteState(join(directory, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const objects = new LocalCheckpointStore(join(directory, "objects"));
+  const registry = new CheckpointRegistry(state, objects);
+  const fence = { owner: "owner", sandbox: "box", generation: 1 };
+  const digest = "a".repeat(64);
+  await state.transaction((tx) =>
+    tx.put("checkpoint/owner/box", {
+      generation: 1,
+      collection: null,
+      accesses: [],
+      roots: [
+        {
+          id: "root",
+          frames: [],
+          publishedAt: 1,
+          retiredAt: null,
+          pins: [],
+          metadata: {
+            version: 1,
+            sha256: digest,
+            bytes: 1,
+            expandedBytes: 1,
+            entries: 2,
+            frames: [
+              {
+                offset: 0,
+                bytes: 1,
+                expandedBytes: 1,
+                sha256: digest,
+                expandedSha256: digest,
+              },
+            ],
+          },
+        },
+      ],
+    }),
+  );
+  let requests = 0;
+  await assert.rejects(
+    restoreCheckpoint(objects, registry, fence, "root", async () => {
+      requests++;
+      return {
+        id: "root",
+        sha256: digest,
+        bytes: 1,
+        offset: 1,
+        phase: "ready",
+      };
+    }),
+    /payload frame count/,
+  );
+  assert.equal(requests, 0);
+  const persisted = (await registry.inspect(fence)) as { accesses: unknown[] };
+  assert.deepEqual(
+    persisted.accesses,
+    [],
+    "failed validation releases its reader admission",
+  );
+});

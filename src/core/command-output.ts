@@ -51,14 +51,31 @@ async function sha(bytes: Uint8Array) {
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
 }
-function metadata(root: CheckpointRoot, id: string): OutputMetadata {
+export function validateOutputRoot(
+  root: CheckpointRoot,
+  id?: string,
+): OutputMetadata {
   const value = root.metadata as OutputMetadata | null;
   if (
     !value ||
     value.kind !== "command-output" ||
     value.version !== 1 ||
-    value.commandId !== id ||
-    !value.channels
+    (id !== undefined && value.commandId !== id) ||
+    typeof value.commandId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      value.commandId,
+    ) ||
+    Object.keys(value).sort().join(",") !==
+      "channels,commandId,kind,status,version" ||
+    !value.status ||
+    typeof value.status !== "object" ||
+    Array.isArray(value.status) ||
+    value.status.id !== value.commandId ||
+    !["succeeded", "failed", "cancelled"].includes(
+      String(value.status.phase),
+    ) ||
+    !value.channels ||
+    Object.keys(value.channels).sort().join(",") !== "stderr,stdout"
   )
     throw new Error("Invalid command output root");
   for (const channel of OUTPUT_CHANNELS)
@@ -71,6 +88,28 @@ function metadata(root: CheckpointRoot, id: string): OutputMetadata {
       )
     )
       throw new Error("Invalid output frame index");
+  const indices = OUTPUT_CHANNELS.flatMap((channel) => value.channels[channel]);
+  if (
+    indices.length !== root.frames.length ||
+    indices.some((index, position) => index !== position)
+  )
+    throw Error("Incomplete or reordered output frames");
+  for (const channel of OUTPUT_CHANNELS) {
+    let total = 0;
+    for (const index of value.channels[channel]) {
+      const frame = root.frames[index]!;
+      if (
+        !frame ||
+        !Number.isSafeInteger(frame.bytes) ||
+        frame.bytes < 1 ||
+        frame.bytes > OUTPUT_CHUNK
+      )
+        throw Error("Invalid output frame extent");
+      total += frame.bytes;
+    }
+    if (total > OUTPUT_LIMIT)
+      throw Error("Output channel extent exceeds bound");
+  }
   return value;
 }
 export class CommandOutputStore {
@@ -87,7 +126,7 @@ export class CommandOutputStore {
   }
   async retained(fence: Fence, id: string): Promise<Json | undefined> {
     const root = await this.registry.root(fence, this.rootId(id));
-    return root ? metadata(root, id).status : undefined;
+    return root ? validateOutputRoot(root, id).status : undefined;
   }
   async retain(
     fence: Fence,
@@ -102,7 +141,7 @@ export class CommandOutputStore {
     const rootId = this.rootId(id),
       prior = await this.registry.root(fence, rootId);
     if (prior) {
-      if (canonical(metadata(prior, id).status) !== canonical(status))
+      if (canonical(validateOutputRoot(prior, id).status) !== canonical(status))
         throw new Error("Command outcome identity conflict");
       return;
     }
@@ -227,7 +266,7 @@ export class CommandOutputStore {
     try {
       const root = await this.registry.root(fence, rootId);
       if (!root) throw new Error("Output root missing");
-      const indices = metadata(root, id).channels[channel];
+      const indices = validateOutputRoot(root, id).channels[channel];
       const objects = indices.map((index) => {
         const object = root.frames[index];
         if (
