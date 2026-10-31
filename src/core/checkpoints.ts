@@ -379,18 +379,32 @@ export class CheckpointRegistry {
     pin: string,
     retain: boolean,
   ): Promise<void> {
+    await this.state.transaction((tx) =>
+      this.pinIn(tx, fence, rootId, pin, retain),
+    );
+  }
+  pinIn(
+    tx: Transaction,
+    fence: Fence,
+    rootId: string,
+    pin: string,
+    retain: boolean,
+  ): void {
     identifier(pin);
-    await this.state.transaction((tx) => {
-      const state = this.load(tx, fence);
-      if (state.collection) throw new Error("Collection in progress");
-      const root = state.roots.find(
-        (root) => root.id === rootId && root.retiredAt === null,
-      );
-      if (!root) throw new Error("Root unavailable");
-      root.pins = root.pins.filter((value) => value !== pin);
-      if (retain) root.pins.push(pin);
-      tx.put(this.key(fence), state);
-    });
+    const state = this.load(tx, fence);
+    if (state.collection) throw new Error("Collection in progress");
+    const root = state.roots.find(
+      (root) => root.id === rootId && root.retiredAt === null,
+    );
+    if (!root) throw new Error("Root unavailable");
+    if (retain && !root.pins.includes(pin) && root.pins.length >= 128)
+      throw Error("Pin limit reached");
+    root.pins = root.pins.filter((value) => value !== pin);
+    if (retain) root.pins.push(pin);
+    tx.put(this.key(fence), state);
+  }
+  rootsIn(tx: Transaction, fence: Fence): CheckpointRoot[] {
+    return this.load(tx, fence).roots;
   }
   /** Retirement is explicit; acknowledged history never expires automatically. */
   async retire(fence: Fence, rootId: string): Promise<void> {

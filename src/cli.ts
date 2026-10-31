@@ -105,6 +105,25 @@ if (command === "serve") {
   let result: unknown;
   let binaryOutput = false;
   switch (command) {
+    case "checkpoints":
+      result = await client.checkpoints(required(positionals[1], "sandbox ID"));
+      break;
+    case "checkpoint-info":
+      result = await client.checkpoint(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "checkpoint ID"),
+      );
+      break;
+    case "checkpoint-pin":
+    case "checkpoint-unpin":
+      result = await client.pinCheckpoint(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "checkpoint ID"),
+        required(positionals[3], "pin name"),
+        command === "checkpoint-pin",
+        required(values.operation, "--operation"),
+      );
+      break;
     case "files":
       result = await client.listFiles(
         required(positionals[1], "sandbox ID"),

@@ -96,6 +96,8 @@ export function createHttpServer(
           fileRead: true,
           fileList: true,
           fileWrite: true,
+          checkpointHistory: true,
+          retentionPins: true,
           pty: false,
           previews: false,
           tcpForwarding: false,
@@ -278,6 +280,52 @@ export function createHttpServer(
         ) {
           fields(await body(request), []);
           send(response, 200, await manager.uploads.finish(scope, uploadId));
+          return;
+        }
+      }
+      if (parts[3] === "checkpoints") {
+        if (parts.length === 4 && request.method === "GET") {
+          send(
+            response,
+            200,
+            await manager.history.list(
+              scope,
+              url.searchParams.get("after") ?? "",
+              Number(url.searchParams.get("limit") ?? 100),
+            ),
+          );
+          return;
+        }
+        const checkpointId = string(parts[4]);
+        if (parts.length === 5 && request.method === "GET") {
+          const checkpoint = await manager.history.get(scope, checkpointId);
+          send(
+            response,
+            checkpoint ? 200 : 404,
+            checkpoint ?? { error: "not_found" },
+          );
+          return;
+        }
+        if (
+          parts.length === 6 &&
+          parts[5] === "pins" &&
+          request.method === "POST"
+        ) {
+          const input = await body(request);
+          fields(input, ["operationId", "pin", "retain"]);
+          if (typeof input.retain !== "boolean")
+            throw Error("Invalid retention flag");
+          send(
+            response,
+            200,
+            await manager.history.pin(
+              scope,
+              checkpointId,
+              string(input.pin),
+              input.retain,
+              string(input.operationId),
+            ),
+          );
           return;
         }
       }

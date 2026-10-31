@@ -1,3 +1,4 @@
+export * from "./checkpoint-history.js";
 export * from "./checkpoints.js";
 export * from "./contracts.js";
 export * from "./files.js";

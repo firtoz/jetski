@@ -136,9 +136,26 @@ controller restart/ACK-loss recovery, no duplicate publication, owner isolation,
 aborted incomplete uploads and no quiescence before a pending publication resolves.
 All 73 unit tests, build/typecheck and linters pass. The real API fixture now injects
 a lost file-publication ACK and verifies retained outcomes, incomplete-upload abort,
-exact restored uploaded bytes, cross-generation replay and CLI file reads. CI pending.
+exact restored uploaded bytes, cross-generation replay and CLI file reads. Source
+**69c06c8bd3af0b83085dea810b6cbeb87a0064a9** passed CI **41217041964**, all four
+jobs; watcher 46081 terminated with exit 0. API log confirms lostFileWriteAckRecovery
+and incompleteUploadAbortedOnStop, preserving the prior recovery evidence. Resources
+were cleaned; no active CI/host work remains.
 
-Next: observe exact-SHA CI and retain failures. Complete remaining interactive/API
+Checkpoint history/pins continuation: portable service, API, SDK and CLI now expose
+bounded filesystem-history pages, individual summaries and named retention pins.
+Internal command-output roots are excluded; malformed archive metadata fails closed.
+Pin mutation and operation outcome commit atomically; old-operation replay cannot
+reverse newer pin/unpin changes, including after generation advance. Tests cover
+pagination, owner denial, command-output exclusion, transaction rollback, pin-protected
+retirement and durable replay. The first synthetic manifest used an invalid zero-byte
+expanded frame; corrected to a bounded nonempty frame without relaxing validation.
+All 74 unit tests, build/typecheck and linters pass. Real API qualification now checks
+history and pins across replacement, including old-pin replay after unpin; CI pending.
+Inspection is metadata-only, not a storage integrity proof. Historical selection for
+restore and explicit public retirement remain pending, alongside the full GC gate.
+
+Next: observe exact-SHA CI, then complete remaining interactive/API
 scope, unresolved assignment deletion, orphan-reader/multi-controller recovery,
 full GC, Boat/S3/R2, physical replacement, staging integration and matched benchmarks.
 The upload protocol is bounded (64 MiB/file and 64 identities/assignment); a committed

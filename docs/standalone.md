@@ -106,3 +106,21 @@ stdout), and `jetski file-write ID /workspace/file LOCAL_FILE --id UUID`. The wr
 hashes the local source before streaming; a changed source fails full-file verification.
 The initial file API replaces a directory entry atomically, rather than modifying
 all hardlinks to its previous inode. Intermediate directories must already exist.
+
+
+Checkpoint history is available at `GET /v1/sandboxes/{id}/checkpoints` and
+`GET .../checkpoints/{checkpoint}`. Pages contain at most 100 filesystem summaries;
+command-output objects and internal actor records are not exposed. Keyset pagination
+is a live view: restart the scan to include concurrent insertions before the cursor.
+Metadata inspection does not perform an object integrity audit.
+
+`POST .../checkpoints/{checkpoint}/pins` accepts `operationId`, `pin` and `retain`.
+Pin changes and their operation outcomes commit atomically. Replaying an old request
+observes its prior outcome; it does not reverse later changes. Up to 128 named pins
+can protect a checkpoint. Removing a pin does not retire the root or schedule its
+collection; acknowledged history remains retained until explicit retirement.
+SDK methods are `checkpoints`, `checkpoint` and `pinCheckpoint`. CLI equivalents:
+`jetski checkpoints ID`, `jetski checkpoint-info ID CHECKPOINT`, and
+`jetski checkpoint-pin ID CHECKPOINT NAME --operation OP_ID` (or `checkpoint-unpin`).
+These metadata operations survive sandbox stop, resume and deletion. Restoring a
+selected historical checkpoint and public explicit retirement remain pending.

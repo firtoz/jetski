@@ -1,3 +1,7 @@
+import type {
+  CheckpointPage,
+  CheckpointSummary,
+} from "./core/checkpoint-history.js";
 import { encodeBase64 } from "./core/command-output.js";
 import { identifier, type Json, type Operation } from "./core/contracts.js";
 import {
@@ -218,6 +222,34 @@ export class JetskiClient {
     }
     if (offset !== spec.bytes) throw Error("Upload source ended early");
     return this.finishUpload(sandbox, id);
+  }
+  checkpoints(
+    sandbox: string,
+    after = "",
+    limit = 100,
+  ): Promise<CheckpointPage> {
+    const query = new URLSearchParams({ after, limit: String(limit) });
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/checkpoints?${query}`,
+    );
+  }
+  checkpoint(sandbox: string, id: string): Promise<CheckpointSummary> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/checkpoints/${identifier(id)}`,
+    );
+  }
+  pinCheckpoint(
+    sandbox: string,
+    checkpoint: string,
+    pin: string,
+    retain: boolean,
+    operationId: string,
+  ): Promise<Operation> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/checkpoints/${identifier(checkpoint)}/pins`,
+      "POST",
+      { pin, retain, operationId },
+    );
   }
   operation(sandbox: string, id: string): Promise<Operation> {
     return this.request(

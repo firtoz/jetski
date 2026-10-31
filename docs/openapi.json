@@ -906,6 +906,151 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{sandbox}/checkpoints": {
+      "get": {
+        "summary": "List filesystem checkpoint history",
+        "description": "Live keyset pagination by checkpoint ID; concurrent new checkpoints may require a fresh scan. Listing is not a storage integrity audit.",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filesystem checkpoint summaries, excluding command-output records"
+          },
+          "400": {
+            "description": "Invalid request or ambiguous metadata"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Resource outside principal scope or unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{sandbox}/checkpoints/{checkpoint}": {
+      "get": {
+        "summary": "Inspect published checkpoint metadata and retention pins",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filesystem checkpoint summaries, excluding command-output records"
+          },
+          "400": {
+            "description": "Invalid request or ambiguous metadata"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Resource outside principal scope or unavailable"
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{sandbox}/checkpoints/{checkpoint}/pins": {
+      "post": {
+        "summary": "Atomically pin or unpin a filesystem checkpoint",
+        "description": "Operation IDs have persisted outcomes. Replaying an old pin never undoes a subsequent unpin. Removing a pin does not retire or collect the checkpoint.",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["operationId", "pin", "retain"],
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "pin": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "retain": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Filesystem checkpoint summaries, excluding command-output records"
+          },
+          "400": {
+            "description": "Invalid request or ambiguous metadata"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Resource outside principal scope or unavailable"
+          }
+        }
+      }
     }
   },
   "components": {

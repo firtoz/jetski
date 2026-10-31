@@ -276,6 +276,25 @@ try {
   const stopped = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
   assert.equal(stopped.phase, "stopped");
   assert.equal(stopped.lease, null);
+  assert.ok(stopped.checkpoint);
+  const historyPage = await client.checkpoints(id);
+  assert.ok(
+    historyPage.checkpoints.some((item) => item.id === stopped.checkpoint),
+  );
+  const pinId = randomUUID();
+  await client.pinCheckpoint(
+    id,
+    stopped.checkpoint,
+    "qualification",
+    true,
+    pinId,
+  );
+  assert.deepEqual((await client.checkpoint(id, stopped.checkpoint)).pins, [
+    "qualification",
+  ]);
+  await assert.rejects(
+    new JetskiClient(url, foreignToken).checkpoint(id, stopped.checkpoint),
+  );
   controlUnavailable = true;
   assert.deepEqual(
     await client.request(`/v1/sandboxes/${id}/commands/${commandId}`),
@@ -305,6 +324,21 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal(replacement?.phase, "running");
+  await client.pinCheckpoint(
+    id,
+    stopped.checkpoint,
+    "qualification",
+    false,
+    randomUUID(),
+  );
+  await client.pinCheckpoint(
+    id,
+    stopped.checkpoint,
+    "qualification",
+    true,
+    pinId,
+  );
+  assert.deepEqual((await client.checkpoint(id, stopped.checkpoint)).pins, []);
   const restoredUpload: Uint8Array[] = [];
   for await (const part of client.readFileStream(id, uploadSpec.path))
     restoredUpload.push(part);
@@ -573,6 +607,7 @@ try {
       boundedFileReadAndList: true,
       lostFileWriteAckRecovery: true,
       incompleteUploadAbortedOnStop: true,
+      checkpointHistoryAndReplaySafePins: true,
       completeLifecycle: false,
     }),
   );

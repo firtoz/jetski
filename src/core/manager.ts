@@ -1,3 +1,4 @@
+import { CheckpointHistory } from "./checkpoint-history.js";
 import { CheckpointRegistry } from "./checkpoints.js";
 import { CommandOutputStore, type OutputChannel } from "./command-output.js";
 import {
@@ -69,6 +70,7 @@ export class SandboxManager {
   private readonly outputs: CommandOutputStore;
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
+  readonly history: CheckpointHistory;
   readonly uploads: UploadCoordinator;
   private readonly shutdown: ShutdownCoordinator;
   private readonly now: () => number;
@@ -90,6 +92,11 @@ export class SandboxManager {
     this.operations = new OperationJournal(state, this.now);
     this.checkpoints = new CheckpointRegistry(state, objects, this.now);
     this.outputs = new CommandOutputStore(objects, this.checkpoints);
+    this.history = new CheckpointHistory(
+      state,
+      this.checkpoints,
+      this.operations,
+    );
     this.uploads = new UploadCoordinator(
       state,
       this.operations,
