@@ -90,6 +90,12 @@ finally:
             process.kill()
             process.wait(timeout=5)
     if process.stderr:
+        if process.returncode:
+            diagnostic = process.stderr.read(8192).decode("utf8", errors="replace")
+            token = os.environ.get("JETSKI_TOKEN")
+            if token:
+                diagnostic = diagnostic.replace(token, "<redacted>")
+            sys.stderr.write(diagnostic)
         process.stderr.close()
     os.close(master)
     os.close(slave)

@@ -139,6 +139,7 @@ let cleanupId: string;
 const id = randomUUID(),
   operationId = randomUUID();
 cleanupId = id;
+let qualificationError: unknown;
 try {
   await client.request("/v1/sandboxes", "POST", { id, operationId, image });
   let sandbox: Sandbox | undefined;
@@ -1108,6 +1109,9 @@ try {
       completeLifecycle: false,
     }),
   );
+} catch (error) {
+  qualificationError = error;
+  throw error;
 } finally {
   await stopWorker();
   let cleanupError: unknown;
@@ -1134,5 +1138,10 @@ try {
   state.close();
   clientJournal.close();
   await rm(directory, { recursive: true, force: true });
+  if (cleanupError && qualificationError)
+    throw new AggregateError(
+      [qualificationError, cleanupError],
+      "Qualification and cleanup failed",
+    );
   if (cleanupError) throw cleanupError;
 }

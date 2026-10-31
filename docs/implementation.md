@@ -93,6 +93,13 @@ workload-specific products.
 
 ## Latest continuation status
 
+First raw-TTY qualification:78f6f7f /CI41235795138 API job124639190464
+failed; cleanup HostTransportError masked the original failure. Watcher58456
+exited1. Preserve /tmp/jetski-tty-failed-api.log. Fixture now retains both primary
+and cleanup exceptions via AggregateError, and the disposable PTY helper emits
+bounded credential-redacted child stderr on failure. No success claim or timeout
+loosening; next run must identify and fix the original cause. Other four jobs passed.
+
 Raw-TTY CLI continuation: terminal-attach now uses a private owned nonredirected
 SQLite directory and durable attachment identity. Bounded64KiB unsubmitted input,
 16KiB serial frames, coalesced initial/window resize, raw control-byte forwarding,
@@ -103,7 +110,9 @@ keyboard/display durability. Node-only module is dynamically loaded by the CLI.
 New disposable Python PTY fixture drives typing, detach with remote still running,
 same-journal reattach,57x123resize, Ctrl-C trap and terminal attribute restoration.
 Local private-directory/symlink rejection test makes no runtime/network calls.
-Final checks and hosted fixture qualification pending. No desktop raw-TTY/workload
+Local69TypeScript tests/build/typecheck/lint and Python fixture lint pass.
+Published78f6f7f4963271818d18e3c9f5d7c913e50c179e; CI41235795138 running,
+/tmp/jetski-tty-ci.log. Real raw-TTY fixture qualification pending. No desktop raw-TTY/workload
 execution, paid resources or protected experiment changes. Full goal active;
 gateway/provider/storage/client/benchmark release gates remain open.
 
