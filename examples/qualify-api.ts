@@ -490,6 +490,39 @@ try {
     pressureStatus,
   );
 
+  const ttyTerminal = randomUUID(),
+    ttyAttachment = randomUUID();
+  await client.startTerminal(id, ttyTerminal, [
+    "/bin/sh",
+    "-ec",
+    'stty -echo; printf ATTACH-READY; IFS= read -r line; test "$line" = first; printf FIRST-OK; while IFS= read -r line; do if test "$line" = size; then stty size; elif test "$line" = second; then break; else exit 2; fi; done; trap "printf INTERRUPTED; exit 0" INT; printf SIGNAL-READY; while :; do sleep 1; done',
+  ]);
+  const ttyArguments = [
+    "examples/qualify-tty.py",
+    process.execPath,
+    id,
+    ttyTerminal,
+    ttyAttachment,
+    join(directory, "tty-client"),
+  ];
+  const ttyEnvironment = {
+    ...process.env,
+    JETSKI_URL: url,
+    JETSKI_TOKEN: token,
+  };
+  await promisify(execFile)("python3", [...ttyArguments, "detach"], {
+    env: ttyEnvironment,
+    timeout: 60000,
+  });
+  assert.equal(
+    ((await client.terminalStatus(id, ttyTerminal)) as { phase: string }).phase,
+    "running",
+  );
+  await promisify(execFile)("python3", [...ttyArguments, "finish"], {
+    env: ttyEnvironment,
+    timeout: 60000,
+  });
+  await waitPhase(ttyTerminal, "succeeded");
   const commandId = randomUUID();
   const request = {
     id: commandId,
@@ -1040,6 +1073,7 @@ try {
       apiTerminalInputReplay: true,
       terminalFollowDetachReconnect: true,
       clientAttachmentRestartLostAck: true,
+      rawTtyCliDetachResizeSignalRestore: true,
       terminalFollowCliWithoutHost: true,
       terminalOutcomesWithoutHost: true,
       apiTerminalPressureUncertaintyRetained: true,

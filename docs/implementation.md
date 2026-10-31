@@ -93,6 +93,34 @@ workload-specific products.
 
 ## Latest continuation status
 
+Raw-TTY CLI continuation: terminal-attach now uses a private owned nonredirected
+SQLite directory and durable attachment identity. Bounded64KiB unsubmitted input,
+16KiB serial frames, coalesced initial/window resize, raw control-byte forwarding,
+Ctrl-]/signals/EOF detach without remote close, output cursor acknowledgement and
+terminal-mode restoration.30second input deadlines retain pending identities.
+Unsubmitted local keystrokes are discarded on explicit detach; no claim of atomic
+keyboard/display durability. Node-only module is dynamically loaded by the CLI.
+New disposable Python PTY fixture drives typing, detach with remote still running,
+same-journal reattach,57x123resize, Ctrl-C trap and terminal attribute restoration.
+Local private-directory/symlink rejection test makes no runtime/network calls.
+Final checks and hosted fixture qualification pending. No desktop raw-TTY/workload
+execution, paid resources or protected experiment changes. Full goal active;
+gateway/provider/storage/client/benchmark release gates remain open.
+
+Verified durable client attachment:2b19b5617d30c187c138c7c0bd296006a2f36abf,
+CI41234998825 all five jobs passed; watcher15757 exited0. Installed API
+job124636772675 confirms clientAttachmentRestartLostAck=true after deterministic
+client response loss plus host acknowledgement loss, separate client SQLite reopen,
+same-input resume and one workload line. Prior0ae2e2f CI41234896681 also all green;
+watcher71130 exited0. Evidence /tmp/jetski-attachment-qualified-api.log and
+/tmp/jetski-attachment-deterministic-ci.log.68TypeScript/59Python checks plus
+build/typecheck/lint pass. Source pushed to main; this verified scratchpad update
+follows code. All current watchers terminal. No paid resources, desktop workloads
+or protected experiment changes. Next raw-TTY CLI attachment with stdin, resize,
+signals and safe detach using this journal; then SSH/HTTP/WS/TCP gateways. Full
+provider/storage/cache replacement, client staging, matched benchmark and release
+gates remain open. Full goal active; do not mark complete.
+
 Attachment qualification refinement: source0ae2e2fec0ec8d9736a451b252f234049f53864b
 pushed; CI41234896681 running, /tmp/jetski-attachment-ci.log. Review found the
 background reconciler can receive the injected host ACK loss instead of the HTTP
@@ -101,6 +129,9 @@ drops exactly the client POST response after it completes, guaranteeing the
 client journal must recover independently of that scheduling race. Existing host
 ACK injection and no-duplicate workload assertions remain. This is a deterministic
 fault boundary refinement, not weaker acceptance.68local tests/build/lint passed.
+Refined source2b19b5617d30c187c138c7c0bd296006a2f36abf pushed;
+CI41234998825 running, /tmp/jetski-attachment-deterministic-ci.log.
+First watcher71130 remains under observation.
 
 Durable input attachment continuation: portable client journal/SDK attachTerminal
 persists one bounded input before remote admission, binds server credential

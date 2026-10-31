@@ -21,8 +21,8 @@ jobs:
         run: node --import tsx examples/qualify-checkpoint-storage.ts
       - run: npm run lint
       - run: python3 -m unittest discover -s host -v
-      - run: pipx run --spec ruff==0.17.3 ruff check host
-      - run: pipx run --spec ruff==0.17.3 ruff format --check host
+      - run: pipx run --spec ruff==0.17.3 ruff check host examples/qualify-tty.py
+      - run: pipx run --spec ruff==0.17.3 ruff format --check host examples/qualify-tty.py
   rootless-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

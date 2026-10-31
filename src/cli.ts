@@ -21,6 +21,7 @@ const { values, positionals } = parseArgs({
     rows: { type: "string" },
     columns: { type: "string" },
     offset: { type: "string" },
+    "state-dir": { type: "string" },
     checkpoint: { type: "string" },
   },
 });
@@ -201,6 +202,18 @@ if (command === "serve") {
         },
       );
       break;
+    case "terminal-attach": {
+      binaryOutput = true;
+      const { attachTty } = await import("./client/tty.js");
+      await attachTty(
+        client,
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "terminal ID"),
+        required(values.id, "--id"),
+        required(values["state-dir"], "--state-dir"),
+      );
+      break;
+    }
     case "terminal-follow":
       binaryOutput = true;
       for await (const chunk of client.followTerminal(
