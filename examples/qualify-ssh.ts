@@ -77,6 +77,7 @@ const lease = {
   generation: 1,
 };
 const payload = { lease, image };
+let activePayload = payload;
 await request("claim", { lease });
 try {
   const created = await request("create", payload);
@@ -84,9 +85,12 @@ try {
   await assert.rejects(
     request("create", { ...payload, lease: { ...lease, generation: 2 } }),
   );
-  const waitCommand = async (commandId: string) => {
+  const waitCommand = async (commandId: string, commandPayload = payload) => {
     for (let attempt = 0; attempt < 100; attempt++) {
-      const result = await request("command-status", { ...payload, commandId });
+      const result = await request("command-status", {
+        ...commandPayload,
+        commandId,
+      });
       if (
         result &&
         typeof result === "object" &&
@@ -220,11 +224,66 @@ try {
       createHash("sha256").update(Buffer.concat(recovered)).digest("hex"),
       manifest.sha256,
     );
+    await request("remove", payload);
+    const publication = {
+      checkpointId: saved.root.id,
+      sha256: manifest.sha256,
+    };
+    await request("release", { ...payload, publication });
+    assert.deepEqual(await request("purge-source", payload), { purged: true });
+    activePayload = {
+      lease: { ...lease, assignmentId: randomUUID(), generation: 2 },
+      image,
+    };
+    await request("claim", { lease: activePayload.lease });
+    await request("import-begin", {
+      ...activePayload,
+      ...publication,
+      bytes: manifest.bytes,
+    });
+    let importedOffset = 0;
+    for (const frame of saved.root.frames) {
+      for await (const part of store.read(frame)) {
+        const chunk = {
+          ...activePayload,
+          offset: importedOffset,
+          base64: Buffer.from(part).toString("base64"),
+          sha256: createHash("sha256").update(part).digest("hex"),
+        };
+        const receipt = await request("import-chunk", chunk);
+        if (importedOffset === 0)
+          assert.deepEqual(await request("import-chunk", chunk), receipt);
+        importedOffset += part.length;
+      }
+    }
+    await request("import-finish", activePayload);
+    await request("create", activePayload);
+    const recoveredCommand = randomUUID();
+    await request("command-start", {
+      ...activePayload,
+      commandId: recoveredCommand,
+      argv: [
+        "/bin/sh",
+        "-ec",
+        'test "$(cat /workspace/counter)" = 1; test "$(stat -c %a /workspace/payload)" = 640; test "$(stat -c %i /workspace/hard)" = "$(stat -c %i /workspace/payload)"; test "$(readlink /home/sandbox/link)" = /workspace/payload; test "$(wc -c < /workspace/payload)" = 11',
+      ],
+    });
+    assert.equal(
+      (await waitCommand(recoveredCommand, activePayload)).phase,
+      "succeeded",
+    );
+    await request("quiesce", activePayload);
+    const restoredCheckpoint = parseArchive(
+      await request("capture", activePayload),
+    );
+    assert.equal(restoredCheckpoint.sha256, manifest.sha256);
+    await request("remove", activePayload);
+    await request("release", { ...activePayload, publication });
+    await request("purge-source", activePayload);
   } finally {
     state.close();
     await rm(directory, { recursive: true, force: true });
   }
-  await request("remove", payload);
   console.log(
     JSON.stringify({
       sshControl: true,
@@ -237,10 +296,12 @@ try {
       durableExecution: true,
       binaryOutputReconnect: true,
       assignmentCancellation: true,
+      sourceDeletedTransportRecovery: true,
+      repeatedCheckpointIdentical: true,
     }),
   );
 } finally {
   // Only the exact owned assignment. A failed state is preserved in CI logs.
-  await request("quiesce", payload).catch(() => {});
-  await request("remove", payload).catch(() => {});
+  await request("quiesce", activePayload).catch(() => {});
+  await request("remove", activePayload).catch(() => {});
 }

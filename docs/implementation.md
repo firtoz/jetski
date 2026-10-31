@@ -245,3 +245,23 @@ prevention, cancellation and a nonempty checkpoint. Await its actual CI outcome;
 source-only assertions do not qualify execution. Prior documentation CI must be
 checked independently. This continuation has made implementation progress; no
 paid hosts, desktop runtime changes or existing GC experiment changes occurred.
+
+Execution CI **41208335388** passed on **f4d9bee69e73ba4698a0cdbc9cd70efeba32cbd5**:
+real SSH command admission/replay, binary output cursor continuation, assignment
+cancellation and nonempty capture/local publication. The earlier 41208293440 run
+preserves a missing installed worker-module failure; the installation-bundle test
+now imports modules in isolated Python without access to the source checkout.
+
+Checkpoint import now journals byte offsets, verifies chunk identities and the
+complete archive digest, rejects conflicting replays, and restores only into a
+fresh assignment before execution admission. A crash after bytes reach disk but
+before offset acknowledgement is covered by a recovery test. Trusted control
+release checks matching publication receipt, runtime absence and resolved commands;
+source purge requires that release. The private host-control protocol must never
+be exposed as an unfiltered public API: publication assertions are controller-owned.
+Thirty-one Python tests pass; twelve TypeScript tests pass. Typecheck now covers
+examples and tests as well as library code. The real SSH fixture now deletes the
+source only after verified publication, imports from the independent local store,
+executes against the restored tree and compares the next checkpoint SHA exactly.
+Await CI before claiming that combined restore path qualified. Cancellation still
+stops the full assignment; fine-grained signals/PTYs remain open.

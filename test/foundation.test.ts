@@ -3,13 +3,13 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { type TestContext, test } from "node:test";
 import { OperationJournal } from "../src/core/operations.js";
 import { JetskiClient } from "../src/sdk.js";
 import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 
-async function fixture(t: Parameters<Parameters<typeof test>[1]>[0]) {
+async function fixture(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "jetski-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   return dir;

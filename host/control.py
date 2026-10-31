@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import stat
+import shutil
 import pathlib
 import sys
 import subprocess
@@ -15,6 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from archive import capture  # noqa: E402
 from commands import Commands  # noqa: E402
+from import_checkpoint import CheckpointImport  # noqa: E402
 from fence import Fence, identity  # noqa: E402
 from runtime import PodmanRuntime  # noqa: E402
 from supervisor import (  # noqa: E402
@@ -58,6 +60,17 @@ def dispatch(request, config, account, run, launch=None):
             return state
     image = payload.get("image")
     runtime = PodmanRuntime(fence, run, image, DATA_ROOT, config["images"])
+    importer = CheckpointImport(fence, ARCHIVE_ROOT, DATA_ROOT, account)
+    if action == "import-begin":
+        return importer.begin(
+            lease, payload.get("checkpointId"), payload.get("sha256"), payload.get("bytes")
+        )
+    if action == "import-chunk":
+        return importer.chunk(
+            lease, payload.get("offset"), payload.get("base64"), payload.get("sha256")
+        )
+    if action == "import-finish":
+        return importer.finish(lease)
     commands = Commands(fence, CONTROL_ROOT / "commands", launch)
     if action == "command-start":
         if launch is None:
@@ -87,6 +100,8 @@ def dispatch(request, config, account, run, launch=None):
             fence.match(state, lease)
             if state["phase"] != "open":
                 raise ValueError("closed_lease")
+            if state.get("import") and state["import"]["phase"] != "ready":
+                raise ValueError("checkpoint_import_incomplete")
             # Root-owned parent prevents a workload from replacing assignment roots.
             assignment = DATA_ROOT / lease["assignmentId"]
             assignment.mkdir(mode=0o700, exist_ok=True)
@@ -101,6 +116,42 @@ def dispatch(request, config, account, run, launch=None):
         return runtime.quiesce(lease)
     if action == "remove":
         return runtime.remove(lease)
+    if action == "release":
+        receipt = payload.get("publication")
+
+        # This private SSH method is for the trusted controller only, after its
+        # checkpoint registry has verified and committed remote/local publication.
+        # Public callers must never be able to supply this assertion directly.
+        def verified(_lease, publication):
+            state = fence.read()
+            checkpoint = state.get("checkpoint")
+            if (
+                not checkpoint
+                or publication["sha256"] != checkpoint["sha256"]
+                or state.get("runtime", {}).get("phase") != "removed"
+            ):
+                return False
+            return run(["container", "exists", runtime.container(lease)])["exitCode"] == 1
+
+        return fence.release(lease, verified, receipt)
+    if action == "purge-source":
+        with fence.locked():
+            state = fence.read()
+            fence.match(state, lease)
+            if state["phase"] != "released" or not state.get("releaseReceipt"):
+                raise ValueError("source_not_durably_released")
+            destination = DATA_ROOT / lease["assignmentId"]
+            if os.path.lexists(destination):
+                if destination.is_symlink() or not destination.is_dir():
+                    raise ValueError("unsafe_source_path")
+                shutil.rmtree(destination)
+            for suffix in (".tgz", ".upload"):
+                path = ARCHIVE_ROOT / (lease["assignmentId"] + suffix)
+                if os.path.lexists(path):
+                    if path.is_symlink() or not path.is_file():
+                        raise ValueError("unsafe_source_archive")
+                    path.unlink()
+            return dict(purged=True)
     if action == "capture":
         with fence.locked():
             state = fence.read()
