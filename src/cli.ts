@@ -35,20 +35,18 @@ if (command === "serve") {
     port?: number;
     hostsPerOwner?: number;
     storage?: import("./server/storage.js").StorageConfig;
-    sshHosts: import("./transport/ssh.js").SshHost[];
+    hostProvider: import("./server/hosts.js").HostConfig;
     principals: Array<{ owner: string; tokenEnv: string }>;
   };
   const [
     { SandboxManager },
-    { SshHostProvider },
-    { SshTransport },
+    { standaloneHosts },
     { SqliteState },
     { standaloneStorage },
     { createHttpServer, bearerAuthentication, startWorker },
   ] = await Promise.all([
     import("./core/manager.js"),
-    import("./providers/ssh.js"),
-    import("./transport/ssh.js"),
+    import("./server/hosts.js"),
     import("./state/sqlite.js"),
     import("./server/storage.js"),
     import("./server/http.js"),
@@ -56,11 +54,11 @@ if (command === "serve") {
   const directory = resolve(config.dataDirectory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const state = new SqliteState(join(directory, "state.sqlite"));
-  const transport = new SshTransport(config.sshHosts);
-  const provider = new SshHostProvider(
-    config.sshHosts.map((host) => host.id),
+  const { provider, transport } = await standaloneHosts(
     state,
-    transport,
+    config.hostProvider,
+    config.poolId,
+    config.approvedImages,
   );
   const storage = await standaloneStorage(directory, config.storage);
   const manager = new SandboxManager(

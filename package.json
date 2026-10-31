@@ -20,7 +20,9 @@
     "./server/storage": "./dist/server/storage.js",
     "./testing/storage": "./dist/testing/storage.js",
     "./providers/boat": "./dist/providers/boat.js",
-    "./transport/boat": "./dist/transport/boat.js"
+    "./transport/boat": "./dist/transport/boat.js",
+    "./providers/boat-bootstrap": "./dist/providers/boat-bootstrap.js",
+    "./server/hosts": "./dist/server/hosts.js"
   },
   "files": [
     "dist",

@@ -70,7 +70,7 @@ jobs:
           # Production bootstrap must continue rejecting writable ancestors.
           sudo chown root:root /opt
           sudo chmod 755 /opt
-          sudo python3 host/bootstrap.py --config /tmp/jetski-host.json
+          if [ "${{ matrix.suite }}" != "boat" ]; then sudo python3 host/bootstrap.py --config /tmp/jetski-host.json; fi
           mkdir -m 700 "$RUNNER_TEMP/jetski-ssh"
           ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/jetski-ssh/client"
           sudo mkdir -p -m 700 /etc/ssh/jetski-test

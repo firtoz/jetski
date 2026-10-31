@@ -93,6 +93,33 @@ workload-specific products.
 
 ## Latest continuation status
 
+Bootstrap continuation: the previous turn made verified progress (live R2 storage
+and recovery plus green CI41223577252). Inspection found that earlier Boat CI ran
+provider commands as root, masking the documented non-root guest boundary. Fixed
+transport to elevate only the installed privileged control program; the revised
+fixture runs commands/uploads as the unprivileged CI user.
+
+Automatic owned-host bootstrap and standalone provider selection are implemented.
+Code/installer/policy digests are journaled before dispatch; root-owned installation
+lock/receipt and full installed-byte checks support lost-ACK replay and reject
+conflicting policy/code. Missing runtime prerequisites install only on owned VMs.
+The new CI fixture starts without a preinstalled agent, injects a committed bootstrap
+ACK loss, then requires recovery, unchanged replay without commands, policy conflict
+rejection and all prior large-input/corruption/cleanup checks. Local55TypeScript+
+42Python tests, build/typecheck/lints pass. Real revised fixture CI is pending.
+No live Boat call, paid allocation or protected real-grace test changes occurred.
+
+Current published source **890533a2c5aa9e8bb117107134db23e23261928a**, CI
+**41223577252** passed all five jobs; watcher **4019** exited0. Local build/typecheck/
+lint and53TypeScript tests pass; CI also passes42Python tests. The new checkpoint-
+storage harness passes both local and live R2. Disposable CI listeners completed
+cleanup. Private live receipts/configuration and seven-day credentials are at
+`/home/frtn/.local/state/jetski-qa/20261031/r2/`, outside git; credentials.env must
+never be printed or published. Token expires November7. Both live fixture receipts
+confirm cleanup; reservation markers intentionally remain. Full acceptance remains
+open. Continue Boat bootstrap/configuration and remaining interactive/provider/
+client/benchmark gates; no paid host allowance has been added.
+
 Current source before this continuation: **18fe180f1547b476e61bd9a361c7c3740e83e393**,
 CI **41222791893**, all five jobs successful. Boat fixture logs confirm actual
 host-control execution, large-input verification, corruption rejection and two
@@ -113,7 +140,7 @@ and deletion ACK loss/reopen. Exactly2adapter puts; bothfixture blobs cleaned.
 Faults are injected at adapter-return boundaries; GC time is synthetic and scoped
 to disposable fixtures. This does not qualify provider outage, real-grace GC,
 filesystem extraction or physical-host replacement. No paid host was allocated;
-the separate real-grace experiment was untouched. Final checks/CI pending.
+the separate real-grace experiment was untouched. Final checks and all five CI jobs passed.
 
 Next: finish Boat bootstrap/configuration, full interactive transports and live
 S3-backed execution/replacement. Keep the remaining client and matched benchmark

@@ -46,7 +46,7 @@ test("Boat control uses only owned hosts, encoded fixed dispatch and matching re
       },
     );
     const match =
-      /^printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d \| env -i PATH=\/usr\/bin:\/bin python3 -I \/opt\/jetski\/host\/control.py$/.exec(
+      /^printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d \| 'sudo' '-n' 'env' '-i' 'PATH=\/usr\/bin:\/bin' 'python3' '-I' '\/opt\/jetski\/host\/control.py'$/.exec(
         body.command,
       );
     assert.ok(match);

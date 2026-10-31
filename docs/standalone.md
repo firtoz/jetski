@@ -4,6 +4,9 @@ The current server implements creation, inspection/listing, operation receipts,
 command admission/status and resumable output, checkpoint, stop, resume and deletion. Interactive gateways are not implemented yet. Do not
 use this preview as a durable hosted service; use disposable qualification hosts.
 The full release gates remain in [implementation.md](implementation.md).
+Select `hostProvider: { "kind": "ssh", "hosts": [...] }` for an adopted host,
+or the [Boat configuration](boat.md#automatic-owned-machine-bootstrap) for automatic
+owned-machine bootstrap. The instructions below describe the SSH path.
 
 Install Node from `.nvmrc`, then `npm ci && npm run build`. Prepare a dedicated
 Linux x86-64 host with rootless Podman prerequisites. As an operator on that host,

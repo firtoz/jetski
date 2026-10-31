@@ -22,8 +22,8 @@ Inspection checks provider state and the injected host transport's protocol stat
 An API-ready VM is not admitted as ready until the installed host-control agent
 reports the expected machine identity and readiness. The transport/bootstrap layer
 must install and qualify the rootless runtime and keep its credentials outside the
-workload. Automatic Boat bootstrap, transport discovery, and standalone CLI wiring
-are still pending; this adapter alone does not make a newly created VM usable.
+workload. The standalone Boat configuration wires automatic bootstrap and this transport.
+Direct embedded callers inject `BoatBootstrap` as the provider bootstrap hook.
 
 Retirement only accepts an allocation found in this controller's persisted ownership
 journal and the exact allocation ID. Deletion sends the provider's confirmation
@@ -68,9 +68,54 @@ An uncertain cleanup reports failure so the caller must inspect before reuse.
 Command responses allow an 8 MiB JSON envelope while enforcing the protocol's
 2 MiB stdout and 64 KiB diagnostic bounds. Command deadlines are configurable from
 1 to 600 seconds; the HTTP deadline also allows the provider's startup wait.
-These transport paths currently have injected HTTP fixture coverage. Real execution
-of the upload/verification/cleanup scripts, automatic runtime bootstrap, standalone
-configuration and live-provider recovery still require qualification.
+The host scripts have disposable Linux execution coverage. The corrected fixture
+runs provider commands as a non-root guest, matching Boat, with `sudo -n` only for
+the fixed privileged control program. Fresh bootstrap qualification is in CI;
+live-provider recovery remains unqualified.
 
 Wire schemas: [execute command](https://docs.boat.dev/api/reference/agent/execute-sandbox-command)
 and [write file](https://docs.boat.dev/api/reference/agent/write-sandbox-file).
+
+
+## Automatic owned-machine bootstrap
+
+`jetski/providers/boat-bootstrap` exports the Node-only `BoatBootstrap`. The
+standalone host factory selects it only for a Boat configuration:
+
+```json
+{
+  "hostProvider": {
+    "kind": "boat",
+    "tokenEnv": "BOAT_API_TOKEN",
+    "machine": "small"
+  }
+}
+```
+
+This replaces `hostProvider: { "kind": "ssh", "hosts": [...] }`; the other server
+fields (pool ID, approved images, storage and principals) remain required. The
+credential comes from that explicitly named controller environment variable.
+Creating demand may allocate a billable VM. Do not enable it without an allowance.
+`standaloneHosts` constructs adapters without allocating anything on its own.
+
+Bootstrap uploads the package's ordinary Python source modules through the bounded
+private file channel. The installer runs with passwordless sudo on the owned VM,
+never on the controller. Missing Podman/uidmap/network/filesystem/user-session
+prerequisites are installed from the host's configured apt repositories; unrelated
+packages are not upgraded. The installation still checks supported architecture,
+namespaces, cgroups, subordinate IDs, runtime and immutable image policy.
+
+The controller journals the exact code, installer and policy digests before
+installation. A root-owned host lock and fsynced receipt bind the installed code
+and configuration. Retrying after an uncertain response checks the same receipt,
+installed bytes and readiness. Conflicting policy/code, a foreign existing
+configuration, unsafe paths, or an unreceipted active assignment fail closed.
+Completed controller receipts avoid reinstalling on every readiness poll. A new
+package revision requires explicit replacement, not an implicit upgrade of warm
+assigned machines. Reconciliation exposes failure as unknown readiness and keeps
+work queued. Diagnostics are bounded and provider credentials never enter bundles.
+
+Boat documents its non-root guest and passwordless sudo in
+[the machine reference](https://docs.boat.dev/machines). Earlier disposable tests
+ran the command envelope as root and did not qualify that privilege boundary;
+the corrected fixture explicitly rejects a root provider-command process.

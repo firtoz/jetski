@@ -132,6 +132,7 @@ export class BoatHostProvider implements HostProvider {
     private readonly transport: HostTransport,
     private readonly machine: BoatMachineType = "small",
     private readonly now = Date.now,
+    private readonly bootstrap?: { ensure(host: string): Promise<void> },
   ) {
     if (!BOAT_MACHINE_TYPES.includes(machine))
       throw Error("Unsupported Boat machine type");
@@ -235,6 +236,7 @@ export class BoatHostProvider implements HostProvider {
         return { state: "starting" };
       if (!["ready", "idle", "running"].includes(resource.state))
         return { state: "unknown" };
+      await this.bootstrap?.ensure(id);
       const response = await this.transport.request(id, {
         version: HOST_PROTOCOL_VERSION,
         id: crypto.randomUUID(),

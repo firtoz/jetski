@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { HostTransportError } from "../src/core/transport.js";
 import { BoatApi } from "../src/providers/boat.js";
+import { BoatBootstrap } from "../src/providers/boat-bootstrap.js";
 import { SqliteState } from "../src/state/sqlite.js";
 import { BoatTransport } from "../src/transport/boat.js";
 
@@ -15,7 +16,9 @@ async function run(
   input?: Buffer,
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn("sudo", args, { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(args[0]!, args.slice(1), {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     const chunks: Buffer[] = [],
       errors: Buffer[] = [];
     let size = 0;
@@ -42,11 +45,18 @@ async function run(
     child.stdin.end(input);
   });
 }
+assert.notEqual(
+  process.getuid?.(),
+  0,
+  "Provider commands must run as the non-root guest",
+);
 const state = new SqliteState(":memory:");
 const directories = new Set<string>();
 let corrupt = false,
   uploads = 0,
   cleanups = 0;
+let loseBootstrapAck = true;
+let commandCalls = 0;
 try {
   await state.transaction((tx) => {
     tx.put("boat-host/bx_ci", "allocation");
@@ -88,7 +98,16 @@ try {
       body.command,
     )?.[0];
     if (directory) directories.add(directory);
+    commandCalls++;
     const result = await run(["sh", "-c", body.command]);
+    if (
+      body.command.includes("bytes.fromhex") &&
+      result.code === 0 &&
+      loseBootstrapAck
+    ) {
+      loseBootstrapAck = false;
+      throw Error("Injected committed bootstrap acknowledgement loss");
+    }
     if (body.command.includes("os.rmdir")) {
       assert.equal(result.code, 0, "private request cleanup failed");
       cleanups++;
@@ -101,6 +120,31 @@ try {
       stderr: result.stderr,
     });
   });
+  const bootstrap = new BoatBootstrap(state, api, "ci", [
+    process.env.JETSKI_TEST_IMAGE!,
+  ]);
+  await assert.rejects(bootstrap.ensure("bx_ci"), HostTransportError);
+  assert.equal(
+    loseBootstrapAck,
+    false,
+    "Fault must follow successful installation",
+  );
+  await new BoatBootstrap(state, api, "ci", [
+    process.env.JETSKI_TEST_IMAGE!,
+  ]).ensure("bx_ci");
+  const callsAfterBootstrap = commandCalls;
+  await bootstrap.ensure("bx_ci");
+  assert.equal(
+    commandCalls,
+    callsAfterBootstrap,
+    "Completed bootstrap must not reinstall",
+  );
+  await assert.rejects(
+    new BoatBootstrap(state, api, "other", [
+      process.env.JETSKI_TEST_IMAGE!,
+    ]).ensure("bx_ci"),
+    /identity changed/,
+  );
   const transport = new BoatTransport(state, api);
   for (const payload of [null, { data: "雪'$(false)\u0000".repeat(20000) }]) {
     const reply = await transport.request("bx_ci", {
@@ -126,14 +170,18 @@ try {
     }),
     HostTransportError,
   );
-  assert.equal(uploads, 2);
-  assert.equal(cleanups, 2);
+  assert.equal(uploads, 4);
+  assert.equal(cleanups, 4);
   for (const directory of directories)
     assert.equal((await run(["test", "!", "-e", directory])).code, 0);
   console.log(
     JSON.stringify({
       provider: "emulated",
       realHostControl: true,
+      nonRootProviderCommands: true,
+      automaticBootstrap: true,
+      bootstrapAcknowledgementRecovery: true,
+      bootstrapPolicyConflictRejected: true,
       largeInputVerified: true,
       corruptInputRejected: true,
       privateDirectoriesCleaned: directories.size,
