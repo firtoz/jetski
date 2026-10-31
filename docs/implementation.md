@@ -203,3 +203,31 @@ persisted root rather than rereading a lost source. Twelve TypeScript tests pass
 including changed-frame upload, source-independent reconstruction and failed-read
 quarantine. The SSH fixture now attempts real verified local publication over the
 encrypted control transport; qualification remains pending its CI result.
+
+## Current verified handoff
+
+CI **41207766494** passed on **8480e8f30bd704b5b0630683e470264bc1c39d10**:
+all TypeScript/Python checks, real rootless container replacement, and real SSH
+bootstrap/control/local-publication jobs. Logs confirm Podman 4.9.3, cgroup v2,
+overlay storage, create replay, stale fencing and verified local publication.
+Twelve TypeScript and twenty-one Python unit tests pass. The SSH transfer fixture
+currently captures two empty persistent roots; nonempty exact filesystem recovery
+is independently exercised by the real rootless runtime job and archive tests.
+Do not conflate these into a complete end-to-end server or fresh-host test.
+
+CI independently confirmed `/opt` was mode 0777 on its disposable runner; only the
+CI fixture fixes that ancestor. Production bootstrap continues to reject it. Run
+41207717862 preserved the missing-runuser failure caused by a sanitized PATH;
+supervisor tool resolution now uses explicit system directories and a regression
+test. No original client or GC-test state was touched and no Boat budget was used.
+
+Next discriminating work: implement durable execution/output receipts and command
+reconnection, then the lifecycle service and standalone server/CLI. Killing a local
+SSH/Podman client is not proof that a remote command or its descendants stopped;
+qualification must observe workload cleanup before release. Finish authenticated
+checkpoint import/reconstruction and source-deleted recovery through the transport,
+then S3/Boat adapters, interactive gateways, full GC contracts and downstream
+staging adoption. All original acceptance gates remain in scope. The current code
+is an implementation checkpoint, not a v1 release. No live operations remain from
+this continuation; CI jobs are terminal and disposable listeners/containers cleaned
+within their fixtures. Check `gh run list` for the documentation commit's latest CI.
