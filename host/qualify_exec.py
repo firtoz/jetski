@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import json
+import hashlib
 import os
 import pathlib
 import secrets
@@ -239,11 +240,11 @@ def main():
                     def send(kind, payload=b""):
                         senders[0](kind + struct.pack(">I", len(payload)) + payload)
 
-                    exercise(wait_for, send)
+                    exercise(wait_for, send, lambda: api.remove(session))
                     proof = future.result(timeout=15)
                     return bytes(observed), proof
 
-            def interaction(wait_for, send):
+            def interaction(wait_for, send, _cancel):
                 wait_for(b"READY")
                 send(b"R", struct.pack(">HH", 40, 100))
                 send(b"I", b"terminal-input\n")
@@ -264,7 +265,7 @@ def main():
             assert rendered.endswith(b"SIGNAL"), rendered
             assert proof == dict(cancelled=False, exitCode=0, descendantsReaped=True), proof
 
-            def binary_input(wait_for, send):
+            def binary_input(wait_for, send, _cancel):
                 wait_for(b"RAW-READY")
                 send(b"I", b"\0\xff\r")
 
@@ -275,7 +276,52 @@ def main():
             assert rendered == b"RAW-READY\0\xff\r", rendered
             assert proof == dict(cancelled=False, exitCode=0, descendantsReaped=True), proof
 
-            def close_terminal(wait_for, send):
+            large_input = bytes(range(256)) * 1024
+
+            def sustained_input(wait_for, send, _cancel):
+                wait_for(b"LARGE-READY")
+                for offset in range(0, len(large_input), 16384):
+                    send(b"I", large_input[offset : offset + 16384])
+
+            rendered, proof = terminal(
+                [
+                    "/bin/sh",
+                    "-ec",
+                    "stty raw -echo; printf LARGE-READY; head -c 262144 | sha256sum",
+                ],
+                sustained_input,
+            )
+            assert (
+                rendered
+                == b"LARGE-READY" + hashlib.sha256(large_input).hexdigest().encode() + b"  -\n"
+            ), rendered
+            assert proof == dict(cancelled=False, exitCode=0, descendantsReaped=True), proof
+
+            pressure = {}
+
+            def blocked_input(wait_for, send, cancel):
+                wait_for(b"BLOCKED-READY")
+                started = time.monotonic()
+                # Bound the experiment even if a provider unexpectedly buffers all input.
+                # A timed-out send may have partially crossed the transport: never replay it.
+                for index in range(4096):
+                    try:
+                        send(b"I", bytes(16384))
+                    except TimeoutError:
+                        pressure["acceptedBytes"] = index * 16384
+                        pressure["elapsedSeconds"] = round(time.monotonic() - started, 3)
+                        break
+                else:
+                    raise AssertionError("Input did not apply bounded backpressure")
+                cancel()
+
+            _, proof = terminal(
+                ["/bin/sh", "-ec", "stty raw -echo; printf BLOCKED-READY; sleep 120 & wait"],
+                blocked_input,
+            )
+            assert proof == dict(cancelled=True, exitCode=143, descendantsReaped=True), proof
+
+            def close_terminal(wait_for, send, _cancel):
                 wait_for(b"CLOSE-READY")
                 send(b"C")
 
@@ -298,6 +344,8 @@ def main():
                         commandApiIntegrated=False,
                         nativePtyInputResizeSignalClose=True,
                         nativePtyBinaryInput=True,
+                        nativePtyMultiFrameIntegrity=True,
+                        nativePtyBackpressureCancellation=pressure,
                         terminalApiIntegrated=False,
                     )
                 ),

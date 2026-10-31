@@ -84,6 +84,14 @@ static int terminal_pump(struct terminal *term) {
         else if (errno == EAGAIN || errno == EINTR) break;
         else return -1;
     }
+    /* Cancellation stops input delivery. The slave may disappear during tree
+     * cleanup; writing pending input then would fail before the cleanup receipt.
+     * Transport acceptance never promised workload consumption.
+     */
+    if (cancelling) {
+        term->have = term->used = term->sent = 0;
+        return 0;
+    }
     if (term->sent < term->used) {
         ssize_t n = write(term->master, term->pending + term->sent, term->used - term->sent);
         if (n > 0) term->sent += (size_t)n;

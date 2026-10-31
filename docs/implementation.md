@@ -93,6 +93,19 @@ workload-specific products.
 
 ## Latest continuation status
 
+Terminal backpressure continuation: added bounded 64-pending-input admission and
+partial-send timeout/restart tests, including queue capacity reuse and preservation
+of uncertainty after closure. Native disposable qualification now checks exact
+SHA256 of256KiB binary input across16frames and a nonreading raw PTY workload:
+bounded send timeout, no retry, independent session cancellation and authenticated
+descendant cleanup. Review found cancellation could write buffered input into a
+closed slave before publishing cleanup proof; native pump now discards pending
+input once cancelling while still draining output and reaping descendants.
+58Python tests/build/typecheck/lint pass. Real native pressure/cleanup result and
+final TypeScript checks/CI pending. No desktop runtime, paid host or protected
+experiment changes. Full interactive attachment/gateways and remaining release
+gates remain open.
+
 Worker-loss continuation: private per-assignment/command lifetime locks now guard
 running receipts; host requests detect absent workers, persist uncertain outcomes
 and quarantine without replay. Locks are close-on-exec and nonblocking under the
@@ -102,7 +115,15 @@ does not prove process cleanup; explicit quiescence and uncertain-release refusa
 remain mandatory. Detection is request-driven, not autonomous host monitoring.
 57Python/61TypeScript tests plus build/typecheck/lint pass. Installed SSH fixture
 now kills only its exact owned worker using pidfd, checks no replay/new admission,
-then quiesces/removes while refusing successful release. Exact-SHA CI pending.
+then quiesces/removes while refusing successful release. Published1c49d919220a8cbb6123a46c49fd17564b343a78;
+CI41231914930 passed all five jobs; watcher74851 exited0. Installed SSH
+job124627722766 reports killedWorkerQuarantinesWithoutReplay=true, alongside
+existing source-deleted transport recovery and terminal checks. Evidence:
+/tmp/jetski-worker-loss-ci.log and /tmp/jetski-worker-loss-ssh.log. API and
+rootless/Boat-envelope regressions also pass. Source is pushed to main; this
+verified scratchpad update follows code. Next backpressure and full interactive
+attachment/reconnect, then SSH gateway/authenticated previews/TCP; live-provider,
+client and benchmark release gates remain open. Full goal remains active.
 No paid hosts, desktop runtime execution or protected experiment changes.
 
 Initial terminal geometry continuation: core/SDK/API/CLI and host/native supervision

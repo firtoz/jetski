@@ -114,6 +114,41 @@ class TerminalInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "journal_unavailable"):
             self.inputs.status(self.lease, self.command, str(uuid.uuid4()))
 
+    def test_pending_input_bound_and_partial_send_timeout(self):
+        identifiers = [str(uuid.uuid4()) for _ in range(65)]
+        value = dict(kind="stdin", base64=base64.b64encode(bytes(16384)).decode())
+        for identifier in identifiers[:64]:
+            self.inputs.admit(self.lease, self.command, identifier, value)
+        with self.assertRaisesRegex(ValueError, "history_bound"):
+            self.inputs.admit(self.lease, self.command, identifiers[64], value)
+        self.assertEqual(
+            self.inputs.status(self.lease, self.command, identifiers[64])["phase"], "absent"
+        )
+        sent = []
+        self.inputs.dispatch_one(self.lease, self.command, sent.append)
+        self.inputs.admit(self.lease, self.command, identifiers[64], value)
+
+        def partial_timeout(data):
+            sent.append(data[:9])
+            raise TimeoutError("bounded socket send")
+
+        with self.assertRaises(TimeoutError):
+            self.inputs.dispatch_one(self.lease, self.command, partial_timeout)
+        restarted = TerminalInputs(Fence(self.root / "fence"), self.root / "inputs")
+        self.assertEqual(
+            restarted.status(self.lease, self.command, identifiers[1])["phase"], "uncertain"
+        )
+        with self.assertRaisesRegex(ValueError, "delivery_uncertain"):
+            restarted.dispatch_one(self.lease, self.command, sent.append)
+        self.assertEqual(len(sent), 2)
+        self.fence.close(self.lease)
+        self.assertEqual(
+            restarted.status(self.lease, self.command, identifiers[1])["phase"], "uncertain"
+        )
+        self.assertEqual(
+            restarted.status(self.lease, self.command, identifiers[2])["phase"], "cancelled"
+        )
+
     def test_validation_and_closed_fence(self):
         for value in [
             dict(kind="stdin", base64=""),
