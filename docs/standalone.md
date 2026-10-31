@@ -1,7 +1,7 @@
 # Standalone service (implementation preview)
 
 The current server implements creation, inspection/listing, operation receipts,
-command admission/status and resumable output, checkpoint and stop. Resume/delete
+command admission/status and resumable output, checkpoint, stop and resume. Delete
 and interactive gateways are not implemented yet. Do not
 use this preview as a durable hosted service; use disposable qualification hosts.
 The full release gates remain in [implementation.md](implementation.md).
@@ -54,3 +54,8 @@ before release, purges its source tree and returns the host to its owner's pool.
 Poll `operation ID --id UUID` for completion. Failed publication quarantines the
 source; it never reports successful release. A lost release acknowledgement can
 be reconciled using the existing receipt without creating a new assignment.
+
+`resume ID --operation UUID` restores a stopped, released sandbox into a fresh
+writable assignment. Checkpoints and prior command output remain retained across
+generations. For now, issue `stop` before resuming a checkpoint that still holds
+its host; direct resume from a held checkpoint is not yet implemented.

@@ -12,6 +12,7 @@ import {
 } from "./contracts.js";
 import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
+import { restoreCheckpoint } from "./restore.js";
 import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
 import { CheckpointTransfer } from "./transfer.js";
 import { HOST_PROTOCOL_VERSION, type HostTransport } from "./transport.js";
@@ -21,6 +22,8 @@ export type Sandbox = {
   owner: string;
   image: string;
   createOperation: string;
+  placementOperation: string;
+  restoreCheckpoint: string | null;
   phase:
     | "queued"
     | "starting"
@@ -60,7 +63,7 @@ export class SandboxManager {
     private readonly state: StateStore,
     private readonly provider: HostProvider,
     private readonly transport: HostTransport,
-    objects: CheckpointStore,
+    private readonly objects: CheckpointStore,
     options: ManagerOptions,
   ) {
     this.pool = new PoolJournal(
@@ -143,6 +146,8 @@ export class SandboxManager {
         owner,
         image,
         createOperation: operationId,
+        placementOperation: operationId,
+        restoreCheckpoint: null,
         phase: "queued",
         lease: null,
         checkpoint: null,
@@ -151,7 +156,10 @@ export class SandboxManager {
       tx.put(this.key(scope), record);
       return record;
     });
-    if (sandbox.phase === "queued")
+    if (
+      sandbox.phase === "queued" &&
+      sandbox.placementOperation === operationId
+    )
       await this.pool.enqueue(owner, id, operationId, { image });
     return sandbox;
   }
@@ -197,7 +205,7 @@ export class SandboxManager {
         continue;
       const operation = await this.operations.get(
         scope,
-        sandbox.createOperation,
+        sandbox.placementOperation,
       );
       if (!operation || ["succeeded", "failed"].includes(operation.phase))
         continue;
@@ -250,12 +258,26 @@ export class SandboxManager {
     try {
       await this.recoverObservedCreates(owner);
       await this.shutdown.reconcile(owner);
-      // Repair admission interrupted between the sandbox and queue transactions.
+      // Repair admission interrupted between sandbox, operation and queue commits.
       for (const sandbox of await this.list(owner))
-        if (sandbox.phase === "queued")
-          await this.pool.enqueue(owner, sandbox.id, sandbox.createOperation, {
-            image: sandbox.image,
-          });
+        if (sandbox.phase === "queued") {
+          const scope = { owner, sandbox: sandbox.id };
+          const fence = await this.operations.generation(scope);
+          await this.operations.admit(
+            fence,
+            sandbox.placementOperation,
+            sandbox.restoreCheckpoint ? "resume" : "create",
+            sandbox.restoreCheckpoint
+              ? { checkpointId: sandbox.restoreCheckpoint }
+              : { image: sandbox.image },
+          );
+          await this.pool.enqueue(
+            owner,
+            sandbox.id,
+            sandbox.placementOperation,
+            { image: sandbox.image },
+          );
+        }
       const reservation = await this.pool.reserve(owner);
       if (reservation) {
         const allocated = await this.provider.allocate({
@@ -292,6 +314,19 @@ export class SandboxManager {
           generation: sandbox.generation,
         });
         await this.request(lease, "claim", { lease });
+        if (sandbox.restoreCheckpoint)
+          await restoreCheckpoint(
+            this.objects,
+            this.checkpoints,
+            { ...scope, generation: sandbox.generation },
+            sandbox.restoreCheckpoint,
+            (action, payload) =>
+              this.request(lease, action, {
+                ...(payload as Record<string, Json>),
+                lease,
+                image: sandbox.image,
+              }),
+          );
         await this.request(lease, "create", { lease, image: sandbox.image });
         await this.pool.transition(lease, "active");
         await this.state.transaction((tx) => {
@@ -322,6 +357,43 @@ export class SandboxManager {
     } finally {
       this.activeOwners.delete(owner);
     }
+  }
+  async resume(scope: Scope, id: string) {
+    this.uuid(id);
+    await this.state.transaction((tx) => {
+      const prior = tx.get<{ generation: number; checkpointId: string }>(
+        `resume/${scopeKey(scope)}/${id}`,
+      );
+      if (prior) return prior;
+      const sandbox = tx.get<Sandbox>(this.key(scope));
+      if (
+        !sandbox ||
+        sandbox.phase !== "stopped" ||
+        sandbox.lease ||
+        !sandbox.checkpoint
+      )
+        throw Error("Resume requires a durably released checkpoint");
+      const fence = { ...scope, generation: sandbox.generation };
+      const next = this.checkpoints.advanceIn(tx, fence);
+      this.operations.advanceIn(tx, fence);
+      this.operations.admitIn(tx, next, id, "resume", {
+        checkpointId: sandbox.checkpoint,
+      });
+      const record = {
+        generation: next.generation,
+        checkpointId: sandbox.checkpoint,
+      };
+      tx.put(`resume/${scopeKey(scope)}/${id}`, record);
+      tx.put(this.key(scope), {
+        ...sandbox,
+        generation: next.generation,
+        phase: "queued",
+        placementOperation: id,
+        restoreCheckpoint: sandbox.checkpoint,
+      });
+      return record;
+    });
+    return this.get(scope);
   }
   async stop(scope: Scope, id: string, mode: ShutdownMode = "stop") {
     this.uuid(id);

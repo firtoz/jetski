@@ -367,3 +367,34 @@ Host cleanup follow-up: removal now observes container absence before retrying r
 so a lost removal acknowledgement can finish its existing receipt without another
 removal effect. Two regression tests cover lost ACK and inspection errors that
 must not authorize release. Thirty-three Python tests and Ruff/Biome pass locally.
+
+Verified shutdown: **9fb532d32dfac2e31443465c9d37c892b2bcca5b**, CI
+**41211390211**, all four jobs passed; watcher 8118 terminal0. The real API log
+reports durableStop=true and warmHostReuse=true, while completeLifecycle=false.
+Latest verified source **b57dedf647a262125b3b75057a95fe1b99120e74**, CI
+**41211488582**, all four jobs passed; watcher 91102 terminal0. Twenty-two
+TypeScript plus thirty-three Python tests pass (55 total). No live CI watchers or
+paid hosts remain from this turn. Disposable fixtures run their cleanup steps.
+Next: resume from the published checkpoint into a fresh assignment, with explicit
+registry/operation generation advancement and stable placement operation IDs;
+qualify API source-deleted recovery and repeated saves, then deletion/expiry and
+all remaining transport/adapter/GC/client/benchmark gates. Shutdown currently
+quarantines partial output/archive transfers instead of automatically repairing
+writer admissions; this is a known incomplete recovery path, not release completion.
+
+Resume continuation: added atomic checkpoint/operation generation advancement,
+stable placement identities distinct from initial creation, portable retained-root
+restore and HTTP/CLI resume routes. Resume of a stopped released sandbox creates a
+fresh assignment and imports verified frames before workload admission; old command
+outcomes/output remain readable from retained roots. The queue repairs admission
+across restart. Tests cover repeated resume without redispatch/import, command-ID
+conflict rollback of both generations, active-reader exclusion, stale writers and
+another stop/save after resume. Twenty-two TypeScript and thirty-three Python tests,
+build/typecheck/Biome/Ruff pass. The real API fixture now attempts source-deleted
+resume, restored-file validation and equal archive hashes after repeated save;
+await CI before claiming that end-to-end path qualified.
+Direct resume from a checkpoint that still holds its host is not implemented yet
+(stop first); interrupted import recovery still quarantines unobserved effects.
+Delete/idle-expiry orchestration, all interactive transports, Boat/S3 qualification,
+complete GC, client staging and matched benchmarks remain open. No paid host or
+existing GC experiment state touched.

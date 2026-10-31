@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { gzipSync } from "node:zlib";
+import { CheckpointRegistry } from "../src/core/checkpoints.js";
 import type { HostProvider, Json } from "../src/core/contracts.js";
 import { SandboxManager } from "../src/core/manager.js";
 import type { HostTransport } from "../src/core/transport.js";
@@ -42,6 +43,7 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       ],
     };
     const actions: string[] = [];
+    const imported: Buffer[] = [];
     let failRelease = failure === "release-ack",
       allocations = 0;
     const provider: HostProvider = {
@@ -62,6 +64,28 @@ for (const failure of ["release-ack", "upload", "none"] as const)
         actions.push(request.action);
         let result: Json = null;
         if (request.action === "capture") result = manifest;
+        if (request.action === "import-begin") {
+          const input = request.payload as {
+            checkpointId: string;
+            sha256: string;
+            bytes: number;
+          };
+          result = {
+            id: input.checkpointId,
+            sha256: input.sha256,
+            bytes: input.bytes,
+            offset: 0,
+            phase: "receiving",
+          };
+        }
+        if (request.action === "import-chunk")
+          imported.push(
+            Buffer.from(
+              (request.payload as { base64: string }).base64,
+              "base64",
+            ),
+          );
+
         if (request.action === "read-checkpoint") {
           if (failure === "upload") throw Error("interrupted upload");
           const input = request.payload as { offset: number; bytes: number };
@@ -148,7 +172,47 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       count,
       "completed stop replay has no host effects",
     );
-    await manager.create("alice", randomUUID(), image, randomUUID());
+    const registry = new CheckpointRegistry(state, objects),
+      oldFence = { ...scope, generation: 1 };
+    await assert.rejects(manager.resume(scope, stopId), /identity conflict/);
+    assert.equal(
+      (await manager.get(scope))?.generation,
+      1,
+      "conflicting operation rolls back both generations",
+    );
+    await registry.admit(
+      oldFence,
+      "reader-before-resume",
+      "reader",
+      (await manager.get(scope))!.checkpoint!,
+    );
+    await assert.rejects(
+      manager.resume(scope, randomUUID()),
+      /actors still active/,
+    );
+    await registry.close(oldFence, "reader-before-resume");
+    const resumeId = randomUUID();
+    await manager.resume(scope, resumeId);
+    await assert.rejects(
+      registry.admit(oldFence, "stale-writer", "writer"),
+      /generation mismatch/,
+    );
+    manager = new SandboxManager(state, provider, transport, objects, options);
     await manager.reconcile("alice");
-    assert.equal(allocations, 1, "next assignment reuses warm host");
+    assert.equal((await manager.get(scope))?.phase, "running");
+    assert.equal((await manager.get(scope))?.generation, 2);
+    assert.equal((await manager.get(scope))?.lease?.generation, 2);
+    assert.deepEqual(Buffer.concat(imported), archive);
+    const afterResume = actions.length;
+    await manager.resume(scope, resumeId);
+    await manager.reconcile("alice");
+    assert.equal(
+      actions.length,
+      afterResume,
+      "resume replay does not reimport or create",
+    );
+    await manager.stop(scope, randomUUID());
+    await manager.reconcile("alice");
+    assert.equal((await manager.get(scope))?.phase, "stopped");
+    assert.equal(allocations, 1, "resume reuses warm host");
   });

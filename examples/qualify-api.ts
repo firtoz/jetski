@@ -6,8 +6,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { CheckpointRegistry } from "../src/core/checkpoints.js";
 import type { Json } from "../src/core/contracts.js";
 import { type Sandbox, SandboxManager } from "../src/core/manager.js";
+import { parseArchive } from "../src/core/transfer.js";
 import { SshHostProvider } from "../src/providers/ssh.js";
 import { JetskiClient } from "../src/sdk.js";
 import {
@@ -35,6 +37,7 @@ const transport = new SshTransport([
     knownHostsPath: knownHosts,
   },
 ]);
+const objects = new LocalCheckpointStore(join(directory, "objects"));
 let controlUnavailable = false;
 const manager = new SandboxManager(
   state,
@@ -45,7 +48,7 @@ const manager = new SandboxManager(
       return transport.request(host, request);
     },
   },
-  new LocalCheckpointStore(join(directory, "objects")),
+  objects,
   { poolId: "ci", approvedImages: [image] },
 );
 const token = randomBytes(32).toString("hex"),
@@ -169,17 +172,15 @@ try {
     ),
   );
   controlUnavailable = false;
-  const next = randomUUID();
-  await client.request("/v1/sandboxes", "POST", {
-    id: next,
-    operationId: randomUUID(),
-    image,
+  const resumeId = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/resume`, "POST", {
+    operationId: resumeId,
   });
-  cleanupId = next;
   let replacement: Sandbox | undefined;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    replacement = await client.request<Sandbox>(`/v1/sandboxes/${next}`);
+  for (let attempt = 0; attempt < 150; attempt++) {
+    replacement = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
     if (replacement.phase === "running") break;
+    if (replacement.phase === "quarantined") throw Error("Resume quarantined");
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal(replacement?.phase, "running");
@@ -192,6 +193,56 @@ try {
     replacement.lease?.generation,
     (sandbox?.lease?.generation ?? 0) + 1,
   );
+  assert.deepEqual(
+    await client.request(`/v1/sandboxes/${id}/commands/${commandId}`),
+    command,
+  );
+  const restoredCommand = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
+    id: restoredCommand,
+    argv: [
+      "/bin/sh",
+      "-ec",
+      'test "$(cat /workspace/api-counter)" = 1; printf restored',
+    ],
+  });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const status = await client.request<{ phase: string }>(
+      `/v1/sandboxes/${id}/commands/${restoredCommand}`,
+    );
+    if (status.phase === "succeeded") break;
+    if (status.phase === "failed")
+      throw Error("Restored filesystem check failed");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(
+    (
+      await client.request<{ phase: string }>(
+        `/v1/sandboxes/${id}/commands/${restoredCommand}`,
+      )
+    ).phase,
+    "succeeded",
+  );
+  const secondStop = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/stop`, "POST", {
+    operationId: secondStop,
+  });
+  for (let attempt = 0; attempt < 150; attempt++) {
+    const operation = await client.operation(id, secondStop);
+    if (operation.phase === "succeeded") break;
+    if (operation.phase === "uncertain") throw Error("Repeated stop uncertain");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal((await client.operation(id, secondStop)).phase, "succeeded");
+  const registry = new CheckpointRegistry(state, objects),
+    fence = { owner: "qualification", sandbox: id, generation: 2 };
+  const firstRoot = await registry.root(fence, stopId),
+    secondRoot = await registry.root(fence, secondStop);
+  assert.ok(firstRoot && secondRoot);
+  assert.equal(
+    parseArchive(firstRoot.metadata).sha256,
+    parseArchive(secondRoot.metadata).sha256,
+  );
   console.log(
     JSON.stringify({
       standaloneApi: true,
@@ -203,6 +254,8 @@ try {
       cli: true,
       durableStop: true,
       warmHostReuse: true,
+      apiSourceDeletedRestore: true,
+      repeatedCheckpointEqual: true,
       completeLifecycle: false,
     }),
   );

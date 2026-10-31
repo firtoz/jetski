@@ -50,6 +50,16 @@ export class CheckpointRegistry {
       throw new Error("Checkpoint generation mismatch");
     return state;
   }
+  /** Caller must prove the old host assignment is released before advancing. */
+  advanceIn(tx: Transaction, fence: Fence): Fence {
+    const state = this.load(tx, fence);
+    if (state.accesses.length || state.collection)
+      throw Error("Checkpoint actors still active");
+    const generation = fence.generation + 1;
+    if (!Number.isSafeInteger(generation)) throw Error("Generation exhausted");
+    tx.put(this.key(fence), { ...state, generation });
+    return { ...fence, generation };
+  }
   async initialize(fence: Fence): Promise<void> {
     await this.state.transaction((tx) => {
       if (tx.get(this.key(fence))) {

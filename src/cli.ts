@@ -126,6 +126,7 @@ if (command === "serve") {
         },
       );
       break;
+    case "resume":
     case "stop":
     case "checkpoint":
       result = await client.request(

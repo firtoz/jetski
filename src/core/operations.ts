@@ -38,14 +38,15 @@ export class OperationJournal {
     });
   }
   /** Caller must fence the host too before allowing replacement execution. */
+  advanceIn(tx: Transaction, fence: Fence): Fence {
+    this.check(tx, fence);
+    if (!Number.isSafeInteger(fence.generation + 1))
+      throw Error("Generation exhausted");
+    tx.put(this.fenceKey(fence), fence.generation + 1);
+    return { ...fence, generation: fence.generation + 1 };
+  }
   async advance(fence: Fence): Promise<Fence> {
-    return this.state.transaction((tx) => {
-      this.check(tx, fence);
-      if (!Number.isSafeInteger(fence.generation + 1))
-        throw new Error("Generation exhausted");
-      tx.put(this.fenceKey(fence), fence.generation + 1);
-      return { ...fence, generation: fence.generation + 1 };
-    });
+    return this.state.transaction((tx) => this.advanceIn(tx, fence));
   }
   async admit(
     fence: Fence,
@@ -53,33 +54,42 @@ export class OperationJournal {
     kind: string,
     input: Json,
   ): Promise<Operation> {
+    return this.state.transaction((tx) =>
+      this.admitIn(tx, fence, id, kind, input),
+    );
+  }
+  admitIn(
+    tx: Transaction,
+    fence: Fence,
+    id: string,
+    kind: string,
+    input: Json,
+  ): Operation {
     identifier(kind);
     const request = canonical(input);
     if (request.length > 65536) throw new Error("Operation input too large");
-    return this.state.transaction((tx) => {
-      this.check(tx, fence);
-      const key = this.key(fence, id);
-      const previous = tx.get<Operation>(key);
-      if (previous) {
-        if (previous.kind !== kind || canonical(previous.input) !== request)
-          throw new Error("Operation identity conflict");
-        return previous;
-      }
-      const at = this.now();
-      const op: Operation = {
-        ...fence,
-        id,
-        kind,
-        input: JSON.parse(request),
-        phase: "queued",
-        createdAt: at,
-        updatedAt: at,
-        result: null,
-        error: null,
-      };
-      tx.put(key, op);
-      return op;
-    });
+    this.check(tx, fence);
+    const key = this.key(fence, id);
+    const previous = tx.get<Operation>(key);
+    if (previous) {
+      if (previous.kind !== kind || canonical(previous.input) !== request)
+        throw new Error("Operation identity conflict");
+      return previous;
+    }
+    const at = this.now();
+    const op: Operation = {
+      ...fence,
+      id,
+      kind,
+      input: JSON.parse(request),
+      phase: "queued",
+      createdAt: at,
+      updatedAt: at,
+      result: null,
+      error: null,
+    };
+    tx.put(key, op);
+    return op;
   }
   async get(scope: Scope, id: string): Promise<Operation | undefined> {
     return this.state.transaction((tx) =>

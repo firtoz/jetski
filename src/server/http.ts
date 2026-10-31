@@ -164,6 +164,20 @@ export function createHttpServer(
         );
         return;
       }
+      if (
+        parts.length === 4 &&
+        parts[3] === "resume" &&
+        request.method === "POST"
+      ) {
+        const input = await body(request);
+        fields(input, ["operationId"]);
+        send(
+          response,
+          202,
+          await manager.resume(scope, string(input.operationId)),
+        );
+        return;
+      }
       if (parts[3] === "commands") {
         if (parts.length === 4 && request.method === "POST") {
           const input = await body(request);
