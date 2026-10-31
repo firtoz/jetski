@@ -10,6 +10,11 @@ import {
   type Transaction,
 } from "./contracts.js";
 
+type Outcome = {
+  phase: "succeeded" | "failed" | "uncertain";
+  result: Json;
+  error: string | null;
+};
 /** Admission and dispatch are deliberately separate. A durable running receipt
  * must exist before effects. Recovery observes the host receipt; it never blindly
  * dispatches again. Even an expired controller lease is not evidence of failure. */
@@ -97,47 +102,48 @@ export class OperationJournal {
     );
   }
   async claim(fence: Fence, id: string): Promise<boolean> {
-    return this.state.transaction((tx) => {
-      this.check(tx, fence);
-      const key = this.key(fence, id);
-      const op = tx.get<Operation>(key);
-      if (!op) throw new Error("Unknown operation");
-      if (op.generation !== fence.generation)
-        throw new Error("Operation generation mismatch");
-      if (op.phase !== "queued") return false;
-      tx.put(key, { ...op, phase: "running", updatedAt: this.now() });
-      return true;
-    });
+    return this.state.transaction((tx) => this.claimIn(tx, fence, id));
   }
-  async finish(
+  claimIn(tx: Transaction, fence: Fence, id: string): boolean {
+    this.check(tx, fence);
+    const key = this.key(fence, id);
+    const op = tx.get<Operation>(key);
+    if (!op) throw new Error("Unknown operation");
+    if (op.generation !== fence.generation)
+      throw new Error("Operation generation mismatch");
+    if (op.phase !== "queued") return false;
+    tx.put(key, { ...op, phase: "running", updatedAt: this.now() });
+    return true;
+  }
+  async finish(fence: Fence, id: string, outcome: Outcome): Promise<Operation> {
+    return this.state.transaction((tx) =>
+      this.finishIn(tx, fence, id, outcome),
+    );
+  }
+  finishIn(
+    tx: Transaction,
     fence: Fence,
     id: string,
-    outcome: {
-      phase: "succeeded" | "failed" | "uncertain";
-      result: Json;
-      error: string | null;
-    },
-  ): Promise<Operation> {
-    return this.state.transaction((tx) => {
-      this.check(tx, fence);
-      const key = this.key(fence, id);
-      const op = tx.get<Operation>(key);
-      if (!op || op.generation !== fence.generation)
-        throw new Error("Operation generation mismatch");
-      if (op.phase === "succeeded" || op.phase === "failed") {
-        if (
-          canonical({ phase: op.phase, result: op.result, error: op.error }) !==
-          canonical(outcome)
-        )
-          throw new Error("Terminal outcome conflict");
-        return op;
-      }
-      if (op.phase !== "running" && op.phase !== "uncertain")
-        throw new Error("Operation not dispatched");
-      const next = { ...op, ...outcome, updatedAt: this.now() };
-      tx.put(key, next);
-      return next;
-    });
+    outcome: Outcome,
+  ): Operation {
+    this.check(tx, fence);
+    const key = this.key(fence, id);
+    const op = tx.get<Operation>(key);
+    if (!op || op.generation !== fence.generation)
+      throw new Error("Operation generation mismatch");
+    if (op.phase === "succeeded" || op.phase === "failed") {
+      if (
+        canonical({ phase: op.phase, result: op.result, error: op.error }) !==
+        canonical(outcome)
+      )
+        throw new Error("Terminal outcome conflict");
+      return op;
+    }
+    if (op.phase !== "running" && op.phase !== "uncertain")
+      throw new Error("Operation not dispatched");
+    const next = { ...op, ...outcome, updatedAt: this.now() };
+    tx.put(key, next);
+    return next;
   }
   async pending(scope: Scope): Promise<Operation[]> {
     return this.state.transaction((tx) =>

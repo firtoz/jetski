@@ -133,6 +133,16 @@ export function createHttpServer(
         send(response, 404, { error: "not_found" });
         return;
       }
+      if (parts.length === 3 && request.method === "DELETE") {
+        const input = await body(request);
+        fields(input, ["operationId"]);
+        send(
+          response,
+          202,
+          await manager.deleteSandbox(scope, string(input.operationId)),
+        );
+        return;
+      }
       if (parts.length === 3 && request.method === "GET") {
         send(response, 200, sandbox);
         return;

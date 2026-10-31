@@ -1,8 +1,7 @@
 # Standalone service (implementation preview)
 
 The current server implements creation, inspection/listing, operation receipts,
-command admission/status and resumable output, checkpoint, stop and resume. Delete
-and interactive gateways are not implemented yet. Do not
+command admission/status and resumable output, checkpoint, stop, resume and deletion. Interactive gateways are not implemented yet. Do not
 use this preview as a durable hosted service; use disposable qualification hosts.
 The full release gates remain in [implementation.md](implementation.md).
 
@@ -67,3 +66,10 @@ running; permanent owner binding and generation continuity survive re-adoption.
 Lost retirement acknowledgements retain the slot for reconciliation. This idle
 maintenance never retires an active/quarantined assignment; pre-expiry save/drain
 of active cloud hosts remains an unqualified release gate.
+
+`delete ID --operation UUID` permanently prevents new execution/resume for that
+sandbox identity. Assigned running/stopped sandboxes first complete verified save
+and release; already released sandboxes record deletion atomically. Acknowledged
+checkpoints and command history remain retained and readable; deleting a sandbox
+does not authorize garbage collection of its history. Queued, starting and
+quarantined placements must currently resolve before deletion is accepted.

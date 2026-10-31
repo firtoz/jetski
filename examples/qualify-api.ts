@@ -249,6 +249,28 @@ try {
     parseArchive(firstRoot.metadata).sha256,
     parseArchive(secondRoot.metadata).sha256,
   );
+  const deletion = randomUUID();
+  await client.request(`/v1/sandboxes/${id}`, "DELETE", {
+    operationId: deletion,
+  });
+  assert.equal((await client.operation(id, deletion)).phase, "succeeded");
+  assert.equal(
+    (await client.request<Sandbox>(`/v1/sandboxes/${id}`)).phase,
+    "deleted",
+  );
+  assert.deepEqual(
+    await client.request(`/v1/sandboxes/${id}/commands/${commandId}`),
+    command,
+  );
+  await assert.rejects(
+    client.request(`/v1/sandboxes/${id}/resume`, "POST", {
+      operationId: randomUUID(),
+    }),
+  );
+  await client.request(`/v1/sandboxes/${id}`, "DELETE", {
+    operationId: deletion,
+  });
+  assert.ok(await registry.root(fence, secondStop));
   // Advance only this controller's injected clock; no provider clocks or GC
   // grace periods are modified. SSH retirement must leave the machine alive.
   clockOffset = DEFAULTS.idleMs;
@@ -294,6 +316,7 @@ try {
       apiSourceDeletedRestore: true,
       repeatedCheckpointEqual: true,
       idleRetirementWithoutPowerOff: true,
+      deletedSandboxRetainsHistory: true,
       completeLifecycle: false,
     }),
   );

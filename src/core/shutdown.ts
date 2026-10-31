@@ -17,7 +17,7 @@ import {
   parseArchive,
 } from "./transfer.js";
 
-export const SHUTDOWN_MODES = ["checkpoint", "stop"] as const;
+export const SHUTDOWN_MODES = ["checkpoint", "stop", "delete"] as const;
 export type ShutdownMode = (typeof SHUTDOWN_MODES)[number];
 type Stage =
   | "quiesce"
@@ -63,8 +63,9 @@ export class ShutdownCoordinator {
   async admit(scope: Scope, id: string, mode: ShutdownMode) {
     const { state, operations } = this.deps;
     const fence = await operations.generation(scope);
-    await operations.admit(fence, id, mode, {});
+
     await state.transaction((tx) => {
+      operations.admitIn(tx, fence, id, mode, {});
       const key = this.key(scope, id),
         prior = tx.get<Shutdown>(key);
       if (prior) {
@@ -212,7 +213,7 @@ export class ShutdownCoordinator {
         record = await this.advance(record, "finish");
       }
       if (record.stage === "finish") {
-        if (record.mode === "stop") await pool.release(record.lease);
+        if (record.mode !== "checkpoint") await pool.release(record.lease);
         await state.transaction((tx) => {
           const sandbox = tx.get<Sandbox>(sandboxKey(scope));
           if (
@@ -220,7 +221,8 @@ export class ShutdownCoordinator {
             canonical(sandbox.lease) !== canonical(record.lease)
           ) {
             if (
-              sandbox?.phase === "stopped" &&
+              sandbox?.phase ===
+                (record.mode === "delete" ? "deleted" : "stopped") &&
               sandbox.checkpoint === record.id
             )
               return;
@@ -228,9 +230,9 @@ export class ShutdownCoordinator {
           }
           tx.put(sandboxKey(scope), {
             ...sandbox,
-            phase: "stopped",
+            phase: record.mode === "delete" ? "deleted" : "stopped",
             checkpoint: record.id,
-            lease: record.mode === "stop" ? null : record.lease,
+            lease: record.mode === "checkpoint" ? record.lease : null,
           });
         });
         await operations.finish(operationFence, record.id, {

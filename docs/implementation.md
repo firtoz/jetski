@@ -425,3 +425,29 @@ All 55 unit tests, build/typecheck/Biome/Ruff pass locally. Active-host pre-expi
 drain is still incomplete and must not be inferred from idle retirement. Direct
 held-checkpoint resume, interrupted import/save recovery, delete and all previously
 listed release gates remain open. No original GC clock/state or budget was touched.
+
+Verified idle-retirement source: **32f13a73628e8859023a7dbccfdaa21732fcc2d7**,
+CI **41212227089**, all four jobs passed; watcher 11897 terminal0. Real API log
+reports idleRetirementWithoutPowerOff=true after the complete source-deleted
+stop/resume/repeated-save fixture. The elapsed-time boundary uses an injected
+controller clock, not a real ten-minute soak or any altered provider/GC clock.
+All 55 unit tests remain green. Next prioritize held-checkpoint resume and durable
+sandbox deletion, then interrupted-stage recovery and active-host pre-expiry drain;
+retain every remaining adapter/transport/GC/client/benchmark acceptance gate.
+No live test handles, paid hosts, or prior experiment modifications remain from
+this continuation. Goal is active and release completeness remains unproven.
+
+Deletion continuation: added DELETE API/CLI and durable deleted-state semantics.
+Assigned running/stopped sandboxes use the same verified publication, container
+cleanup, release and source-purge sequence before deletion succeeds. Released
+sandboxes atomically commit their deleted state and operation outcome. Deleted
+identities reject new execution and resume while retaining all acknowledged
+checkpoint/command history. Tests cover controller restart, replay without host
+effects, owner denial, retained roots and both assigned/released deletion paths.
+Shutdown admission now commits its operation and lifecycle record atomically,
+avoiding orphan queued operations on rejected requests. All 55 unit tests,
+build/typecheck/Biome pass; the real API fixture now checks released deletion and
+retained history. Await CI qualification. Queued/starting/quarantined deletion is
+still rejected pending resolved placement; full deletion/recovery coverage remains
+open, as do held-checkpoint resume and all other listed release gates. No paid
+resources or existing GC-test state changed.

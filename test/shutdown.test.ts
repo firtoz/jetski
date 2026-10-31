@@ -260,4 +260,48 @@ for (const failure of ["release-ack", "upload", "none"] as const)
         ?.generation,
       3,
     );
+    const freshScope = { owner: "alice", sandbox: fresh },
+      deletion = randomUUID();
+    await manager.deleteSandbox(freshScope, deletion);
+    manager = new SandboxManager(state, provider, transport, objects, options);
+    await manager.reconcile("alice");
+    assert.equal((await manager.get(freshScope))?.phase, "deleted");
+    assert.equal((await manager.get(freshScope))?.lease, null);
+    assert.equal(
+      (await manager.operation(freshScope, deletion))?.phase,
+      "succeeded",
+    );
+    assert.ok(
+      await registry.root({ ...freshScope, generation: 1 }, deletion),
+      "deletion preserves its acknowledged checkpoint",
+    );
+    await assert.rejects(
+      manager.resume(freshScope, randomUUID()),
+      /released checkpoint/,
+    );
+    await assert.rejects(
+      manager.startCommand(freshScope, randomUUID(), ["true"]),
+      /not running/,
+    );
+    const beforeReplay = actions.length;
+    await manager.deleteSandbox(freshScope, deletion);
+    await manager.reconcile("alice");
+    assert.equal(
+      actions.length,
+      beforeReplay,
+      "deleted replay does not touch host",
+    );
+    const releasedDeletion = randomUUID();
+    await manager.deleteSandbox(scope, releasedDeletion);
+    assert.equal((await manager.get(scope))?.phase, "deleted");
+    assert.equal(
+      actions.length,
+      beforeReplay,
+      "released deletion needs no host",
+    );
+    assert.ok(await registry.root({ ...scope, generation: 2 }, stopId));
+    await assert.rejects(
+      manager.deleteSandbox({ owner: "bob", sandbox: fresh }, randomUUID()),
+      /unavailable/,
+    );
   });

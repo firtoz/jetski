@@ -417,6 +417,31 @@ export class SandboxManager {
     });
     return this.get(scope);
   }
+  async deleteSandbox(scope: Scope, id: string) {
+    this.uuid(id);
+    const sandbox = await this.get(scope);
+    if (!sandbox) throw Error("Sandbox unavailable");
+    if (sandbox.lease) return this.shutdown.admit(scope, id, "delete");
+    const fence = await this.operations.generation(scope);
+    return this.state.transaction((tx) => {
+      const current = tx.get<Sandbox>(this.key(scope));
+      if (
+        !current ||
+        current.lease ||
+        !["stopped", "deleted"].includes(current.phase)
+      )
+        throw Error("Sandbox deletion requires resolved placement");
+      const operation = this.operations.admitIn(tx, fence, id, "delete", {});
+      if (operation.phase === "succeeded") return operation;
+      this.operations.claimIn(tx, fence, id);
+      tx.put(this.key(scope), { ...current, phase: "deleted" });
+      return this.operations.finishIn(tx, fence, id, {
+        phase: "succeeded",
+        result: { checkpointId: current.checkpoint },
+        error: null,
+      });
+    });
+  }
   async stop(scope: Scope, id: string, mode: ShutdownMode = "stop") {
     this.uuid(id);
     if (mode !== "stop" && mode !== "checkpoint")

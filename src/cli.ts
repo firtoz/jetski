@@ -126,6 +126,13 @@ if (command === "serve") {
         },
       );
       break;
+    case "delete":
+      result = await client.request(
+        `/v1/sandboxes/${required(positionals[1], "sandbox ID")}`,
+        "DELETE",
+        { operationId: required(values.operation, "--operation") },
+      );
+      break;
     case "resume":
     case "stop":
     case "checkpoint":
