@@ -23,6 +23,7 @@ import {
   sshArguments,
 } from "../src/transport/ssh.js";
 import { qualifyForward } from "./qualify-forward.js";
+import { qualifyPreview } from "./qualify-preview.js";
 
 export async function qualifyHostStream(
   host: SshHost,
@@ -68,14 +69,20 @@ export async function qualifyHostStream(
     }
     throw Error("fixture_command_deadline");
   }
-  async function startServer(move: boolean, half = false) {
+  async function startServer(
+    move: boolean,
+    half = false,
+    preview?: "http" | "ws",
+  ) {
     const commandId = randomUUID();
+    let flag = half ? " --half" : "";
+    if (preview) flag = ` --preview-${preview}`;
     const script =
       (move
         ? "mv /workspace/relay-http-fixture /tmp/relay-http-fixture; "
         : "") +
       "rm -f /tmp/jetski-http-ready /tmp/jetski-http-complete; exec /tmp/relay-http-fixture" +
-      (half ? " --half" : "");
+      flag;
     await request("command-start", {
       ...payload,
       commandId,
@@ -386,6 +393,11 @@ export async function qualifyHostStream(
         await qualifyForward(scope, ports, coordinator, half, local);
         await stopServer(forwardingServer);
       }
+    }
+    for (const mode of ["http", "ws"] as const) {
+      const previewServer = await startServer(false, false, mode);
+      await qualifyPreview(scope, ports, coordinator, mode === "ws");
+      await stopServer(previewServer);
     }
     const revokedServer = await startServer(false),
       revokedId = randomUUID();

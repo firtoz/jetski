@@ -93,6 +93,34 @@ workload-specific products.
 
 ## Latest continuation status
 
+Preview transport continuation: previous turn was verified progress at f5e8a0c,
+all five CI jobs green. Added optional Node HostDuplex preserving independent EOF,
+serialized16KiB sends, bounded buffering and delayed authenticated receipt after
+HTTP's clean socket destruction. Errors/cancellation retain uncertainty. Added
+isolated-origin HTTP/WebSocket preview listener using owner-authenticated port
+exposures and StreamCoordinator; no arbitrary network targets. Explicit origin
+mapping, credential/hop-header stripping, cookie rejection, restrictive response
+policy, authenticated upgrades, key/accept/subprotocol validation, bounded request
+body/headers/concurrency/admission/lifetime and owned-handler shutdown. Standalone
+preview config and conditional capability reporting wired behind optional imports.
+Local99TS/70Python/build/typecheck/lint pass; C fixture syntax-only locally.
+/tmp/jetski-preview-final2.log preserves tests:1MiB HTTP exact bytes, binary WS,
+owner/origin/auth/malformed-key denial without host admission, credential stripping,
+receipt after both EOFs, post-EOF failure and stalled-auth shutdown. Initial test
+used fetch with a custom Host that was not preserved; changed to Node HTTP to
+exercise the real reverse-proxy Host boundary. First adapter field name collided
+with Duplex.iterator; corrected. No production-key/parser relaxation.
+Hosted fixture adds native HTTP1.1 and fixed-challenge WebSocket modes, running only
+on disposable CI host/container. Proxy qualification awaits verified closed stream
+receipts for both protocols; pending publication/CI, not yet claimed proven.
+Public API remains experimental: explicit operator route maps and bearer transport
+are not complete browser navigation/session UX. Dynamic scoped URL/session grants,
+browser cookie isolation, iframe/app-cookie policy, lifecycle/recovery and full
+provider/client gates remain open. Preserve this full scope; do not claim the
+preview release gate complete from transport tests alone. No paid hosts, operator
+runtime changes or protected GC experiment changes. Next observe hosted results,
+fix failures, then implement/qualify browser preview sessions and remaining gates.
+
 Stream API continuation: previous turn was verified progress at aaf9ad7, all five
 CI jobs green. Added owner-scoped GET/DELETE stream routes, SDK and CLI status/
 cancel commands. Public projection excludes host lease, image, controller and
@@ -109,10 +137,20 @@ Focused13tests and final95TS/70Python/build/typecheck/lint pass.
 /tmp/jetski-stream-api-final.log preserves final local test evidence.
 Hosted API fixture now opens a refused workload port, inspects/cancels its durable
 identity via HTTP, then requires cancelled after verified shutdown. This hosted
-case is pending; do not infer success from local fixtures. No paid hosts, desktop
-runtime changes or protected experiment changes. Next finish exact-SHA CI and
-then authenticated HTTP/WebSocket previews and broader lifecycle/provider/client
-qualification; the full goal remains active.
+case passed on the real disposable SSH/Podman host, including terminal cancellation
+inspection/replay after shutdown. Publishedf5e8a0c191241679aa12933ef7c6f00920c032cb;
+CI41247933569 passed all5jobs; watcher77686 exited0. Logs:
+/tmp/jetski-stream-api-ci.log and /tmp/jetski-stream-api-hosted.log (API job124675153255).
+Owned fixture cleanup completed. Current turn is verified progress. No paid hosts, desktop
+runtime changes or protected experiment changes. Next implement authenticated HTTP/WebSocket previews and broader lifecycle/provider/client
+qualification; the full goal remains active. Preview implementation must route only
+owner-scoped exposed ports through StreamCoordinator, never arbitrary destinations.
+Use an independently configured preview origin/listener; do not serve workload
+HTML on the API origin. Authenticate each HTTP/upgrade request, strip control-plane
+Authorization/cookies before workload delivery, bound headers/streams and preserve
+HTTP/WS backpressure. Keep the stream identity observable without treating response
+EOF as verified cleanup. Browser credential ergonomics need explicit qualification;
+bearer support alone is not proof of browser navigation/iframe usability.
 
 CLI forwarding continuation: previous turn was verified progress (16a05ee and
 five green CI jobs). Added optional jetski/client/forward Node module and

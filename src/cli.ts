@@ -46,6 +46,12 @@ if (command === "serve") {
       maxConnections?: number;
       principals: Array<{ owner: string; publicKey: string }>;
     };
+    preview?: {
+      host?: string;
+      port: number;
+      routes: import("./server/preview.js").PreviewRoute[];
+      controlOrigins: string[];
+    };
     storage?: import("./server/storage.js").StorageConfig;
     hostProvider: import("./server/hosts.js").HostConfig;
     principals: Array<{ owner: string; tokenEnv: string }>;
@@ -93,6 +99,7 @@ if (command === "serve") {
   );
   const server = createHttpServer(manager, authenticate, {
     sshGateway: !!config.sshGateway,
+    previews: !!config.preview,
   });
   let sshGateway:
     | ReturnType<typeof import("./server/ssh.js").createSshGateway>
@@ -112,6 +119,21 @@ if (command === "serve") {
       sshGateway!.server.listen(ssh.port, ssh.host ?? "127.0.0.1", resolve);
     });
   }
+  let preview:
+    | ReturnType<typeof import("./server/preview.js").createPreviewServer>
+    | undefined;
+  if (config.preview) {
+    const { createPreviewServer } = await import("./server/preview.js");
+    preview = createPreviewServer(manager, authenticate, config.preview);
+    await new Promise<void>((resolve, reject) => {
+      preview!.server.once("error", reject);
+      preview!.server.listen(
+        config.preview!.port,
+        config.preview!.host ?? "127.0.0.1",
+        resolve,
+      );
+    });
+  }
   const stopWorker = startWorker(manager, () =>
     process.stderr.write(
       "Reconciliation failed; inspect persisted operation status\n",
@@ -126,6 +148,7 @@ if (command === "serve") {
   const stop = async () => {
     if (stopping) return;
     stopping = true;
+    await preview?.close();
     await sshGateway?.close();
     await stopWorker();
     server.close(() => {

@@ -2,8 +2,8 @@
 
 The current server implements creation, inspection/listing, operation receipts,
 command admission/status and resumable output, checkpoint, stop, resume and deletion.
-Experimental SSH terminal and TCP gateways are described below; HTTP/WebSocket
-previews remain under development. Do not
+Experimental SSH terminal, TCP and HTTP/WebSocket preview transports are described
+below; browser preview sessions remain under development. Do not
 use this preview as a durable hosted service; use disposable qualification hosts.
 The full release gates remain in [implementation.md](implementation.md).
 Select `hostProvider: { "kind": "ssh", "hosts": [...] }` for an adopted host,
@@ -386,4 +386,66 @@ inspection/cancellation require a configured stream transport. tcpForwarding als
 requires an explicitly configured SSH gateway; an embedded HTTP server defaults
 that declaration to false. These are feature declarations, not host health,
 per-owner authorization or per-sandbox readiness. Boat currently lacks its stream
-adapter, so it does not advertise TCP forwarding. Previews remain false.
+adapter, so it does not advertise TCP forwarding or previews. previews requires
+a configured preview listener and stream adapter.
+
+
+## Isolated HTTP/WebSocket preview transport (experimental)
+
+The optional `jetski/server/preview` module forwards only declared preview routes
+to authorized workload port exposures through the core stream coordinator. It does
+not resolve or connect to arbitrary destinations. Each route has its own origin,
+owner, sandbox and exposure. Shared origins across routes and reuse of a declared
+control origin are rejected. Reusing a stale exposure never authorizes a replacement
+assignment. Static operator mappings are supported now; dynamic preview URL/session
+provisioning and ordinary browser navigation are remaining release work.
+
+`serve` accepts an optional preview configuration:
+
+```json
+{
+  "preview": {
+    "host": "127.0.0.1",
+    "port": 8790,
+    "controlOrigins": ["https://control.example.com"],
+    "routes": [
+      {
+        "origin": "https://workspace.example-preview.net",
+        "owner": "OWNER_ID",
+        "sandbox": "SANDBOX_UUID",
+        "exposure": "EXPOSURE_ID"
+      }
+    ]
+  }
+}
+```
+
+Terminate HTTPS in an operator-owned reverse proxy, preserve the original Host,
+and route only declared preview origins to this listener. Use a dedicated preview
+site separate from control-plane applications. HTTP is accepted only for loopback
+qualification origins. The default bind remains loopback. Routes use the same
+bearer principals as the API; every request and WebSocket upgrade is authenticated
+and owner-checked. A supplied browser Origin must match the preview origin.
+Authorization, Cookie, forwarding metadata and hop-by-hop credentials are stripped
+before workload delivery. Workload Set-Cookie is stripped too. Responses receive a
+sandbox CSP with workers and framing disabled, no-store, no-referrer and nosniff.
+Application cookies, service workers, iframe embedding and browser login/session
+provisioning are intentionally not claimed as working by this transport increment.
+Embedded deployments can provide their own identity adapter, but must qualify the
+browser/session boundary before enabling it for users.
+
+The proxy streams binary HTTP bodies and WebSocket frames with backpressure. HTTP
+uploads are capped at64MiB, headers at32KiB, concurrent requests at64, admission at
+30seconds and connection lifetime at1hour. It verifies WebSocket version/key/accept
+and selected subprotocol before relaying an upgrade. No bytes are automatically
+replayed. The `x-jetski-stream-id` response header identifies the persisted stream
+receipt. Response EOF is not authenticated host completion; inspect that receipt
+when cleanup/delivery verification matters. Socket adapters preserve directional
+EOF and allow at most30seconds for the final host receipt. Closing the preview
+service aborts owned streams, closes upgraded sockets and awaits its handlers.
+
+Local tests cover exact1MiB HTTP transfer, valid binary WebSocket exchange,
+authorization/origin denial, credential stripping and stalled-auth shutdown.
+Hosted transport qualification is recorded in implementation.md; a fixture socket
+test alone does not establish browser usability, live provider recovery or release
+acceptance.

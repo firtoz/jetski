@@ -78,7 +78,7 @@ function fields(input: Record<string, unknown>, allowed: string[]) {
 export function createHttpServer(
   manager: SandboxManager,
   authenticate: Authenticate,
-  options: { sshGateway?: boolean } = {},
+  options: { sshGateway?: boolean; previews?: boolean } = {},
 ) {
   const server = createServer(async (request, response) => {
     try {
@@ -114,7 +114,7 @@ export function createHttpServer(
           streamInspection: !!manager.streams,
           streamCancellation: !!manager.streams,
           sshGateway: options.sshGateway === true,
-          previews: false,
+          previews: !!manager.streams && options.previews === true,
           tcpForwarding: !!manager.streams && options.sshGateway === true,
           cancellationScope: "command",
         } satisfies ApiCapabilities);
