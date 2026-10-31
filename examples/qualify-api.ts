@@ -648,7 +648,7 @@ try {
     argv: [
       "/bin/sh",
       "-ec",
-      "for i in $(seq 1 50); do grep -q ':46A2 .* 0A ' /proc/net/tcp && exit 0; sleep 0.1; done; exit 1",
+      "for i in $(seq 1 50); do grep -q ':46A2 .* 0A ' /proc/net/tcp /proc/net/tcp6 && exit 0; sleep 0.1; done; exit 1",
     ],
     timeout: 10,
   });
@@ -658,6 +658,24 @@ try {
         `/v1/sandboxes/${id}/commands/${command}`,
       );
       if (observed.phase === "succeeded") return;
+      if (["failed", "cancelled", "uncertain"].includes(observed.phase)) {
+        for (const fixtureId of [listenerCommand, command]) {
+          const status = await client.request(
+            `/v1/sandboxes/${id}/commands/${fixtureId}`,
+          );
+          const stderr = (await manager.commandOutput(
+            streamScope,
+            fixtureId,
+            "stderr",
+            0,
+            8192,
+          )) as { base64: string };
+          console.log("Owned lifecycle fixture diagnostic", {
+            status,
+            stderr: Buffer.from(stderr.base64, "base64").toString(),
+          });
+        }
+      }
       assert.ok(
         !["failed", "cancelled", "uncertain"].includes(observed.phase),
         `Fixture command ${observed.phase}`,
@@ -888,7 +906,11 @@ try {
   const listenerAbsent = randomUUID();
   await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
     id: listenerAbsent,
-    argv: ["/bin/sh", "-ec", "! grep -q ':46A2 .* 0A ' /proc/net/tcp"],
+    argv: [
+      "/bin/sh",
+      "-ec",
+      "! grep -q ':46A2 .* 0A ' /proc/net/tcp /proc/net/tcp6",
+    ],
   });
   await awaitFixture(listenerAbsent);
   const replacementExposure = randomUUID();

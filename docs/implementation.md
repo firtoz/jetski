@@ -105,7 +105,14 @@ container must have no old listener, while a fresh exposure can be admitted. Thi
 is same-host fresh-container recovery, not physical-provider replacement. Existing
 fault injections and filesystem oracle remain unchanged. Updated operator browser
 docs with actual Chrome/container evidence and pinned test certificate limits.
-Build/typecheck/lint pass; local and hosted verification pending. No paid resources,
+Local104TS/build/typecheck/lint pass in /tmp/jetski-stream-lifecycle-local.log.
+Published72c35aeea6c2b6170a34c4ee367a601a8dfe5eb6; CI41252756358 running,
+log /tmp/jetski-stream-lifecycle-ci.log. API job124689530661 failed at listener readiness before the stop boundary;
+cleanup also reported uncertain host control. Preserved
+/tmp/jetski-stream-lifecycle-first-failure.log. Exact cause not yet established.
+Follow-up checks both IPv4 and IPv6 listener tables and includes bounded stderr/
+status diagnostics for only the owned fixture commands. Do not infer a runtime
+stop failure from a check that never reached stop. New CI required. No paid resources,
 desktop workloads, downstream changes or protected experiment changes.
 
 
