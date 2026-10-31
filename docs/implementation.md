@@ -475,3 +475,32 @@ the original and retaining historical output. Await CI before claiming those pat
 qualified. Interrupted import/save recovery, queued/uncertain deletion, active-host
 expiry drain and all remaining adapter/transport/GC/client/benchmark gates remain.
 No paid resources, operator host configuration or original GC experiment changed.
+
+Verified held-resume source: **dacfd5326e9b7bdd87310321e2d5014cf187990b**,
+CI **41213006705**, all four jobs successful; watcher 1790 terminal0. Real API log
+reports heldCheckpointResume=true and assignedDeletion=true, with identical final
+archive SHA and retained command history. This closes the previously missing
+held-checkpoint happy path and adds actual-host assigned-deletion evidence. Full
+lifecycle qualification remains false because interrupted import/save, queued and
+uncertain deletion, active expiry and multi-controller recovery remain open.
+Next discriminating work: reconcile interrupted checkpoint imports from observed
+host receipts without replaying uncertain execution, then remaining lifecycle gates
+and the full storage/provider/interactive/client/benchmark scope. No paid host or
+original GC experiment changes; all current test jobs are terminal and cleaned.
+
+Interrupted-import continuation: restore validates host progress and resumes from
+its durable byte offset, including a partial compressed frame; extraction-in-progress
+continues through the host's fenced finish operation. Each chunk and completion
+acknowledgement is checked for identity, extent and phase. Controller reconciliation
+continues import only when the exact fenced host reports no runtime creation receipt;
+creating/uncertain runtime receipts remain quarantined and are not redispatched.
+A multi-chunk binary test loses an acknowledgement, verifies no acknowledged bytes
+are resent, compares reconstructed bytes exactly, and rejects invalid progress and
+finish receipts. Regression coverage confirms uncertain creation is not repeated.
+Twenty-three TypeScript and thirty-three Python tests pass with build/typecheck and
+linters. Real API qualification now injects an acknowledgement loss after actual
+host import bytes are committed and waits for autonomous recovery; CI is pending.
+This does not yet clear reader admissions orphaned by abrupt controller process
+loss or recover partial checkpoint uploads. Those, active expiry, unresolved
+placement deletion and all provider/storage/interactive/client/benchmark gates
+remain in scope. No paid host or original GC experiment state was changed.

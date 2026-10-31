@@ -48,6 +48,15 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     };
     const actions: string[] = [];
     const imported: Buffer[] = [];
+    let importReceipt:
+      | {
+          id: string;
+          sha256: string;
+          bytes: number;
+          offset: number;
+          phase: string;
+        }
+      | undefined;
     let now = 1,
       retirements = 0;
     let failRetirement = true;
@@ -83,22 +92,28 @@ for (const failure of ["release-ack", "upload", "none"] as const)
             sha256: string;
             bytes: number;
           };
-          result = {
+          importReceipt = {
             id: input.checkpointId,
             sha256: input.sha256,
             bytes: input.bytes,
             offset: 0,
             phase: "receiving",
           };
+          result = importReceipt;
         }
-        if (request.action === "import-chunk")
-          imported.push(
-            Buffer.from(
-              (request.payload as { base64: string }).base64,
-              "base64",
-            ),
+        if (request.action === "import-chunk") {
+          const part = Buffer.from(
+            (request.payload as { base64: string }).base64,
+            "base64",
           );
-
+          imported.push(part);
+          importReceipt!.offset += part.length;
+          result = { ...importReceipt! };
+        }
+        if (request.action === "import-finish") {
+          importReceipt!.phase = "ready";
+          result = { ...importReceipt! };
+        }
         if (request.action === "read-checkpoint") {
           if (failure === "upload") throw Error("interrupted upload");
           const input = request.payload as { offset: number; bytes: number };

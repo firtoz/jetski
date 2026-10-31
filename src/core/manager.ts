@@ -236,6 +236,34 @@ export class SandboxManager {
         canonical(observed.lease) !== canonical(lease)
       )
         continue;
+      // An absent runtime receipt proves no container creation was admitted.
+      // File import is replayable by checkpoint identity and durable byte offset;
+      // a creating/uncertain runtime receipt is never redispatched here.
+      if (observed.runtime === undefined || observed.runtime === null) {
+        if (sandbox.restoreCheckpoint)
+          await restoreCheckpoint(
+            this.objects,
+            this.checkpoints,
+            { ...scope, generation: sandbox.generation },
+            sandbox.restoreCheckpoint,
+            (action, payload) =>
+              this.request(lease, action, {
+                ...(payload as Record<string, Json>),
+                lease,
+                image: sandbox.image,
+              }),
+          );
+        await this.request(lease, "create", { lease, image: sandbox.image });
+        observed = await this.request(lease, "inspect", { lease });
+        if (
+          !observed ||
+          typeof observed !== "object" ||
+          Array.isArray(observed) ||
+          observed.phase !== "open" ||
+          canonical(observed.lease ?? null) !== canonical(lease)
+        )
+          continue;
+      }
       const runtime = observed.runtime;
       if (
         !runtime ||

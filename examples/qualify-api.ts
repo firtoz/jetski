@@ -40,6 +40,8 @@ const transport = new SshTransport([
 ]);
 const objects = new LocalCheckpointStore(join(directory, "objects"));
 let controlUnavailable = false;
+let loseImportAck = true,
+  lostImportAcks = 0;
 let clockOffset = 0;
 const manager = new SandboxManager(
   state,
@@ -47,7 +49,13 @@ const manager = new SandboxManager(
   {
     request: async (host, request) => {
       if (controlUnavailable) throw Error("Control transport unavailable");
-      return transport.request(host, request);
+      const response = await transport.request(host, request);
+      if (request.action === "import-chunk" && loseImportAck) {
+        loseImportAck = false;
+        lostImportAcks++;
+        throw Error("Injected import acknowledgement loss");
+      }
+      return response;
     },
   },
   objects,
@@ -186,10 +194,12 @@ try {
   for (let attempt = 0; attempt < 150; attempt++) {
     replacement = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
     if (replacement.phase === "running") break;
-    if (replacement.phase === "quarantined") throw Error("Resume quarantined");
+    // The injected lost import acknowledgement temporarily quarantines this
+    // assignment; server reconciliation must observe and recover it.
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal(replacement?.phase, "running");
+  assert.equal(lostImportAcks, 1);
   assert.equal(replacement.lease?.machineId, sandbox?.lease?.machineId);
   assert.notEqual(
     replacement.lease?.assignmentId,
@@ -356,6 +366,7 @@ try {
       idleRetirementWithoutPowerOff: true,
       deletedSandboxRetainsHistory: true,
       heldCheckpointResume: true,
+      lostImportAcknowledgementRecovery: true,
       assignedDeletion: true,
       completeLifecycle: false,
     }),

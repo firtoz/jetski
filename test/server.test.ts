@@ -145,6 +145,7 @@ test("uncertain create retains assignment and does not allocate or execute twice
     creations = 0,
     commandStarts = 0;
   let hostLost = false;
+  let runtimeReady = false;
   const provider: HostProvider = {
     capabilities: () => ({
       kind: "machine-host",
@@ -203,7 +204,7 @@ test("uncertain create retains assignment and does not allocate or execute twice
           result: {
             phase: "open",
             lease: request.payload.lease ?? null,
-            runtime: { phase: "running", image },
+            runtime: { phase: runtimeReady ? "running" : "creating", image },
           },
         };
       return { version: 1, id: request.id, result: null };
@@ -225,6 +226,23 @@ test("uncertain create retains assignment and does not allocate or execute twice
     (await manager.get({ owner: "alice", sandbox: id }))?.phase,
     "quarantined",
   );
+  await new SandboxManager(
+    state,
+    provider,
+    transport,
+    objects,
+    options,
+  ).reconcile("alice");
+  assert.equal(
+    creations,
+    1,
+    "uncertain runtime creation must not be redispatched",
+  );
+  assert.equal(
+    (await manager.get({ owner: "alice", sandbox: id }))?.phase,
+    "quarantined",
+  );
+  runtimeReady = true;
   await new SandboxManager(
     state,
     provider,
