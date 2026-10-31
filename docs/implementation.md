@@ -93,6 +93,18 @@ workload-specific products.
 
 ## Latest continuation status
 
+Published correction c5c4031efd939e27282d8a1b878f9cc55ab22507 is running
+CI41241791737; watcher15220 logs /tmp/jetski-stream-fix-ci.log. Local73TS/70Python
+checks pass. Follow-up portable frame decoder uses fixed16KiB pending storage,
+strict readiness/direction/FIN validation and immutable yielded bytes. Truncation,
+invalid lengths/tags, post-FIN bytes and abandoned iteration fail closed. The
+installed SSH fixture now uses this same codec instead of a separate parser.
+Local77TS tests/build/typecheck/lint pass; hosted codec verification pending.
+Public forwarding stays disabled until core permission/revocation, bounded SSH
+stream transport and lifecycle cleanup are integrated. Next qualify fixes/codec,
+then implement that transport without retries or unbounded queues.
+
+
 CI41241321510 at e36a041 completed with three passing jobs and two failures.
 SSH relay completion/replay/cancellation passed before the fixture incorrectly
 expected cancellation of a listener that had already rejected the empty request

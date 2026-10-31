@@ -5,6 +5,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Json } from "../src/core/contracts.js";
 import type { HostLease } from "../src/core/pool.js";
+import {
+  encodeStreamFrame,
+  STREAM_MAGIC,
+  StreamDecoder,
+} from "../src/core/stream-protocol.js";
 import { type SshHost, sshArguments } from "../src/transport/ssh.js";
 
 export async function qualifyHostStream(
@@ -84,11 +89,12 @@ export async function qualifyHostStream(
     await request("command-cancel", { ...payload, commandId });
     assert.equal((await wait(commandId)).phase, "cancelled");
   }
-  const frame = (tag: string, data = Buffer.alloc(0)) => {
-    const header = Buffer.alloc(5);
-    header.write(tag);
-    header.writeUInt32BE(data.length, 1);
-    return Buffer.concat([header, data]);
+  const frame = (tag: "R" | "D" | "F", data = Buffer.alloc(0)) => {
+    if (tag === "D")
+      return Buffer.from(encodeStreamFrame({ kind: "data", bytes: data }));
+    return Buffer.from(
+      encodeStreamFrame({ kind: tag === "R" ? "ready" : "fin" }),
+    );
   };
   async function exchange(id: string, cancel = false) {
     const header = Buffer.from(
@@ -142,7 +148,7 @@ export async function qualifyHostStream(
         child.on("close", resolve);
       });
       child.stdin.write(
-        Buffer.concat([Buffer.from("JETSKI-STREAM/1\n"), length, header]),
+        Buffer.concat([Buffer.from(STREAM_MAGIC), length, header]),
       );
       if (!cancel)
         child.stdin.end(
@@ -168,24 +174,12 @@ export async function qualifyHostStream(
   const response = await exchange(id);
   assert.equal(response.code, 0, response.stderr);
   assert.deepEqual(response.bytes.subarray(0, 5), frame("R"));
-  const content: Buffer[] = [];
-  let at = 5,
-    fin = false;
-  while (at < response.bytes.length) {
-    const tag = response.bytes[at],
-      length = response.bytes.readUInt32BE(at + 1);
-    at += 5;
-    assert.ok(!fin && length <= 16384 && at + length <= response.bytes.length);
-    if (tag === 70) {
-      assert.equal(length, 0);
-      fin = true;
-    } else {
-      assert.equal(tag, 68);
-      content.push(response.bytes.subarray(at, at + length));
-    }
-    at += length;
+  const content: Uint8Array[] = [];
+  const decoder = new StreamDecoder(true);
+  for (const part of decoder.feed(response.bytes)) {
+    if (part.kind === "data") content.push(part.bytes);
   }
-  assert.ok(fin);
+  decoder.finish();
   assert.ok(Buffer.concat(content).toString().endsWith("relay-container"));
   const receipt = (await request("stream-status", {
     ...payload,
