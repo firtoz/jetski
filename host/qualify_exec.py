@@ -352,6 +352,7 @@ def main():
             assert proof == dict(cancelled=True, exitCode=143, descendantsReaped=True), proof
 
             def slow_output(cancelled):
+                init_pid = int(run(["inspect", "--format", "{{.State.Pid}}", container])["stdout"])
                 session = create(
                     [
                         "/jetski-supervisor",
@@ -399,26 +400,71 @@ def main():
                         assert paused.wait(10), "No output to stall"
                         time.sleep(0.5)
                         if cancelled:
+                            # Independent read-only observation: Podman exec can wait
+                            # behind the same container lock as exec removal.
+                            identity = subprocess.run(
+                                [
+                                    "sudo",
+                                    "python3",
+                                    "-c",
+                                    """
+import json, os, pathlib, sys
+init = pathlib.Path("/proc") / sys.argv[1]
+namespace = os.stat(init / "ns/pid").st_ino
+target = int((init / "root/workspace/slow-output-child").read_text())
+matches = []
+for entry in pathlib.Path("/proc").iterdir():
+    if not entry.name.isdecimal():
+        continue
+    try:
+        if os.stat(entry / "ns/pid").st_ino != namespace:
+            continue
+        status = (entry / "status").read_text().splitlines()
+        ids = next(line for line in status if line.startswith("NSpid:")).split()[1:]
+        if int(ids[-1]) == target:
+            start = (entry / "stat").read_text().rsplit(")", 1)[1].split()[19]
+            matches.append([int(entry.name), start])
+    except (FileNotFoundError, ProcessLookupError):
+        continue
+assert len(matches) == 1, "Owned workload process not uniquely observed"
+print(json.dumps(matches[0]))
+""",
+                                    str(init_pid),
+                                ],
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                                timeout=5,
+                            )
+                            child_pid, child_start = json.loads(identity.stdout)
                             closers[0]()
                             removal = executor.submit(api.remove, session)
-                            # Verify tree cleanup while the attach reader is STILL paused.
-                            deadline = time.monotonic() + 5
-                            while True:
-                                check = run(
-                                    [
-                                        "exec",
-                                        container,
-                                        "/bin/sh",
-                                        "-ec",
-                                        "test ! -e /proc/$(cat /workspace/slow-output-child)/stat",
-                                    ]
-                                )
-                                if check["exitCode"] == 0:
-                                    break
-                                assert time.monotonic() < deadline, (
-                                    "Slow reader blocked child cleanup"
-                                )
-                                time.sleep(0.05)
+                            subprocess.run(
+                                [
+                                    "sudo",
+                                    "python3",
+                                    "-c",
+                                    """
+import pathlib, sys, time
+path = pathlib.Path("/proc") / sys.argv[1] / "stat"
+deadline = time.monotonic() + 5
+while True:
+    try:
+        start = path.read_text().rsplit(")", 1)[1].split()[19]
+    except (FileNotFoundError, ProcessLookupError):
+        break
+    if start != sys.argv[2]:
+        break
+    assert time.monotonic() < deadline, "Slow reader blocked child cleanup"
+    time.sleep(0.01)
+""",
+                                    str(child_pid),
+                                    child_start,
+                                ],
+                                check=True,
+                                capture_output=True,
+                                timeout=6,
+                            )
                         resume.set()
                         proof = stream.result(timeout=20)
                         if removal is not None:

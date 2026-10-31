@@ -93,13 +93,25 @@ workload-specific products.
 
 ## Latest continuation status
 
+Slow-output first native run e94b0cb / CI41233300069 job124631782473 failed:
+reader pause expired while the fixture's Podman exec observation was blocked
+during concurrent exec removal. Private /tmp/jetski-slow-output-failed-native.log.
+The normal1MiB exact-output check had passed. Replace the dependent provider
+observation with read-only /proc inspection on disposable CI: select the exact
+workload within its container PID namespace before cancellation, bind host PID
+and start time, then verify disappearance while reader remains paused. No PID-based
+signals are introduced. This is a fixture correction; retain original failure.
+First watcher95351 still observed; no duplicate execution on the same runner.
+
 Slow-output continuation: native PTY output uses a fixed16KiB nonblocking buffer,
 services private input/cancellation while the outer writer is full, and retains
 all buffered output until drained before completion proof. Post-reap drain now
 sleeps instead of busy-spinning. Disposable native fixture pauses attach reading,
 checks exact1MiB zero-byte output after resume, and separately checks child process
 absence while the reader is still paused during cancellation, then drains output
-and requires authenticated cleanup. Candidate only; local checks and CI pending.
+and requires authenticated cleanup. Local59Python/61TypeScript tests, build/typecheck/lint and C syntax pass.
+Publishede94b0cbb76c7f5501db4669c558957fe4ddf39e6; CI41233300069 running,
+/tmp/jetski-slow-output-ci.log. Actual stalled-reader result still pending.
 No desktop workload execution, paid resources or protected experiment changes.
 Full goal remains active; installed API pressure and full interactive/gateway/
 provider/client/benchmark gates still required.
