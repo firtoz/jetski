@@ -44,12 +44,103 @@ type Access = {
   root: string | null;
   generation: number;
 };
+type CollectionJournal = {
+  generation: number;
+  candidates: ObjectInfo[];
+  next: number;
+  done: boolean;
+};
+
 type Registry = {
   generation: number;
   accesses: Access[];
   roots: CheckpointRoot[];
   collection: string | null;
 };
+
+/** Persisted JSON is untrusted at the deletion boundary. Validate every root,
+ * including retired roots, before computing reachability or calling storage. */
+function validateCollectionState(state: Registry, fence: Fence): void {
+  const invalid = () => {
+    throw Error("Ambiguous checkpoint metadata");
+  };
+  const validId = (value: unknown): value is string =>
+    typeof value === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
+  const timestamp = (value: unknown): value is number =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+  if (
+    Object.keys(state).sort().join(",") !==
+      "accesses,collection,generation,roots" ||
+    !Number.isSafeInteger(state.generation) ||
+    state.generation < 1 ||
+    !Array.isArray(state.accesses) ||
+    !Array.isArray(state.roots) ||
+    !(state.collection === null || validId(state.collection))
+  )
+    invalid();
+  const roots = new Set<string>();
+  const frames = new Map<string, ObjectInfo>();
+  for (const root of state.roots) {
+    if (
+      !root ||
+      typeof root !== "object" ||
+      Object.keys(root).sort().join(",") !==
+        "frames,id,metadata,pins,publishedAt,retiredAt" ||
+      !validId(root.id) ||
+      roots.has(root.id) ||
+      !timestamp(root.publishedAt) ||
+      !(
+        root.retiredAt === null ||
+        (timestamp(root.retiredAt) && root.retiredAt >= root.publishedAt)
+      ) ||
+      !Array.isArray(root.pins) ||
+      root.pins.length > 128 ||
+      root.pins.some((pin) => !validId(pin)) ||
+      new Set(root.pins).size !== root.pins.length ||
+      !Array.isArray(root.frames) ||
+      root.frames.length > 16384
+    )
+      invalid();
+    roots.add(root.id);
+    for (const frame of root.frames) {
+      if (
+        !frame ||
+        typeof frame !== "object" ||
+        !validId(frame.id) ||
+        frame.owner !== fence.owner ||
+        frame.sandbox !== fence.sandbox ||
+        !Number.isSafeInteger(frame.bytes) ||
+        frame.bytes < 0 ||
+        frame.bytes > DEFAULTS.maxObjectBytes ||
+        typeof frame.sha256 !== "string" ||
+        !/^[a-f0-9]{64}$/.test(frame.sha256)
+      )
+        invalid();
+      const prior = frames.get(frame.id);
+      if (
+        prior &&
+        (prior.bytes !== frame.bytes || prior.sha256 !== frame.sha256)
+      )
+        invalid();
+      frames.set(frame.id, frame);
+    }
+  }
+  const accesses = new Set<string>();
+  for (const access of state.accesses) {
+    if (
+      !access ||
+      !validId(access.id) ||
+      accesses.has(access.id) ||
+      access.generation !== state.generation ||
+      !(access.kind === "reader" || access.kind === "writer") ||
+      (access.kind === "reader" &&
+        (!validId(access.root) || !roots.has(access.root))) ||
+      (access.kind === "writer" && access.root !== null)
+    )
+      invalid();
+    accesses.add(access.id);
+  }
+}
 
 /** Fails closed on leaked admissions. Recovery must establish that an old actor
  * cannot continue before advancing its generation. A collector excludes all new
@@ -453,8 +544,45 @@ export class CheckpointRegistry {
     collection: string,
   ): Promise<{ deleted: number }> {
     identifier(collection);
+    const now = this.now();
+    if (!Number.isSafeInteger(now) || now < 0)
+      throw Error("Invalid collection clock");
+    const journalKey = `checkpoint-collection/${scopeKey(fence)}/${collection}`;
+    const completed = await this.state.transaction((tx) => {
+      const state = this.load(tx, fence);
+      validateCollectionState(state, fence);
+      const journal = tx.get<CollectionJournal>(journalKey);
+      if (
+        journal &&
+        (Object.keys(journal).sort().join(",") !==
+          "candidates,done,generation,next" ||
+          !Array.isArray(journal.candidates) ||
+          typeof journal.done !== "boolean" ||
+          !Number.isSafeInteger(journal.next) ||
+          journal.next < 0 ||
+          journal.next > journal.candidates.length ||
+          (journal.done && journal.next !== journal.candidates.length) ||
+          journal.candidates.some(
+            (frame) =>
+              !frame ||
+              !state.roots.some((root) =>
+                root.frames.some(
+                  (known) => canonical(known) === canonical(frame),
+                ),
+              ),
+          ) ||
+          new Set(journal.candidates.map((frame) => frame.id)).size !==
+            journal.candidates.length)
+      )
+        throw Error("Ambiguous collection journal");
+      if (journal && journal.generation !== fence.generation)
+        throw Error("Collector generation mismatch");
+      return journal?.done ? journal.candidates.length : undefined;
+    });
+    if (completed !== undefined) return { deleted: completed };
     const snapshot = await this.state.transaction((tx) => {
       const state = this.load(tx, fence);
+      validateCollectionState(state, fence);
       if (state.accesses.length) throw new Error("Active readers or writers");
       if (tx.scan(`checkpoint-reference/${scopeKey(fence)}/`).length)
         throw Error("Active checkpoint references");
@@ -464,7 +592,7 @@ export class CheckpointRegistry {
       tx.put(this.key(fence), state);
       return state;
     });
-    const cutoff = this.now() - DEFAULTS.gcGraceMs;
+    const cutoff = now - DEFAULTS.gcGraceMs;
     const live = new Map<string, ObjectInfo>();
     const candidates = new Map<string, ObjectInfo>();
     for (const root of snapshot.roots) {
@@ -489,19 +617,76 @@ export class CheckpointRegistry {
       )
         throw new Error("Retained root integrity failure");
     }
-    let deleted = 0;
-    for (const frame of candidates.values()) {
-      if (live.has(frame.id)) continue;
-      await this.objects.delete(frame);
-      deleted++;
+    const planned = [...candidates.values()].filter(
+      (frame) => !live.has(frame.id),
+    );
+    const journal = await this.state.transaction((tx) => {
+      const state = this.load(tx, fence);
+      if (state.collection !== collection) throw Error("Collector fenced");
+      const prior = tx.get<CollectionJournal>(journalKey);
+      if (prior) {
+        // A later retry's clock may admit additional retired frames. Its plan is
+        // deliberately ignored: this identity retains the original candidate set.
+        if (
+          prior.generation !== fence.generation ||
+          !Array.isArray(prior.candidates) ||
+          !Number.isSafeInteger(prior.next) ||
+          prior.next < 0 ||
+          prior.next > prior.candidates.length ||
+          prior.done !== false ||
+          new Set(prior.candidates.map((frame) => frame.id)).size !==
+            prior.candidates.length ||
+          prior.candidates.some(
+            (frame) =>
+              !planned.some(
+                (candidate) => canonical(candidate) === canonical(frame),
+              ),
+          )
+        )
+          throw Error("Ambiguous collection journal");
+        return prior;
+      }
+      const created: CollectionJournal = {
+        generation: fence.generation,
+        candidates: planned,
+        next: 0,
+        done: false,
+      };
+      tx.put(journalKey, created);
+      return created;
+    });
+    for (let index = journal.next; index < journal.candidates.length; index++) {
+      // A lost deletion acknowledgement retries this same immutable identity.
+      // Stores must make deletion idempotent and must never reuse object IDs.
+      await this.objects.delete(journal.candidates[index]!);
+      await this.state.transaction((tx) => {
+        const state = this.load(tx, fence);
+        const current = tx.get<CollectionJournal>(journalKey);
+        if (
+          state.collection !== collection ||
+          !current ||
+          current.generation !== fence.generation ||
+          current.done ||
+          current.next !== index
+        )
+          throw Error("Collector fenced");
+        tx.put(journalKey, { ...current, next: index + 1 });
+      });
     }
     await this.state.transaction((tx) => {
       const state = this.load(tx, fence);
-      if (state.collection !== collection) throw new Error("Collector fenced");
+      const current = tx.get<CollectionJournal>(journalKey);
+      if (
+        state.collection !== collection ||
+        !current ||
+        current.next !== current.candidates.length
+      )
+        throw new Error("Collector fenced");
+      tx.put(journalKey, { ...current, done: true });
       state.collection = null;
       tx.put(this.key(fence), state);
     });
-    return { deleted };
+    return { deleted: journal.candidates.length };
   }
   async root(fence: Fence, id: string): Promise<CheckpointRoot | undefined> {
     return this.state.transaction((tx) =>

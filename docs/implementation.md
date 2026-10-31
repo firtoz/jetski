@@ -166,7 +166,9 @@ build/typecheck/linters. No live R2 or paid-host operations occurred; live provi
 qualification remains open. The standalone local example passed all 12 contract checks
 with 6 fixture identities and verified blob cleanup (20 ms diagnostic duration, not
 a performance comparison). Cleanup-failure tests retain failed object addresses and
-still attempt every deletion. Remote examples force single-entry pages. Await CI.
+still attempt every deletion. Remote examples force single-entry pages. CI41219691405
+passed all four jobs; the standalone local example passed all twelve checks with
+verified cleanup in CI as well.
 
 Next: observe exact-SHA CI, then qualify S3/R2 adapter parity and replacement recovery,
 then complete remaining interactive/API scope and machine-provider adapters;
@@ -701,3 +703,24 @@ while retained or read, then allow deletion only after the final retirement grac
 Reconstruction checks exact compressed hash and decompressed binary bytes. Grace
 uses an injected clock; this is not the separate real-time qualification. Await
 local checks and exact-SHA CI. Full release gates remain open.
+
+Verified S3 core recovery source **4f7d6372ed7095a02f901157c71fe53820acdab7**,
+CI **41220147910**, all four jobs successful; watcher 9811 exited 0. All 81 unit
+tests (39 TypeScript including subtest, 42 Python), build/typecheck and linters
+pass in CI. Disposable SSH/runtime fixtures terminated and cleaned their listeners.
+Live R2 still awaits bucket-scoped S3 credentials/configuration; local environment
+discovery found management credentials only. User asked for private local credential
+file path, never secret text. No provider calls, paid allocations or protected
+experiment changes. Continue other remaining gates while access is pending.
+
+GC metadata/journal continuation: collection validates persisted registry/root
+shapes, timestamps, owner scope, pins, immutable-frame descriptor consistency and
+clock values before storage I/O. Collection IDs now retain a durable candidate plan
+and per-object cursor, survive SQLite reopen and return persisted completed results.
+A lost delete ACK retries only its immutable object; prior acknowledged deletes are
+not repeated. Tests inject malformed metadata and a real deletion followed by lost
+ACK, then reopen SQLite and verify exclusion, recovery and replay. All 41 TypeScript
+tests pass before the final journal-shape strengthening; final checks/CI pending.
+This remains known-frame collection: complete orphan inventory/pagination, full
+concurrent-controller qualification and real-grace hosted tests remain open. No
+paid-host or remote storage activity and no changes to the protected experiment.
