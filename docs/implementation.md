@@ -93,6 +93,19 @@ workload-specific products.
 
 ## Latest continuation status
 
+Verified7703853a90da471f0c0fcee3f60fe8a2dadc42d2, CI41230673705 all five
+jobs passed; watcher10448 exited0. Core admission ordering survives SQLite restart;
+installed terminal/API/lifecycle regressions remain green.60TypeScript tests pass.
+
+Integrity fix candidate: initialize the host terminal journal durably before the
+command admission receipt becomes visible. Later missing journal files are errors,
+not empty journals/absence proof. Otherwise a lost journal could falsely classify
+already-sent input as never admitted. New deletion-after-admission/closure regression
+passes;54Python tests pass. Requires final installed-host CI. No paid/desktop/
+protected experiment changes. Experimental endpoints still have remaining initial
+geometry, worker-loss/backpressure, full attach/gateway and all broader release gates.
+
+
 Verified647cd1f41542d346c5cd80793d67c743bc25e101, CI41230397295 all five
 jobs passed; watcher57551 exited0. API job124623223677 confirms terminal input
 replay after lost admission ACK, and retained terminal outcomes/output available

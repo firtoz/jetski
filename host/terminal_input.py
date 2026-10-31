@@ -51,6 +51,19 @@ class TerminalInputs:
     def __init__(self, fence, root):
         self.fence, self.root = fence, pathlib.Path(root)
 
+    def initialize_locked(self, raw, command):
+        """Caller holds the assignment fence, before publishing command admission."""
+        lease = identity(raw)
+        operation_id(command)
+        self.fence.match(self.fence.read(), lease)
+        ledger = Fence(self.root / lease["assignmentId"] / command)
+        empty = {"version": 1, "next": 0, "ops": {}}
+        previous = ledger.read()
+        if previous is None:
+            ledger.write(empty)
+        elif previous != empty:
+            raise ValueError("terminal_journal_admission_conflict")
+
     def context(self, lease, command):
         operation_id(command)
         state = self.fence.read()
@@ -58,8 +71,13 @@ class TerminalInputs:
         receipt = state.get("commands", {}).get(command)
         if receipt is None or not receipt["spec"].get("terminal"):
             raise ValueError("terminal_unavailable")
-        ledger = Fence(self.root / lease["assignmentId"] / command)
-        entries = ledger.read() or {"version": 1, "next": 0, "ops": {}}
+        path = self.root / lease["assignmentId"] / command
+        if not path.exists():
+            raise ValueError("terminal_journal_unavailable")
+        ledger = Fence(path)
+        entries = ledger.read()
+        if entries is None:
+            raise ValueError("terminal_journal_unavailable")
         if set(entries) != {"version", "next", "ops"} or entries["version"] != 1:
             raise ValueError("terminal_journal_invalid")
         interrupted = False

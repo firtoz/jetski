@@ -29,6 +29,8 @@ class TerminalInputTests(unittest.TestCase):
             state["commands"] = {self.command: dict(spec=dict(terminal=True), phase="running")}
             self.fence.write(state)
         self.inputs = TerminalInputs(self.fence, self.root / "inputs")
+        with self.fence.locked():
+            self.inputs.initialize_locked(self.lease, self.command)
 
     def test_reconnect_observes_order_and_never_resends(self):
         identifiers = [str(uuid.uuid4()) for _ in range(2)]
@@ -100,6 +102,17 @@ class TerminalInputTests(unittest.TestCase):
         sent = []
         self.assertFalse(self.inputs.dispatch_one(self.lease, self.command, sent.append))
         self.assertEqual(sent, [])
+
+    def test_lost_journal_cannot_prove_input_absence(self):
+        identifier = str(uuid.uuid4())
+        self.inputs.admit(self.lease, self.command, identifier, dict(kind="close"))
+        path = self.root / "inputs" / self.lease["assignmentId"] / self.command / "state.json"
+        path.unlink()
+        self.fence.close(self.lease)
+        with self.assertRaisesRegex(ValueError, "journal_unavailable"):
+            self.inputs.status(self.lease, self.command, identifier)
+        with self.assertRaisesRegex(ValueError, "journal_unavailable"):
+            self.inputs.status(self.lease, self.command, str(uuid.uuid4()))
 
     def test_validation_and_closed_fence(self):
         for value in [

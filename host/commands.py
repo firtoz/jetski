@@ -81,6 +81,12 @@ class Commands:
             receipt = dict(
                 id=command, spec=spec, phase="queued", exitCode=None, cancelRequested=False
             )
+            if terminal:
+                from terminal_input import TerminalInputs
+
+                TerminalInputs(self.fence, self.root.parent / "terminal-input").initialize_locked(
+                    lease, command
+                )
             commands[command] = receipt
             self.fence.write({**state, "commands": commands})
             # The launch can be uncertain; leave the persisted queued receipt.
