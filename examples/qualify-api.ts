@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { gunzipSync } from "node:zlib";
 import { CheckpointRegistry } from "../src/core/checkpoints.js";
 import type { Json } from "../src/core/contracts.js";
 import { DEFAULTS } from "../src/core/contracts.js";
@@ -399,6 +400,78 @@ try {
       !Array.isArray(hostStatus.result) &&
       hostStatus.result.ready === true,
   );
+  const expiring = randomUUID();
+  cleanupId = expiring;
+  await client.request("/v1/sandboxes", "POST", {
+    id: expiring,
+    operationId: randomUUID(),
+    image,
+  });
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if (
+      (await client.request<Sandbox>(`/v1/sandboxes/${expiring}`)).phase ===
+      "running"
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(
+    (await client.request<Sandbox>(`/v1/sandboxes/${expiring}`)).phase,
+    "running",
+  );
+  const expiryCommand = randomUUID();
+  await client.request(`/v1/sandboxes/${expiring}/commands`, "POST", {
+    id: expiryCommand,
+    argv: [
+      "/bin/sh",
+      "-ec",
+      "printf expiry-fixture-bytes > /workspace/expiry-data",
+    ],
+  });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (
+      (
+        await client.request<{ phase: string }>(
+          `/v1/sandboxes/${expiring}/commands/${expiryCommand}`,
+        )
+      ).phase === "succeeded"
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(
+    (
+      await client.request<{ phase: string }>(
+        `/v1/sandboxes/${expiring}/commands/${expiryCommand}`,
+      )
+    ).phase,
+    "succeeded",
+  );
+  clockOffset += DEFAULTS.hostLifetimeMs - DEFAULTS.hostDrainMs;
+  let drained: Sandbox | undefined;
+  for (let attempt = 0; attempt < 200; attempt++) {
+    drained = await client.request<Sandbox>(`/v1/sandboxes/${expiring}`);
+    if (drained.phase === "stopped") break;
+    if (drained.phase === "quarantined")
+      throw Error("Expiry drain quarantined");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(drained?.phase, "stopped");
+  assert.equal(drained.lease, null);
+  assert.ok(drained.checkpoint);
+  const expiryRoot = await registry.root(
+    { owner: "qualification", sandbox: expiring, generation: 1 },
+    drained.checkpoint,
+  );
+  assert.ok(expiryRoot);
+  const archiveParts: Uint8Array[] = [];
+  for (const frame of expiryRoot.frames)
+    for await (const part of objects.read(frame)) archiveParts.push(part);
+  assert.ok(
+    gunzipSync(Buffer.concat(archiveParts)).includes(
+      Buffer.from("expiry-fixture-bytes"),
+    ),
+  );
   console.log(
     JSON.stringify({
       standaloneApi: true,
@@ -420,6 +493,7 @@ try {
       lostOutputStoreAcknowledgementRecovery: true,
       assignedDeletion: true,
       queuedDeletion: true,
+      proactiveExpiryCheckpoint: true,
       completeLifecycle: false,
     }),
   );

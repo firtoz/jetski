@@ -580,3 +580,28 @@ pass. The real API fixture now deletes excess queued demand while another assign
 owns the sole host. Await CI. Starting/quarantined placement deletion, orphan reader
 and multi-controller recovery, active expiry and the remaining full release gates
 remain open. No paid allocations or original GC experiment changes occurred.
+
+Verified queued-deletion source: **2e0131527e60696663519c11c4d857d733a48d33**,
+CI **41214822684**, all four jobs successful; watcher 10244 terminal0. Real API
+log confirms queuedDeletion=true while the original assignment completes all three
+ACK-loss recoveries and retained-history deletion. All 59 unit tests pass. Dispatched
+allocation cancellation is fault-tested with a provider double; real Boat allocation
+recovery remains unqualified. Next: starting/quarantined deletion, active expiry,
+orphan reader and multi-controller recovery, then remaining full adapter/storage/
+interactive/client/benchmark gates. No paid host or original GC experiment changes;
+all current CI jobs are terminal and cleaned. Full goal remains active.
+
+Expiry-drain continuation: server-owned reconciliation admits one durable stop per
+assignment five minutes before allocation expiry. Placement excludes hosts inside
+that drain window; released idle hosts in the window retire instead of taking new
+work. The stop uses existing output/archive journaling and publication/cleanup gates.
+A failed save stays quarantined even past the deadline; expiry is not evidence that
+release is safe. A restart test covers boundary timing, repeated source failures,
+no premature removal/retirement, successful recovery and exact archived bytes.
+All 60 unit tests, build/typecheck/Biome/Ruff pass. The real API fixture now uses its
+injected controller clock to trigger active expiry, then reads the workload's file
+bytes from the durable archive. Await CI. This is not real Boat forced-expiry or
+outage qualification: five minutes cannot guarantee completion for every workload
+or provider failure. Starting/quarantined deletion, orphan-reader/multi-controller
+recovery and all remaining adapter/storage/interactive/client/benchmark gates remain.
+No paid resources or original GC experiment clock/state changed.

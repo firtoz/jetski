@@ -63,9 +63,11 @@ The worker retires released idle host allocations after ten minutes, or when the
 allocation lifetime expires. It does not replenish idle hosts without queued demand.
 SSH retirement releases the adoption record and leaves the operator's machine
 running; permanent owner binding and generation continuity survive re-adoption.
-Lost retirement acknowledgements retain the slot for reconciliation. This idle
-maintenance never retires an active/quarantined assignment; pre-expiry save/drain
-of active cloud hosts remains an unqualified release gate.
+Lost retirement acknowledgements retain the slot for reconciliation. Active assignments enter the durable stop sequence five minutes before allocation
+expiry; hosts within that window receive no new assignments. Successful publication
+and cleanup permit retirement. A deadline never authorizes discarding an uncertain
+save. The five-minute allowance is not a guarantee against provider outages or
+forced termination; actual cloud-provider deadline qualification remains open.
 
 `delete ID --operation UUID` permanently prevents new execution/resume for that
 sandbox identity. Assigned running/stopped sandboxes first complete verified save

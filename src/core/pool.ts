@@ -152,7 +152,9 @@ export class PoolJournal {
       if (pending) return pending;
       if (
         slots.some(
-          (slot) => slot.phase === "idle" && slot.expiresAt > this.now(),
+          (slot) =>
+            slot.phase === "idle" &&
+            slot.expiresAt > this.now() + DEFAULTS.hostDrainMs,
         ) ||
         slots.length >= this.capacity
       )
@@ -264,7 +266,9 @@ export class PoolJournal {
         .filter((ticket) => ticket.phase === "queued")
         .sort((a, b) => a.sequence - b.sequence)[0];
       const slot = this.slots(tx, owner).find(
-        (slot) => slot.phase === "idle" && slot.expiresAt > this.now(),
+        (slot) =>
+          slot.phase === "idle" &&
+          slot.expiresAt > this.now() + DEFAULTS.hostDrainMs,
       );
       if (!ticket || !slot || !slot.machineId) return undefined;
       const machine = tx.get<Machine>(this.machineKey(slot.machineId));
@@ -363,7 +367,7 @@ export class PoolJournal {
       if (!slot || slot.phase !== "idle" || slot.lease || !slot.machineId)
         throw new Error("Host not idle");
       if (
-        slot.expiresAt > this.now() &&
+        slot.expiresAt > this.now() + DEFAULTS.hostDrainMs &&
         (slot.idleSince === null ||
           slot.idleSince + DEFAULTS.idleMs > this.now())
       )

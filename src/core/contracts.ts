@@ -22,6 +22,7 @@ export type Fence = Scope & { generation: number };
 export const DEFAULTS = Object.freeze({
   idleMs: 10 * 60_000,
   hostLifetimeMs: 60 * 60_000,
+  hostDrainMs: 5 * 60_000,
   hostsPerOwner: 1,
   gcGraceMs: 24 * 60 * 60_000,
   frameBytes: 4 * 1024 * 1024,

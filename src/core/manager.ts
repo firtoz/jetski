@@ -290,12 +290,44 @@ export class SandboxManager {
       });
     }
   }
+  private async drainExpiringHosts(owner: string): Promise<void> {
+    for (const slot of await this.pool.inspect(owner)) {
+      if (!slot.lease || slot.expiresAt > this.now() + DEFAULTS.hostDrainMs)
+        continue;
+      const lease = slot.lease,
+        scope = { owner, sandbox: lease.sandboxId };
+      await this.state.transaction((tx) => {
+        const sandbox = tx.get<Sandbox>(this.key(scope));
+        if (
+          !sandbox?.lease ||
+          canonical(sandbox.lease) !== canonical(lease) ||
+          sandbox.pendingResume ||
+          !["running", "stopped"].includes(sandbox.phase)
+        )
+          return;
+        const key = `expiry-drain/${scopeKey(scope)}/${lease.assignmentId}`;
+        if (tx.get(key)) return;
+        const id = crypto.randomUUID();
+        this.shutdown.admitIn(
+          tx,
+          { ...scope, generation: sandbox.generation },
+          id,
+          "stop",
+        );
+        tx.put(key, {
+          operationId: id,
+          expiresAt: slot.expiresAt,
+          assignmentId: lease.assignmentId,
+        });
+      });
+    }
+  }
   private async retireIdleHosts(owner: string): Promise<void> {
     for (let slot of await this.pool.inspect(owner)) {
       if (slot.lease || !slot.machineId) continue;
       if (
         slot.phase === "idle" &&
-        (slot.expiresAt <= this.now() ||
+        (slot.expiresAt <= this.now() + DEFAULTS.hostDrainMs ||
           (slot.idleSince !== null &&
             slot.idleSince + DEFAULTS.idleMs <= this.now()))
       )
@@ -314,6 +346,7 @@ export class SandboxManager {
     this.activeOwners.add(owner);
     try {
       await this.recoverObservedCreates(owner);
+      await this.drainExpiringHosts(owner);
       await this.shutdown.reconcile(owner);
       await this.reconcileHeldResumes(owner);
       await this.retireIdleHosts(owner);
