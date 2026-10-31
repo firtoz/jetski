@@ -60,6 +60,8 @@ objects.put = async (...args) => {
   return committed;
 };
 let controlUnavailable = false;
+let loseWriteAck = true;
+let lostWriteAcks = 0;
 let loseImportAck = true,
   lostImportAcks = 0;
 let clockOffset = 0;
@@ -70,6 +72,11 @@ const manager = new SandboxManager(
     request: async (host, request) => {
       if (controlUnavailable) throw Error("Control transport unavailable");
       const response = await transport.request(host, request);
+      if (request.action === "file-write-finish" && loseWriteAck) {
+        loseWriteAck = false;
+        lostWriteAcks++;
+        throw Error("Injected file publication acknowledgement loss");
+      }
       if (request.action === "import-chunk" && loseImportAck) {
         loseImportAck = false;
         lostImportAcks++;
@@ -144,6 +151,34 @@ try {
     (await client.request<Sandbox>(`/v1/sandboxes/${cancelled}`)).phase,
     "deleted",
   );
+  const uploadId = randomUUID();
+  const uploadBytes = Buffer.from([0, 255, 1, 128]);
+  const uploadSpec = {
+    path: "/workspace/uploaded",
+    bytes: uploadBytes.length,
+    sha256: (await import("node:crypto"))
+      .createHash("sha256")
+      .update(uploadBytes)
+      .digest("hex"),
+    mode: 0o640,
+  };
+  await client
+    .writeFileStream(
+      id,
+      uploadId,
+      uploadSpec,
+      (async function* () {
+        yield uploadBytes.subarray(0, 2);
+        yield uploadBytes.subarray(2);
+      })(),
+    )
+    .catch(() => undefined);
+  assert.equal(lostWriteAcks, 1);
+  const partialId = randomUUID();
+  await client.beginUpload(id, partialId, {
+    ...uploadSpec,
+    path: "/workspace/incomplete",
+  });
   const commandId = randomUUID();
   const request = {
     id: commandId,
@@ -215,6 +250,12 @@ try {
     id,
   );
   controlUnavailable = false;
+  const cliRead = await promisify(execFile)(
+    process.execPath,
+    ["dist/cli.js", "file-read", id, "/workspace/api-counter"],
+    { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
+  );
+  assert.equal(cliRead.stdout, "1");
   loseSaveAck = true;
   const stopId = randomUUID();
   await client.request(`/v1/sandboxes/${id}/stop`, "POST", {
@@ -227,6 +268,10 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal((await client.operation(id, stopId)).phase, "succeeded");
+  assert.equal((await client.operation(id, uploadId)).phase, "succeeded");
+  assert.equal((await client.operation(id, partialId)).phase, "failed");
+  assert.equal((await client.uploadStatus(id, uploadId)).phase, "committed");
+  assert.equal(lostWriteAcks, 1);
   assert.equal(lostSaveAcks, 1);
   const stopped = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
   assert.equal(stopped.phase, "stopped");
@@ -260,6 +305,24 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal(replacement?.phase, "running");
+  const restoredUpload: Uint8Array[] = [];
+  for await (const part of client.readFileStream(id, uploadSpec.path))
+    restoredUpload.push(part);
+  assert.deepEqual(Buffer.concat(restoredUpload), uploadBytes);
+  assert.equal(
+    (
+      await client.writeFileStream(
+        id,
+        uploadId,
+        uploadSpec,
+        (async function* () {
+          throw Error("Completed upload must not consume a new source");
+          yield new Uint8Array();
+        })(),
+      )
+    ).phase,
+    "committed",
+  );
   assert.equal(lostImportAcks, 1);
   assert.equal(replacement.lease?.machineId, sandbox?.lease?.machineId);
   assert.notEqual(
@@ -508,6 +571,8 @@ try {
       queuedDeletion: true,
       proactiveExpiryCheckpoint: true,
       boundedFileReadAndList: true,
+      lostFileWriteAckRecovery: true,
+      incompleteUploadAbortedOnStop: true,
       completeLifecycle: false,
     }),
   );

@@ -18,6 +18,7 @@ import { restoreCheckpoint } from "./restore.js";
 import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
 import { CheckpointTransfer } from "./transfer.js";
 import { HOST_PROTOCOL_VERSION, type HostTransport } from "./transport.js";
+import { UploadCoordinator } from "./uploads.js";
 
 export type Sandbox = {
   id: string;
@@ -68,6 +69,7 @@ export class SandboxManager {
   private readonly outputs: CommandOutputStore;
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
+  readonly uploads: UploadCoordinator;
   private readonly shutdown: ShutdownCoordinator;
   private readonly now: () => number;
   constructor(
@@ -88,7 +90,13 @@ export class SandboxManager {
     this.operations = new OperationJournal(state, this.now);
     this.checkpoints = new CheckpointRegistry(state, objects, this.now);
     this.outputs = new CommandOutputStore(objects, this.checkpoints);
+    this.uploads = new UploadCoordinator(
+      state,
+      this.operations,
+      (lease, action, payload) => this.request(lease, action, payload),
+    );
     this.shutdown = new ShutdownCoordinator({
+      settleUploads: (scope) => this.uploads.settle(scope),
       state,
       operations: this.operations,
       pool: this.pool,
@@ -349,6 +357,7 @@ export class SandboxManager {
       await this.recoverObservedCreates(owner);
       await this.drainExpiringHosts(owner);
       await this.shutdown.reconcile(owner);
+      await this.uploads.reconcile(owner);
       await this.reconcileHeldResumes(owner);
       await this.retireIdleHosts(owner);
       // Repair admission interrupted between sandbox, operation and queue commits.

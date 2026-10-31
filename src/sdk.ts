@@ -1,3 +1,4 @@
+import { encodeBase64 } from "./core/command-output.js";
 import { identifier, type Json, type Operation } from "./core/contracts.js";
 import {
   FILE_CHUNK_BYTES,
@@ -5,6 +6,7 @@ import {
   type FileListing,
   persistentPath,
 } from "./core/files.js";
+import type { UploadSpec, UploadStatus } from "./core/uploads.js";
 export class JetskiClient {
   private readonly base: URL;
   constructor(
@@ -125,6 +127,97 @@ export class JetskiClient {
     return this.request(
       `/v1/sandboxes/${identifier(sandbox)}/files/list?${query}`,
     );
+  }
+  beginUpload(
+    sandbox: string,
+    id: string,
+    spec: UploadSpec,
+  ): Promise<UploadStatus> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/files/uploads`,
+      "POST",
+      { id, ...spec },
+    );
+  }
+  uploadStatus(sandbox: string, id: string): Promise<UploadStatus> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/files/uploads/${identifier(id)}`,
+    );
+  }
+  async uploadChunk(
+    sandbox: string,
+    id: string,
+    offset: number,
+    data: Uint8Array,
+  ): Promise<UploadStatus> {
+    if (!data.length || data.length > FILE_CHUNK_BYTES)
+      throw Error("Invalid upload chunk size");
+    const sha256 = Array.from(
+      new Uint8Array(
+        await crypto.subtle.digest("SHA-256", new Uint8Array(data).buffer),
+      ),
+      (byte) => byte.toString(16).padStart(2, "0"),
+    ).join("");
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/files/uploads/${identifier(id)}`,
+      "PUT",
+      { offset, base64: encodeBase64(data), sha256 },
+    );
+  }
+  finishUpload(sandbox: string, id: string): Promise<UploadStatus> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/files/uploads/${identifier(id)}/finish`,
+      "POST",
+      {},
+    );
+  }
+  /** Source starts at byte zero on retry. Metadata binds it to the original content. */
+  async writeFileStream(
+    sandbox: string,
+    id: string,
+    spec: UploadSpec,
+    source: AsyncIterable<Uint8Array>,
+  ): Promise<UploadStatus> {
+    const receipt = await this.beginUpload(sandbox, id, spec);
+    if (receipt.phase === "committed") return receipt;
+    if (receipt.phase === "finishing") return this.finishUpload(sandbox, id);
+    if (
+      receipt.phase !== "receiving" ||
+      !Number.isSafeInteger(receipt.offset) ||
+      receipt.offset < 0 ||
+      receipt.offset > spec.bytes
+    )
+      throw Error("Upload cannot resume");
+    let offset = 0;
+    for await (const part of source) {
+      if (offset + part.length > spec.bytes)
+        throw Error("Upload exceeds declared size");
+      for (
+        let start = Math.max(0, receipt.offset - offset);
+        start < part.length;
+        start += FILE_CHUNK_BYTES
+      ) {
+        const chunk = part.subarray(
+          start,
+          Math.min(start + FILE_CHUNK_BYTES, part.length),
+        );
+        const observed = await this.uploadChunk(
+          sandbox,
+          id,
+          offset + start,
+          chunk,
+        );
+        if (
+          observed.phase !== "receiving" ||
+          observed.offset < offset + start + chunk.length ||
+          observed.offset > spec.bytes
+        )
+          throw Error("Invalid upload acknowledgement");
+      }
+      offset += part.length;
+    }
+    if (offset !== spec.bytes) throw Error("Upload source ended early");
+    return this.finishUpload(sandbox, id);
   }
   operation(sandbox: string, id: string): Promise<Operation> {
     return this.request(

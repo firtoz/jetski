@@ -53,6 +53,7 @@ type Dependencies = {
   transfer: CheckpointTransfer;
   request: (lease: HostLease, action: string, payload: Json) => Promise<Json>;
   retainCommands: (scope: Scope) => Promise<boolean>;
+  settleUploads: (scope: Scope) => Promise<void>;
 };
 const sandboxKey = (scope: Scope) => `sandbox/${scopeKey(scope)}`;
 /** Persisted stop sequence. Only verified publication permits destructive cleanup.
@@ -138,6 +139,7 @@ export class ShutdownCoordinator {
     const payload = { lease: record.lease, image: record.image };
     try {
       if (record.stage === "quiesce") {
+        await this.deps.settleUploads(scope);
         await pool.transition(record.lease, "quiescing");
         await request(record.lease, "quiesce", payload);
         record = await this.advance(record, "outputs");

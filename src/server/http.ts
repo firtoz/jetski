@@ -95,7 +95,7 @@ export function createHttpServer(
           outputCursors: true,
           fileRead: true,
           fileList: true,
-          fileWrite: false,
+          fileWrite: true,
           pty: false,
           previews: false,
           tcpForwarding: false,
@@ -224,6 +224,60 @@ export function createHttpServer(
               expectedVersion,
             ),
           );
+          return;
+        }
+      }
+      if (parts[3] === "files" && parts[4] === "uploads") {
+        if (parts.length === 5 && request.method === "POST") {
+          const input = await body(request);
+          fields(input, ["id", "path", "bytes", "sha256", "mode"]);
+          if (
+            typeof input.bytes !== "number" ||
+            (input.mode !== undefined && typeof input.mode !== "number")
+          )
+            throw Error("Invalid upload metadata");
+          send(
+            response,
+            202,
+            await manager.uploads.begin(scope, string(input.id), {
+              path: string(input.path),
+              bytes: input.bytes,
+              sha256: string(input.sha256),
+              mode: (input.mode as number | undefined) ?? 0o644,
+            }),
+          );
+          return;
+        }
+        const uploadId = string(parts[5]);
+        if (parts.length === 6 && request.method === "GET") {
+          send(response, 200, await manager.uploads.status(scope, uploadId));
+          return;
+        }
+        if (parts.length === 6 && request.method === "PUT") {
+          const input = await body(request);
+          fields(input, ["offset", "base64", "sha256"]);
+          if (typeof input.offset !== "number")
+            throw Error("Invalid upload offset");
+          send(
+            response,
+            200,
+            await manager.uploads.chunk(
+              scope,
+              uploadId,
+              input.offset,
+              string(input.base64),
+              string(input.sha256),
+            ),
+          );
+          return;
+        }
+        if (
+          parts.length === 7 &&
+          parts[6] === "finish" &&
+          request.method === "POST"
+        ) {
+          fields(await body(request), []);
+          send(response, 200, await manager.uploads.finish(scope, uploadId));
           return;
         }
       }

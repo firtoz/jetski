@@ -1,7 +1,11 @@
 #!/usr/bin/env node
-import { mkdir, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { once } from "node:events";
+import { createReadStream } from "node:fs";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { MAX_FILE_UPLOAD_BYTES } from "./core/uploads.js";
 import { JetskiClient } from "./sdk.js";
 
 const { values, positionals } = parseArgs({
@@ -99,7 +103,43 @@ if (command === "serve") {
     required(process.env.JETSKI_TOKEN, "JETSKI_TOKEN"),
   );
   let result: unknown;
+  let binaryOutput = false;
   switch (command) {
+    case "files":
+      result = await client.listFiles(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "persistent path"),
+      );
+      break;
+    case "file-read":
+      binaryOutput = true;
+      for await (const chunk of client.readFileStream(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "persistent path"),
+      )) {
+        if (!process.stdout.write(chunk)) await once(process.stdout, "drain");
+      }
+      break;
+    case "file-write": {
+      const source = required(positionals[3], "local file"),
+        metadata = await stat(source);
+      if (!metadata.isFile() || metadata.size > MAX_FILE_UPLOAD_BYTES)
+        throw Error("Unsupported local file");
+      const digest = createHash("sha256");
+      for await (const chunk of createReadStream(source)) digest.update(chunk);
+      result = await client.writeFileStream(
+        required(positionals[1], "sandbox ID"),
+        required(values.id, "--id"),
+        {
+          path: required(positionals[2], "persistent path"),
+          bytes: metadata.size,
+          sha256: digest.digest("hex"),
+          mode: metadata.mode & 0o777,
+        },
+        createReadStream(source),
+      );
+      break;
+    }
     case "list":
       result = await client.request("/v1/sandboxes");
       break;
@@ -153,5 +193,6 @@ if (command === "serve") {
         "Usage: jetski serve --config PATH | list | get ID | create --id UUID --operation UUID --image DIGEST | exec ID --id UUID -- COMMAND | operation ID --id UUID | stop ID --operation UUID | checkpoint ID --operation UUID",
       );
   }
-  process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+  if (!binaryOutput)
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 }

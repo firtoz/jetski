@@ -6,3 +6,4 @@ export * from "./operations.js";
 export type { HostLease } from "./pool.js";
 export * from "./transfer.js";
 export * from "./transport.js";
+export * from "./uploads.js";

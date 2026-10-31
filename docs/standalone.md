@@ -89,4 +89,20 @@ These are observations of live files, not consistent snapshots of active workloa
 The API exposes only declared persistent paths, rejects symlink traversal and
 special-file reads, and never resolves arbitrary host paths. Symlinks are listed
 as metadata. Invalid UTF-8 names fail listing rather than being silently changed.
-File writes and a dedicated CLI file command remain unimplemented.
+Uploads use `POST /v1/sandboxes/{id}/files/uploads`, `PUT .../{upload}` for chunks,
+`GET .../{upload}` for observation and `POST .../{upload}/finish` for publication.
+Specify an immutable UUID, persistent path, byte count, SHA-256 and optional mode.
+The SDK's `writeFileStream` accepts an async byte source; retries use the same ID,
+metadata and source from byte zero, skipping already acknowledged staging bytes.
+Limits are 64 MiB per file, 256 KiB per chunk and 64 identities per host assignment.
+Only finish publishes the destination; chunk acknowledgements cover private staging.
+A committed file write is durable on the execution host, not a remote checkpoint.
+Use checkpoint/stop to publish durable recovery storage before releasing the host.
+Stop aborts incomplete uploads and resolves admitted finish intents before quiescence.
+Unknown publication outcomes retain the source. Replays cannot overwrite newer edits.
+
+CLI: `jetski files ID /workspace`, `jetski file-read ID /workspace/file` (binary
+stdout), and `jetski file-write ID /workspace/file LOCAL_FILE --id UUID`. The writer
+hashes the local source before streaming; a changed source fails full-file verification.
+The initial file API replaces a directory entry atomically, rather than modifying
+all hardlinks to its previous inode. Intermediate directories must already exist.

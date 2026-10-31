@@ -698,6 +698,214 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{sandbox}/files/uploads": {
+      "post": {
+        "summary": "Admit an immutable file upload operation",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "bytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 67108864
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "mode": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 511
+                  }
+                },
+                "required": ["id", "path", "bytes", "sha256"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Upload admitted; receiving bytes does not publish the file"
+          },
+          "400": {
+            "description": "Invalid input, state conflict or uncertain publication; inspect operation status"
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{sandbox}/files/uploads/{upload}": {
+      "get": {
+        "summary": "Observe upload status without replaying publication",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "upload",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload status with durable phase and acknowledged offset"
+          },
+          "400": {
+            "description": "Invalid input, state conflict or uncertain publication; inspect operation status"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sandbox outside principal scope"
+          }
+        }
+      },
+      "put": {
+        "summary": "Transfer a verified chunk of at most 256 KiB",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "upload",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "base64": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                },
+                "required": ["offset", "base64", "sha256"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upload status with durable phase and acknowledged offset"
+          },
+          "400": {
+            "description": "Invalid input, state conflict or uncertain publication; inspect operation status"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sandbox outside principal scope"
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{sandbox}/files/uploads/{upload}/finish": {
+      "post": {
+        "summary": "Persist publication intent and atomically install a verified file",
+        "description": "Replay observes the same operation. Host-local publication is not a remote checkpoint acknowledgement. Uncertain publication prevents host release.",
+        "parameters": [
+          {
+            "name": "sandbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "upload",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upload status with durable phase and acknowledged offset"
+          },
+          "400": {
+            "description": "Invalid input, state conflict or uncertain publication; inspect operation status"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sandbox outside principal scope"
+          }
+        }
+      }
     }
   },
   "components": {

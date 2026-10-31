@@ -122,14 +122,29 @@ replaced destinations and stale/closed leases. A test initially patched an obsol
 fence instance after restart; the corrected test faults the live instance and passes.
 All 71 unit tests, build/typecheck and linters pass. Real SSH qualification now
 uploads a multi-chunk binary and verifies old-operation replay preserves subsequent
-workload edits; its CI result is pending. Public write API/SDK operation persistence
+workload edits. Source **c8cad6fa07d3586ff461b3b12bc310bc7f071148** passed CI
+**41216374190**, all four jobs; watcher 94200 terminated with exit 0. SSH logs
+confirm replaySafeFileUpload=true plus repeated identical checkpoint recovery. Public write API/SDK operation persistence
 and lifecycle coordination are still open: these are private host protocol handlers.
 
-Next: observe exact-SHA CI, wire persisted public upload operations and SDK/CLI
-streams, then remaining interactive/API scope; preserve orphan-reader/multi-controller,
+Public uploads now have durable admission and finish intents in the portable core,
+owner-scoped HTTP endpoints, SDK streaming/reconnect helpers and CLI file commands.
+Shutdown settles finish intents before host quiescence; uncertainty preserves source
+and quarantine. Receiving-only uploads are explicitly failed on stop. Completed
+outcomes survive generation advance and replay without host I/O. Two new tests prove
+controller restart/ACK-loss recovery, no duplicate publication, owner isolation,
+aborted incomplete uploads and no quiescence before a pending publication resolves.
+All 73 unit tests, build/typecheck and linters pass. The real API fixture now injects
+a lost file-publication ACK and verifies retained outcomes, incomplete-upload abort,
+exact restored uploaded bytes, cross-generation replay and CLI file reads. CI pending.
+
+Next: observe exact-SHA CI and retain failures. Complete remaining interactive/API
+scope, unresolved assignment deletion, orphan-reader/multi-controller recovery,
 full GC, Boat/S3/R2, physical replacement, staging integration and matched benchmarks.
-No paid host resources or separate GC experiment changes occurred. Do not claim
-release completion from the currently green subset.
+The upload protocol is bounded (64 MiB/file and 64 identities/assignment); a committed
+write is host-local durability, not a checkpoint acknowledgement. Public file writes
+are atomic directory-entry replacement, not in-place mutation of hardlink groups.
+No paid resources or separate GC experiment changes. Full release remains unproven.
 
 ## Current evidence and next actions
 
