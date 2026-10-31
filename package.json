@@ -1,0 +1,36 @@
+{
+  "name": "jetski",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable, durable sandboxes on reusable compute",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.22.1"
+  },
+  "exports": {
+    "./core": "./dist/core/index.js",
+    "./sdk": "./dist/sdk.js",
+    "./storage/local": "./dist/storage/local.js",
+    "./state/sqlite": "./dist/state/sqlite.js"
+  },
+  "files": [
+    "dist",
+    "host",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "lint": "biome check .",
+    "format": "biome check --write ."
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "tsx": "^4.20.6",
+    "@types/node": "^24.10.0",
+    "@biomejs/biome": "^2.3.2"
+  }
+}
