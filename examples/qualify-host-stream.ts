@@ -380,10 +380,12 @@ export async function qualifyHostStream(
     await assert.rejects(
       transport.open(host.id, { ...payload, streamId: missingId, port: 18080 }),
     );
-    for (const half of [false, true]) {
-      const forwardingServer = await startServer(false, half);
-      await qualifyForward(scope, ports, coordinator, half);
-      await stopServer(forwardingServer);
+    for (const local of [false, true]) {
+      for (const half of [false, true]) {
+        const forwardingServer = await startServer(false, half);
+        await qualifyForward(scope, ports, coordinator, half, local);
+        await stopServer(forwardingServer);
+      }
     }
     const revokedServer = await startServer(false),
       revokedId = randomUUID();

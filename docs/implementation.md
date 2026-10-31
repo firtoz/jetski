@@ -93,7 +93,32 @@ workload-specific products.
 
 ## Latest continuation status
 
-Current published source ee4726d; CI41245684204 completed with four passing
+CLI forwarding continuation: previous turn was verified progress (16a05ee and
+five green CI jobs). Added optional jetski/client/forward Node module and
+jetski forward SANDBOX EXPOSURE --config PATH. Exact operator-supplied host-key
+pinning precedes loopback listener creation, max8connections, bounded admission/
+lifetime, fresh stream IDs before dispatch, no byte replay/reconnect. Independent
+socket pipes preserve half-close and backpressure; orderly SSH close does not
+discard local buffered output. Transport loss stops listener; signals close owned
+connections. SDK/core imports do not load client SSH dependencies.
+Local93TS/70Python/build/typecheck/lint pass; test/ssh-gateway.test.ts now includes
+1MiB exact forwarding, remote-first half-close, wrong pin, recorder failure with
+zero admission, listener closure and transport loss. Log:
+/tmp/jetski-cli-forward-final.log. An initial example ID inferred a UUID template
+rather than string; corrected and final typecheck passes. Hosted fixture adds both
+half-close orders through this Node helper, pending publication/CI. Actual CLI
+subprocess signal/config qualification, capability discovery, HTTP/WS previews,
+full gateway lifecycle and remaining provider/client/benchmark gates remain open.
+No paid hosts, operator runtime changes or protected experiment changes.
+
+Current verified source16a05ee3e73603f081027332164a2d22b6fe2d18 is published;
+CI41246112185 passed all five jobs. Watcher31688 exited0;
+/tmp/jetski-gateway-duplex-ci.log and /tmp/jetski-gateway-duplex-hosted-ssh.log.
+Hosted SSH job124669793560 now passes both forwarding half-close orders through
+gateway/core/real host/rootless container, with final durable closed receipt.
+Owned fixture cleanup completed. API job124669793549 also passed. This does not
+qualify live Boat, physical replacement or full gateway lifecycle/preview gates.
+Previous source ee4726d; CI41245684204 completed with four passing
 jobs and failed SSH job124668504629. Remote-first half-close delivered response
 bytes but settled uncertain. Preserve /tmp/jetski-gateway-drain-failed.log.
 A delayed upstream-send regression reproduces premature channel destruction:
@@ -106,7 +131,7 @@ typecheck and lint pass. Prior failed local delayed-input reproduction:
 /tmp/jetski-gateway-slow-input-default.log; fixed full suite:
 /tmp/jetski-gateway-duplex-full.log. A first pinned-Node focus invocation failed
 key parsing before gateway execution; the subsequent pinned focus/full runs pass.
-Next publish and observe exact follow-upCI, then CLI forwarding, capability
+Next implement CLI forwarding, capability
 discovery and real gateway lifecycle/preview/provider gates. No paid resources,
 desktop native workloads or protected experiment changes.
 

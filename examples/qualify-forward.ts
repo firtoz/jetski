@@ -2,7 +2,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { connect } from "node:net";
 import ssh2, { type ClientChannel } from "ssh2";
+import { forwardTcp } from "../src/client/forward.js";
 import type { Scope } from "../src/core/contracts.js";
 import type { PortRegistry } from "../src/core/ports.js";
 import type { StreamCoordinator } from "../src/core/streams.js";
@@ -13,6 +15,7 @@ export async function qualifyForward(
   ports: PortRegistry,
   streams: StreamCoordinator,
   half: boolean,
+  local: boolean,
 ) {
   if (process.env.GITHUB_ACTIONS !== "true")
     throw Error("disposable_ci_required");
@@ -54,6 +57,7 @@ export async function qualifyForward(
       principals: [{ owner: scope.owner, publicKey: key.public }],
     },
   );
+  let tunnel: Awaited<ReturnType<typeof forwardTcp>> | undefined;
   const client = new ssh2.Client();
   client.on("error", () => {});
   try {
@@ -71,7 +75,7 @@ export async function qualifyForward(
       hostVerifier: (bytes: Buffer) => bytes.equals(parsed.getPublicSSH()),
     });
     await ready;
-    const id = randomUUID();
+    let id: string = randomUUID();
     const open = () =>
       new Promise<ClientChannel>((resolve, reject) =>
         client.forwardOut(
@@ -82,7 +86,23 @@ export async function qualifyForward(
           (error, channel) => (error ? reject(error) : resolve(channel)),
         ),
       );
-    const channel = await open();
+    if (local) {
+      tunnel = await forwardTcp({
+        host: "127.0.0.1",
+        port: address.port,
+        privateKey: key.private,
+        hostPublicKey: host.public,
+        sandbox: scope.sandbox,
+        exposure: "fixture-port",
+        remotePort: 18080,
+        onStream: (assigned) => {
+          id = assigned;
+        },
+      });
+    }
+    const channel = tunnel
+      ? connect({ host: tunnel.host, port: tunnel.port, allowHalfOpen: true })
+      : await open();
     channel.on("error", () => {});
     const chunks: Buffer[] = [];
     channel.on("data", (bytes: Buffer) => chunks.push(Buffer.from(bytes)));
@@ -100,13 +120,15 @@ export async function qualifyForward(
       assert.equal(
         status.phase,
         "open",
-        `Unexpected forwarding outcome (half=${half})`,
+        `Unexpected forwarding outcome (half=${half}, local=${local})`,
       );
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     assert.equal((await streams.status(scope, id)).phase, "closed");
     await assert.rejects(open());
   } finally {
+    tunnel?.close();
+    if (tunnel) await tunnel.done;
     client.destroy();
     await gateway.close();
   }

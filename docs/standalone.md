@@ -311,7 +311,34 @@ ssh -p 2222 -W EXPOSURE_ID.STREAM_UUID.jetski:8080 SANDBOX_ID@localhost
 Supply a fresh canonical UUID for each intentional new connection. Reusing it is
 rejected even after disconnection; neither the gateway nor host automatically
 reconnects or replays bytes. Use the operation/stream receipt to investigate
-uncertain completion. The CLI forwarding convenience command remains unfinished.
+uncertain completion. A channel closing is not proof that its durable operation
+succeeded. The CLI prints each stream ID to stderr before SSH admission.
+
+For a loopback listener, use `jetski forward SANDBOX_ID EXPOSURE_ID --config PATH`:
+
+```json
+{
+  "host": "gateway.example.com",
+  "port": 2222,
+  "privateKeyPath": "/private/client-key",
+  "hostPublicKeyPath": "/private/pinned-gateway-key.pub",
+  "remotePort": 8080,
+  "localPort": 8080
+}
+```
+
+Obtain the gateway public key from its operator over a trusted channel. The client
+requires that exact key; it does not learn keys on first contact or use an SSH
+agent. Authentication completes before binding127.0.0.1. Omit localPort for an
+OS-assigned port; the listener address is printed to stderr. At most eight local
+connections run at once. Each intentional local connection gets a new UUID;
+transport failure stops the listener and rejects its completion promise, without
+reconnecting or replaying data. SIGINT/SIGTERM closes the listener and active
+channels. Socket pipes provide backpressure and preserve both half-closes.
+The optional Node API is `jetski/client/forward`; SDK/core imports do not load it.
+Its onStream callback runs before dispatch and may record the stream identity;
+throwing prevents that connection from opening. Network closure still requires
+operation inspection if the application needs verified delivery/cleanup.
 
 The gateway caps forwarding at64channels total and8per authenticated connection.
 It does not mix terminal sessions and forwarding channels on one SSH connection.

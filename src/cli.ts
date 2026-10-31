@@ -133,6 +133,44 @@ if (command === "serve") {
   };
   process.on("SIGINT", () => void stop());
   process.on("SIGTERM", () => void stop());
+} else if (command === "forward") {
+  const { forwardTcp } = await import("./client/forward.js");
+  const config = JSON.parse(
+    await readFile(required(values.config, "--config"), "utf8"),
+  ) as {
+    host: string;
+    port: number;
+    privateKeyPath: string;
+    hostPublicKeyPath: string;
+    localPort?: number;
+    remotePort: number;
+  };
+  const tunnel = await forwardTcp({
+    host: config.host,
+    port: config.port,
+    privateKey: await readFile(config.privateKeyPath),
+    hostPublicKey: await readFile(config.hostPublicKeyPath, "utf8"),
+    sandbox: required(positionals[1], "sandbox ID"),
+    exposure: required(positionals[2], "exposure ID"),
+    remotePort: config.remotePort,
+    ...(config.localPort === undefined ? {} : { localPort: config.localPort }),
+    onStream: (id) => {
+      process.stderr.write(JSON.stringify({ streamId: id }) + "\n");
+    },
+  });
+  process.stderr.write(
+    JSON.stringify({ host: tunnel.host, port: tunnel.port }) + "\n",
+  );
+  const close = () => tunnel.close();
+  process.once("SIGINT", close);
+  process.once("SIGTERM", close);
+  try {
+    await tunnel.done;
+  } finally {
+    process.removeListener("SIGINT", close);
+    process.removeListener("SIGTERM", close);
+    tunnel.close();
+  }
 } else {
   const client = new JetskiClient(
     values.url ?? process.env.JETSKI_URL ?? "http://127.0.0.1:8788",

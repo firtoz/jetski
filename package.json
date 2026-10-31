@@ -24,7 +24,8 @@
     "./providers/boat-bootstrap": "./dist/providers/boat-bootstrap.js",
     "./server/hosts": "./dist/server/hosts.js",
     "./client/terminal": "./dist/client/terminal.js",
-    "./server/ssh": "./dist/server/ssh.js"
+    "./server/ssh": "./dist/server/ssh.js",
+    "./client/forward": "./dist/client/forward.js"
   },
   "files": [
     "dist",

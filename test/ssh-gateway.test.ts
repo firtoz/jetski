@@ -12,6 +12,7 @@ import ssh2, {
 
 const { Client, utils } = ssh2;
 
+import { forwardTcp } from "../src/client/forward.js";
 import type { Json, Scope } from "../src/core/contracts.js";
 import { createSshGateway, type SshGatewayBackend } from "../src/server/ssh.js";
 
@@ -421,4 +422,78 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
   const cancelled = once(idle, "close");
   aborters.get(idleId)!();
   await cancelled;
+  const tunnelIds: string[] = [];
+  const config = {
+    host: "127.0.0.1",
+    port: address.port,
+    privateKey: alice.private,
+    hostPublicKey: host.public,
+    sandbox: "box",
+    exposure: "echo",
+    remotePort: 8080,
+    onStream: (id: string) => {
+      tunnelIds.push(id);
+    },
+  };
+  await assert.rejects(
+    forwardTcp({ ...config, hostPublicKey: stranger.public }),
+  );
+  const localBytes = Buffer.concat(Array.from({ length: 16 }, () => bytes));
+  for (const exposure of ["echo", "half"]) {
+    const tunnel = await forwardTcp({ ...config, exposure });
+    t.after(() => tunnel.close());
+    assert.equal(tunnel.host, "127.0.0.1");
+    const local = connectSocket({
+      host: tunnel.host,
+      port: tunnel.port,
+      allowHalfOpen: true,
+    });
+    local.on("error", () => {});
+    t.after(() => local.destroy());
+    const received: Buffer[] = [];
+    local.on("data", (bytes: Buffer) => received.push(Buffer.from(bytes)));
+    const localClosed = once(local, "close");
+    if (exposure === "half") await once(local, "end");
+    local.end(localBytes);
+    await localClosed;
+    const streamId = tunnelIds.at(-1)!;
+    await outcomes.get(streamId);
+    assert.deepEqual(
+      Buffer.concat(received),
+      exposure === "echo" ? localBytes : Buffer.from("read-finished"),
+    );
+    tunnel.close();
+    await tunnel.done;
+    await assert.rejects(
+      new Promise<void>((resolve, reject) => {
+        const probe = connectSocket({ host: tunnel.host, port: tunnel.port });
+        probe.once("error", reject);
+        probe.once("connect", () => {
+          probe.destroy();
+          resolve();
+        });
+      }),
+    );
+  }
+  const priorAdmissions = identities.size;
+  const unrecorded = await forwardTcp({
+    ...config,
+    onStream: () => {
+      throw Error("journal unavailable");
+    },
+  });
+  const refused = connectSocket({
+    host: unrecorded.host,
+    port: unrecorded.port,
+  });
+  refused.on("error", () => {});
+  await once(refused, "close");
+  assert.equal(identities.size, priorAdmissions);
+  unrecorded.close();
+  await unrecorded.done;
+  const lost = await forwardTcp(config);
+  t.after(() => lost.close());
+  const loss = assert.rejects(lost.done, /transport lost/);
+  gateway.closeConnections();
+  await loss;
 });
