@@ -93,6 +93,16 @@ workload-specific products.
 
 ## Latest continuation status
 
+Candidate dd9ab54697337228085ca21af3bb1fde42163aef, CI41226366001: test,
+rootless-runtime and Boat bootstrap fixture passed; installed SSH command failed
+with uncertain instead of succeeded (job124611239257, private log
+/tmp/jetski-cancel-ssh-ci.log). API job pending at observation. Preserve this failure;
+do not claim integrated cancellation qualified. Added bounded stage/type diagnostics
+(no raw exception or nonce), and SQLite restart/lost-cancel-ACK test passes. Next
+run determines failing worker phase before repair. Watcher70131 observes original
+run; do not restart it or count replacement as original success.
+
+
 Command integration candidate: bootstrap now compiles/installs the supervisor on
 owned/disposable hosts and enables the private rootless socket. Command workers
 persist exec/start intent, stream bounded output and require authenticated cleanup

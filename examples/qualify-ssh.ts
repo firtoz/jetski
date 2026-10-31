@@ -162,7 +162,8 @@ try {
     "printf 1 >> /workspace/counter; printf 'hello\\000world' > /workspace/payload; chmod 640 /workspace/payload; ln /workspace/payload /workspace/hard; ln -s /workspace/payload /home/sandbox/link; cat /workspace/payload",
   ];
   await request("command-start", { ...payload, commandId, argv });
-  assert.equal((await waitCommand(commandId)).phase, "succeeded");
+  const firstCommand = await waitCommand(commandId);
+  assert.equal(firstCommand.phase, "succeeded", JSON.stringify(firstCommand));
   // An acknowledged upload replay observes history, never overwrites newer workload bytes.
   assert.deepEqual(
     await request("file-write-finish", { ...payload, uploadId }),

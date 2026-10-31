@@ -201,7 +201,7 @@ try {
           observed.phase,
         )
       )
-        assert.equal(observed.phase, phase);
+        assert.equal(observed.phase, phase, JSON.stringify(observed));
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     assert.equal((await status(command)).phase, phase);

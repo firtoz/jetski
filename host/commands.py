@@ -197,14 +197,17 @@ def worker(command):
     authenticated = False
     failure = []
     stop_reason = []
+    failure_stage, failure_type = "prepare", None
     try:
         root.mkdir(parents=True, mode=0o700, exist_ok=False)
         nonce = secrets.token_bytes(32)
         # Nonce remains in this host worker's memory; never in public receipts.
         decoder = CompletionDecoder(nonce)
+        failure_stage = "exec-create"
         session = api.create(
             runtime.container(lease), ["/jetski-supervisor", *spec["argv"]], spec["cwd"], stdin=True
         )
+        failure_stage = "start-intent"
         with fence.locked():
             state = fence.read()
             fence.match(state, lease)
@@ -246,6 +249,7 @@ def worker(command):
         ):
             outputs = {"stdout": out, "stderr": err}
             sizes = {"stdout": 0, "stderr": 0}
+            failure_stage = "attach-stream"
             for channel, data in api.output(
                 session, timeout=spec["timeout"] + 30, initial_input=nonce, on_started=started.set
             ):
@@ -256,6 +260,7 @@ def worker(command):
                 sizes[channel] += len(data[:allowed])
                 if len(data) > allowed and not stop_reason:
                     stop_reason.append("output_limit")
+            failure_stage = "completion-proof"
             proof = decoder.finish()
             authenticated = True
             exit_code = proof["exitCode"]
@@ -268,10 +273,12 @@ def worker(command):
                 phase = "succeeded"
             else:
                 phase = "failed"
+            failure_stage = "output-sync"
             for output in outputs.values():
                 output.flush()
                 os.fsync(output.fileno())
-    except BaseException:
+    except BaseException as error:
+        failure_type = type(error).__name__
         phase, reason = "uncertain", "worker_failure"
         # An absent exec session/EOF is not proof of command-tree cleanup.
         try:
@@ -293,6 +300,8 @@ def worker(command):
                 "phase": phase,
                 "exitCode": exit_code,
                 "reason": reason,
+                "failureStage": failure_stage if failure_type else None,
+                "failureType": failure_type,
             }
             if phase == "uncertain":
                 state["phase"] = "quarantined"

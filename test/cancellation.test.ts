@@ -91,3 +91,92 @@ for (const dispatched of [false, true])
       (await pool.inspect("alice")).every((slot) => slot.phase === "retired"),
     );
   });
+
+test("command cancellation survives controller restart before dispatch and after lost ACK", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "jetski-command-cancel-"));
+  const path = join(directory, "state.sqlite");
+  let state = new SqliteState(path);
+  t.after(async () => {
+    state.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const objects = new LocalCheckpointStore(join(directory, "objects"));
+  const provider: HostProvider = {
+    capabilities: () => ({
+      kind: "machine-host",
+      architecture: "x86_64",
+      rootlessPodman: true,
+    }),
+    allocate: async (input) => ({
+      id: "host",
+      allocationId: input.operationId,
+    }),
+    inspect: async () => ({ state: "ready" }),
+    retire: async () => {},
+  };
+  let statusFails = false,
+    loseAck = false,
+    cancellations = 0,
+    starts = 0;
+  let phase = "running";
+  const transport = {
+    request: async (_host: string, request: { id: string; action: string }) => {
+      if (request.action === "command-start") starts++;
+      if (request.action === "command-status" && statusFails)
+        throw Error("status unreachable");
+      if (request.action === "command-cancel") {
+        cancellations++;
+        phase = "cancelled";
+        if (loseAck) {
+          loseAck = false;
+          throw Error("cancel ACK lost");
+        }
+      }
+      return { version: 1 as const, id: request.id, result: { phase } };
+    },
+  };
+  const options = { poolId: "pool", approvedImages: [image] };
+  let manager = new SandboxManager(
+    state,
+    provider,
+    transport,
+    objects,
+    options,
+  );
+  const scope = { owner: "alice", sandbox: randomUUID() },
+    command = randomUUID();
+  await manager.create(scope.owner, scope.sandbox, image, randomUUID());
+  await manager.reconcile(scope.owner);
+  await manager.startCommand(scope, command, ["sleep", "120"]);
+  await assert.rejects(
+    manager.cancelCommand({ ...scope, owner: "other" }, command),
+    /unavailable/,
+  );
+  statusFails = true;
+  await assert.rejects(
+    manager.cancelCommand(scope, command),
+    /status unreachable/,
+  );
+  assert.equal(cancellations, 0);
+  state.close();
+  state = new SqliteState(path);
+  manager = new SandboxManager(state, provider, transport, objects, options);
+  statusFails = false;
+  loseAck = true;
+  await assert.rejects(manager.reconcile(scope.owner), /cancel ACK lost/);
+  assert.equal(cancellations, 1);
+  state.close();
+  state = new SqliteState(path);
+  manager = new SandboxManager(state, provider, transport, objects, options);
+  await manager.reconcile(scope.owner);
+  statusFails = true;
+  assert.deepEqual(await manager.cancelCommand(scope, command), {
+    phase: "cancelled",
+  });
+  assert.equal(
+    cancellations,
+    1,
+    "observed terminal outcome does not repeat cancellation",
+  );
+  assert.equal(starts, 1, "recovery must never restart the command");
+});
