@@ -75,7 +75,7 @@ jobs:
       - name: Prepare disposable SSH host
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session openssh-server
+          sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session openssh-server libssl-dev
           podman pull docker.io/library/alpine:3.22
           image=$(podman image inspect docker.io/library/alpine:3.22 --format '{{index .RepoDigests 0}}')
           echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
@@ -120,6 +120,12 @@ jobs:
         run: |
           cc -static -O2 -Wall -Wextra -Werror host/fixtures/http-server.c -o "$RUNNER_TEMP/jetski-http-fixture"
           echo "JETSKI_TEST_HTTP_FIXTURE=$RUNNER_TEMP/jetski-http-fixture" >> "$GITHUB_ENV"
+          cc -static -O2 -Wall -Wextra -Werror host/fixtures/browser-server.c -lcrypto -ldl -pthread -o "$RUNNER_TEMP/jetski-browser-fixture"
+          echo "JETSKI_TEST_BROWSER_FIXTURE=$RUNNER_TEMP/jetski-browser-fixture" >> "$GITHUB_ENV"
+          echo "JETSKI_TEST_CHROME=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$RUNNER_TEMP/preview.key" -out "$RUNNER_TEMP/preview.crt" -days 1 -subj /CN=preview.example -addext subjectAltName=DNS:preview.example 2>/dev/null
+          echo "JETSKI_TEST_TLS_KEY=$RUNNER_TEMP/preview.key" >> "$GITHUB_ENV"
+          echo "JETSKI_TEST_TLS_CERT=$RUNNER_TEMP/preview.crt" >> "$GITHUB_ENV"
       - name: Qualify encrypted control and standalone API
         run: npx tsx examples/qualify-${{ matrix.suite }}.ts
       - name: Diagnose owned runtime service failure

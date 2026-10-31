@@ -93,13 +93,37 @@ workload-specific products.
 
 ## Latest continuation status
 
+Combined browser/container continuation: prior cf8e0a8 turn was verified progress,
+all five CI jobs passed. Added a disposable C multi-request HTTP/WS workload using
+OpenSSL solely in the statically linked CI fixture. Browser requests must arrive
+without Authorization, Cookie or Origin; it serves a page, external asset, exact
+binary payload and dynamic-key WS echo. Added a CI-only TLS terminator with a
+fresh one-day certificate, Chrome SPKI-pinned exception limited to that fixture
+key and DNS mapping only for preview.example. This verifies HTTPS transport, not
+public CA issuance. The full path uses actual host-control/container streams,
+checks browser page/asset/binary HTTP/WSS, requires durable closed receipts, then
+revokes and proves no new host admission. Fresh Chrome profile, TLS sockets,
+preview and fixture command are owned and cleaned. No desktop workloads or paid
+resources. Local build/typecheck/lint and C syntax-only pass; hosted execution
+pending. Old browser run41250945239 still live in Boat preparation; watcher2136
+remains the existing observer, do not duplicate it.
+
+
 Container session continuation: prior turn made real-browser progress and left a
 verified CI wait. Run41250945239 still live on Boat fixture host setup; preserve
 watcher2136 and re-poll, do not duplicate that run. Added session-cookie HTTP/WS
 qualification through the actual encrypted host-control/runtime path, alongside
 existing bearer modes. It redeems scoped grants over HTTP, verifies exact workload
-payloads and durable closed receipts, then revokes and requires401 before another
-host admission. Local build/typecheck/lint pass; hosted execution still pending.
+payloads and durable closed receipts, then revokes and requires401 on another request. Local104TS/build/typecheck/lint pass; /tmp/jetski-container-session-local.log.
+Published cf8e0a89681cbb4a62fc4e3cb15ffa0d2ddaf736; exact-SHA CI41251539697
+passed all five jobs; watcher79032 exited0; log /tmp/jetski-container-session-ci.log.
+SSH job124685904487 verified both cookie-authenticated HTTP and binary WS
+container traffic, durable closed receipts, and revoked request denial. Evidence
+/tmp/jetski-container-session-ssh.log. Owned fixture cleanup passed.
+Older run41250945239 remains live in Boat preparation (watcher2136); retain and
+observe its eventual outcome. Do not duplicate it. Current main is fully CI green.
+This turn is verified progress. Next extend the browser test through TLS and the
+actual container path; current session-container and browser evidence is separate.
 This connects session authority to actual container transport, but is not a
 single browser-to-container test or public HTTPS qualification. Those remain next.
 No paid resources, desktop runtime or protected experiment changes.

@@ -6,7 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
-export async function fixtureBrowser() {
+export async function fixtureBrowser(tls?: { spki: string; hostname: string }) {
+  if (
+    tls &&
+    (!/^[A-Za-z0-9+/]{43}=$/.test(tls.spki) ||
+      tls.hostname !== "preview.example")
+  )
+    throw Error("Invalid fixture TLS boundary");
   if (process.env.GITHUB_ACTIONS !== "true" || !process.env.JETSKI_TEST_CHROME)
     throw Error("disposable_ci_browser_required");
   const directory = await mkdtemp(join(tmpdir(), "jetski-browser-"));
@@ -18,6 +24,13 @@ export async function fixtureBrowser() {
       "--no-default-browser-check",
       "--disable-background-networking",
       "--remote-debugging-pipe",
+      ...(tls
+        ? [
+            `--ignore-certificate-errors-spki-list=${tls.spki}`,
+            `--host-resolver-rules=MAP ${tls.hostname} 127.0.0.1`,
+            "--no-proxy-server",
+          ]
+        : []),
       `--user-data-dir=${directory}`,
       "about:blank",
     ],

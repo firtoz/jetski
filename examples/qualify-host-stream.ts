@@ -23,6 +23,7 @@ import {
   SshTransport,
   sshArguments,
 } from "../src/transport/ssh.js";
+import { qualifyBrowserContainer } from "./qualify-browser-container.js";
 import { qualifyForward } from "./qualify-forward.js";
 import { qualifyPreview } from "./qualify-preview.js";
 
@@ -35,27 +36,30 @@ export async function qualifyHostStream(
     throw Error("disposable_ci_required");
   const path = process.env.JETSKI_TEST_HTTP_FIXTURE;
   assert.ok(path);
-  const bytes = await readFile(path),
-    uploadId = randomUUID();
-  await request("file-write-begin", {
-    ...payload,
-    uploadId,
-    path: "/workspace/relay-http-fixture",
-    bytes: bytes.length,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
-    mode: 0o755,
-  });
-  for (let offset = 0; offset < bytes.length; offset += 262144) {
-    const part = bytes.subarray(offset, offset + 262144);
-    await request("file-write-chunk", {
+  async function uploadFixture(source: string, destination: string) {
+    const bytes = await readFile(source),
+      uploadId = randomUUID();
+    await request("file-write-begin", {
       ...payload,
       uploadId,
-      offset,
-      base64: part.toString("base64"),
-      sha256: createHash("sha256").update(part).digest("hex"),
+      path: destination,
+      bytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      mode: 0o755,
     });
+    for (let offset = 0; offset < bytes.length; offset += 262144) {
+      const part = bytes.subarray(offset, offset + 262144);
+      await request("file-write-chunk", {
+        ...payload,
+        uploadId,
+        offset,
+        base64: part.toString("base64"),
+        sha256: createHash("sha256").update(part).digest("hex"),
+      });
+    }
+    await request("file-write-finish", { ...payload, uploadId });
   }
-  await request("file-write-finish", { ...payload, uploadId });
+  await uploadFixture(path, "/workspace/relay-http-fixture");
   async function wait(id: string) {
     for (let i = 0; i < 100; i++) {
       const status = (await request("command-status", {
@@ -73,16 +77,19 @@ export async function qualifyHostStream(
   async function startServer(
     move: boolean,
     half = false,
-    preview?: "http" | "ws",
+    preview?: "http" | "ws" | "browser",
   ) {
     const commandId = randomUUID();
     let flag = half ? " --half" : "";
-    if (preview) flag = ` --preview-${preview}`;
+    if (preview && preview !== "browser") flag = ` --preview-${preview}`;
     const script =
       (move
         ? "mv /workspace/relay-http-fixture /tmp/relay-http-fixture; "
         : "") +
-      "rm -f /tmp/jetski-http-ready /tmp/jetski-http-complete; exec /tmp/relay-http-fixture" +
+      "rm -f /tmp/jetski-http-ready /tmp/jetski-http-complete; exec " +
+      (preview === "browser"
+        ? "/workspace/relay-browser-fixture"
+        : "/tmp/relay-http-fixture") +
       flag;
     await request("command-start", {
       ...payload,
@@ -409,6 +416,12 @@ export async function qualifyHostStream(
         await stopServer(previewServer);
       }
     }
+    const browserPath = process.env.JETSKI_TEST_BROWSER_FIXTURE;
+    assert.ok(browserPath);
+    await uploadFixture(browserPath, "/workspace/relay-browser-fixture");
+    const browserServer = await startServer(false, false, "browser");
+    await qualifyBrowserContainer(scope, ports, coordinator, previewSessions);
+    await stopServer(browserServer);
     const revokedServer = await startServer(false),
       revokedId = randomUUID();
     const revoked = await coordinator.open(scope, "fixture-port", revokedId);
