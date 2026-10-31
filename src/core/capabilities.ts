@@ -13,6 +13,7 @@ export type ApiCapabilities = {
   retentionPins: boolean;
   pty: boolean;
   previews: boolean;
+  previewSessions: boolean;
   host: HostCapabilities;
   hostStreams: boolean;
   streamInspection: boolean;

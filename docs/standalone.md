@@ -397,8 +397,8 @@ to authorized workload port exposures through the core stream coordinator. It do
 not resolve or connect to arbitrary destinations. Each route has its own origin,
 owner, sandbox and exposure. Shared origins across routes and reuse of a declared
 control origin are rejected. Reusing a stale exposure never authorizes a replacement
-assignment. Static operator mappings are supported now; dynamic preview URL/session
-provisioning and ordinary browser navigation are remaining release work.
+assignment. Static operator mappings support scoped session grants. Automated origin
+provisioning and real-browser qualification remain release work.
 
 `serve` accepts an optional preview configuration:
 
@@ -429,8 +429,8 @@ and owner-checked. A supplied browser Origin must match the preview origin.
 Authorization, Cookie, forwarding metadata and hop-by-hop credentials are stripped
 before workload delivery. Workload Set-Cookie is stripped too. Responses receive a
 sandbox CSP with workers and framing disabled, no-store, no-referrer and nosniff.
-Application cookies, service workers, iframe embedding and browser login/session
-provisioning are intentionally not claimed as working by this transport increment.
+Application cookies, service workers and iframe embedding remain unsupported.
+Browser sessions are experimental and still require real-browser qualification.
 Embedded deployments can provide their own identity adapter, but must qualify the
 browser/session boundary before enabling it for users.
 
@@ -449,3 +449,29 @@ authorization/origin denial, credential stripping and stalled-auth shutdown.
 Hosted transport qualification is recorded in implementation.md; a fixture socket
 test alone does not establish browser usability, live provider recovery or release
 acceptance.
+
+### Scoped preview sessions (experimental)
+
+With a configured route, `preview-open SANDBOX EXPOSURE --origin ORIGIN --id ID`
+(or SDK `createPreviewGrant`) returns a bootstrap URL. Treat this URL as a secret.
+Its fragment carries a 60-second bootstrap credential; the bootstrap page removes
+the fragment before exchange. Redemption sets a host-only Secure, HttpOnly,
+SameSite=Strict cookie. No control-plane token is embedded in workload HTML.
+Sessions expire 15 minutes after grant creation and cannot be renewed by replay.
+The cookie authenticates HTTP and WebSocket admissions; active connections also
+check revocation every second and close at expiry. Generation and exposure checks
+remain authoritative. `preview-status SANDBOX GRANT` returns redacted status;
+`preview-revoke SANDBOX GRANT --operation ID` durably revokes the session.
+
+Minting and revocation use stable operation identities. Redemption is one-use,
+with a stable redemption identity allowing lost-acknowledgement retries during the
+original bootstrap deadline. A competing redemption identity is rejected. Private
+transactional state retains the credentials for deterministic replay: restrict
+access to the database and its backups. Public operation receipts and status never
+include them. The initial limit is 4096 retained grants per sandbox; history is not
+automatically deleted. Browser or workload cookies are never forwarded upstream.
+
+Local protocol tests cover restart, concurrency, lost acknowledgements, fixed
+expiry, malformed metadata, cross-owner/origin denial and active WebSocket
+revocation. These do not yet prove browser navigation, cookie acceptance or CSP
+execution. Do not enable browser sessions for users until that qualification passes.

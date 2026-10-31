@@ -356,7 +356,18 @@ test("stream API hides host internals, denies foreign access and preserves cance
   ]);
   const servers: ReturnType<typeof createHttpServer>[] = [];
   const listen = async (backend: SandboxManager, sshGateway: boolean) => {
-    const server = createHttpServer(backend, auth, { sshGateway });
+    const server = createHttpServer(backend, auth, {
+      sshGateway,
+      previews: true,
+      previewRoutes: [
+        {
+          owner: "alice",
+          sandbox: sandboxId,
+          exposure: "http",
+          origin: "https://preview.example",
+        },
+      ],
+    });
     servers.push(server);
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
@@ -398,6 +409,60 @@ test("stream API hides host internals, denies foreign access and preserves cance
   const base = await listen(manager, true);
   const client = new JetskiClient(base, "a".repeat(32)),
     foreign = new JetskiClient(base, "b".repeat(32));
+  await manager.ports.expose(scope, "http", 8080);
+  const grantId = randomUUID();
+  const grant = await client.createPreviewGrant(
+    sandboxId,
+    "http",
+    "https://preview.example",
+    grantId,
+  );
+  assert.deepEqual(
+    await client.createPreviewGrant(
+      sandboxId,
+      "http",
+      "https://preview.example",
+      grantId,
+    ),
+    grant,
+  );
+  assert.equal(
+    grant.url,
+    `https://preview.example/.jetski/bootstrap#${grant.token}`,
+  );
+  assert.equal(
+    (await client.previewGrantStatus(sandboxId, grantId)).redeemed,
+    false,
+  );
+  await assert.rejects(
+    foreign.createPreviewGrant(
+      sandboxId,
+      "http",
+      "https://preview.example",
+      randomUUID(),
+    ),
+  );
+  await assert.rejects(foreign.previewGrantStatus(sandboxId, grantId));
+  await assert.rejects(
+    foreign.revokePreviewGrant(sandboxId, grantId, randomUUID()),
+  );
+  await assert.rejects(
+    client.createPreviewGrant(
+      sandboxId,
+      "http",
+      "https://other.example",
+      randomUUID(),
+    ),
+  );
+  const revokeId = randomUUID();
+  assert.deepEqual(
+    await client.revokePreviewGrant(sandboxId, grantId, revokeId),
+    await client.revokePreviewGrant(sandboxId, grantId, revokeId),
+  );
+  assert.equal(
+    (await client.previewGrantStatus(sandboxId, grantId)).revoked,
+    true,
+  );
   const expected = {
     streamId: id,
     exposureId: "exposure",

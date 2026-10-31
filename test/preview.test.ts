@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import { connect } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { OperationJournal } from "../src/core/operations.js";
+import { PortRegistry } from "../src/core/ports.js";
+import { PreviewSessions } from "../src/core/preview-sessions.js";
 import { bearerAuthentication } from "../src/server/http.js";
 import {
   createPreviewServer,
   type PreviewBackend,
 } from "../src/server/preview.js";
+import { SqliteState } from "../src/state/sqlite.js";
 
 async function previewFetch(
   url: string,
@@ -30,10 +37,13 @@ async function previewFetch(
             else if (value !== undefined) headers.set(name, value);
           }
           resolve(
-            new Response(Buffer.concat(chunks), {
-              status: res.statusCode ?? 500,
-              headers,
-            }),
+            new Response(
+              res.statusCode === 204 ? null : Buffer.concat(chunks),
+              {
+                status: res.statusCode ?? 500,
+                headers,
+              },
+            ),
           );
         });
       },
@@ -90,6 +100,7 @@ test("HTTP and WebSocket previews isolate origins, strip credentials and preserv
       socket.end(Buffer.concat([Buffer.from([0x82, size]), data]));
     });
     socket.on("error", () => {});
+    socket.on("end", () => socket.end());
   });
   await new Promise<void>((resolve) =>
     workload.listen(0, "127.0.0.1", resolve),
@@ -206,7 +217,29 @@ test("HTTP and WebSocket previews isolate origins, strip credentials and preserv
       }),
     /isolated/,
   );
+  const directory = await mkdtemp(join(tmpdir(), "jetski-preview-auth-"));
+  const state = new SqliteState(join(directory, "state.sqlite"));
+  const operations = new OperationJournal(state);
+  const scope = { owner: "alice", sandbox: "box" };
+  await operations.generation(scope);
+  const sessionPorts = new PortRegistry(state, operations, () => ({
+    generation: 1,
+    running: true,
+    image: "fixture",
+    lease: {
+      owner: "alice",
+      sandboxId: "box",
+      machineId: "host",
+      poolId: "pool",
+      slotId: "slot",
+      assignmentId: "assignment",
+      generation: 1,
+    },
+  }));
+  await sessionPorts.expose(scope, "http", address.port);
+  const sessions = new PreviewSessions(state, operations, sessionPorts);
   const preview = createPreviewServer(backend, auth, {
+    sessions,
     routes: [route],
     controlOrigins: ["http://localhost:8788"],
   });
@@ -217,6 +250,8 @@ test("HTTP and WebSocket previews isolate origins, strip credentials and preserv
   assert.ok(listener && typeof listener !== "string");
   t.after(async () => {
     await preview.close();
+    state.close();
+    await rm(directory, { recursive: true, force: true });
     for (const connection of connections) connection.destroy();
     workload.closeAllConnections();
     await new Promise<void>((resolve) => workload.close(() => resolve()));
@@ -298,9 +333,82 @@ test("HTTP and WebSocket previews isolate origins, strip credentials and preserv
   );
   assert.ok(response.headers.get("x-jetski-stream-id"));
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
+  const grant = await sessions.mint(scope, "browser-grant", {
+    exposureId: "http",
+    origin: route.origin,
+  });
+  const bootstrapUrl = new URL("/.jetski/bootstrap", url).href;
+  const bootstrap = await previewFetch(bootstrapUrl, {
+    headers: { host: headers.host },
+  });
+  assert.equal(bootstrap.status, 200);
+  assert.match(
+    bootstrap.headers.get("content-security-policy")!,
+    /script-src 'sha256-/,
+  );
+  assert.equal((await bootstrap.text()).includes(grant.token), false);
+  const redeemUrl = new URL("/.jetski/redeem", url).href;
+  const redeemHeaders = {
+    host: headers.host,
+    origin: route.origin,
+    "content-type": "application/json",
+  };
+  const redeemBody = Buffer.from(
+    JSON.stringify({ token: grant.token, redemption: "browser-redemption" }),
+  );
+  assert.equal(
+    (
+      await previewFetch(redeemUrl, {
+        method: "POST",
+        headers: { ...redeemHeaders, origin: "https://foreign.example" },
+        body: redeemBody,
+      })
+    ).status,
+    403,
+  );
+  const redeemed = await previewFetch(redeemUrl, {
+    method: "POST",
+    headers: redeemHeaders,
+    body: redeemBody,
+  });
+  assert.equal(redeemed.status, 204);
+  const setCookie = redeemed.headers.get("set-cookie")!;
+  assert.match(
+    setCookie,
+    /; Path=\/; Secure; HttpOnly; SameSite=Strict; Max-Age=/,
+  );
+  assert.equal(setCookie.includes("Domain="), false);
+  const cookie = setCookie.split(";")[0]!;
+  const retry = await previewFetch(redeemUrl, {
+    method: "POST",
+    headers: redeemHeaders,
+    body: redeemBody,
+  });
+  assert.equal(retry.headers.get("set-cookie")!.split(";")[0], cookie);
+  assert.equal(
+    (
+      await previewFetch(redeemUrl, {
+        method: "POST",
+        headers: redeemHeaders,
+        body: Buffer.from(
+          JSON.stringify({ token: grant.token, redemption: "other" }),
+        ),
+      })
+    ).status,
+    403,
+  );
+  const sessionHeaders = { host: headers.host, origin: route.origin, cookie };
+  const authenticated = await previewFetch(url, {
+    method: "POST",
+    headers: sessionHeaders,
+    body: bytes,
+  });
+  assert.equal(authenticated.status, 200);
+  assert.deepEqual(Buffer.from(await authenticated.arrayBuffer()), bytes);
+  assert.equal(requests[1]!.headers.cookie, undefined);
   const websocket = httpRequest(url, {
     headers: {
-      ...headers,
+      ...sessionHeaders,
       connection: "Upgrade",
       upgrade: "websocket",
       "sec-websocket-version": "13",
@@ -333,6 +441,31 @@ test("HTTP and WebSocket previews isolate origins, strip credentials and preserv
   assert.equal(requests[0]!.headers.cookie, undefined);
   assert.equal(requests[0]!.headers.origin, undefined);
   assert.deepEqual(requests[0]!.bytes, bytes);
+  const idle = httpRequest(url, {
+    headers: {
+      ...sessionHeaders,
+      connection: "Upgrade",
+      upgrade: "websocket",
+      "sec-websocket-version": "13",
+      "sec-websocket-key": Buffer.alloc(16, 7).toString("base64"),
+    },
+  });
+  const idleUpgrade = once(idle, "upgrade");
+  idle.end();
+  const [, idleSocket] = await idleUpgrade;
+  idleSocket.on("error", () => {});
+  const idleClosed = once(idleSocket, "close", {
+    signal: AbortSignal.timeout(5000),
+  });
+  idleSocket.resume();
+  const deniedReceipt = assert.rejects(receipts.at(-1)!);
+  await sessions.revoke(scope, "browser-grant", "revoke-browser-grant");
+  await idleClosed;
+  await deniedReceipt;
+  assert.equal(
+    (await previewFetch(url, { headers: sessionHeaders })).status,
+    401,
+  );
   const priorOpens = opens;
   let started!: () => void;
   const authenticating = new Promise<void>((resolve) => {

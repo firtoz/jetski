@@ -11,9 +11,11 @@ import { pipeline } from "node:stream/promises";
 import { identifier } from "../core/contracts.js";
 import type { SandboxManager } from "../core/manager.js";
 import type { PortRegistry } from "../core/ports.js";
+import type { PreviewSessions } from "../core/preview-sessions.js";
 import type { StreamCoordinator } from "../core/streams.js";
 import { HostDuplex } from "../transport/duplex.js";
 import type { Authenticate } from "./http.js";
+import { previewAuthRequest, previewCookie } from "./preview-auth.js";
 
 export type PreviewRoute = {
   origin: string;
@@ -125,7 +127,11 @@ function origin(value: string): URL {
 export function createPreviewServer(
   backend: PreviewBackend,
   authenticate: Authenticate,
-  options: { routes: PreviewRoute[]; controlOrigins: string[] },
+  options: {
+    routes: PreviewRoute[];
+    controlOrigins: string[];
+    sessions?: PreviewSessions;
+  },
 ) {
   if (!backend.streams) throw Error("Preview stream transport unavailable");
   if (
@@ -156,18 +162,32 @@ export function createPreviewServer(
     tasks.add(task);
     void task.finally(() => tasks.delete(task)).catch(() => {});
   };
-  async function prepare(req: IncomingMessage, abort: AbortController) {
+  function routeFor(req: IncomingMessage) {
     const route = routes.get((req.headers.host ?? "").toLowerCase());
     if (!route) throw new PreviewError(404);
     if (!req.url?.startsWith("/") || req.url.startsWith("//"))
       throw new PreviewError(400);
     if (req.headers.origin && req.headers.origin !== route.origin)
       throw new PreviewError(403);
-    const principal = await authenticate(req.headers.authorization);
+    return route;
+  }
+  async function prepare(req: IncomingMessage, abort: AbortController) {
+    const route = routeFor(req);
+    const scope = { owner: route.owner, sandbox: route.sandbox };
+    const cookie = previewCookie(req.headers.cookie);
+    const session =
+      !req.headers.authorization && cookie && options.sessions
+        ? await options.sessions.authenticate(
+            scope,
+            { exposureId: route.exposure, origin: route.origin },
+            cookie,
+          )
+        : undefined;
+    const principal =
+      session ?? (await authenticate(req.headers.authorization));
     if (!principal) throw new PreviewError(401);
     if (principal.owner !== route.owner) throw new PreviewError(403);
     abort.signal.throwIfAborted();
-    const scope = { owner: principal.owner, sandbox: route.sandbox };
     if (!(await backend.get(scope))) throw Error("Preview unavailable");
     const permission = await backend.ports.status(scope, route.exposure);
     if (!permission.available) throw Error("Preview unavailable");
@@ -180,7 +200,7 @@ export function createPreviewServer(
     );
     const bridge = new HostDuplex(connection);
     bridge.on("error", () => {});
-    return { route, id, bridge, port: permission.port };
+    return { route, id, bridge, port: permission.port, session, cookie };
   }
   function begin() {
     if (active >= 64) throw new PreviewError(429);
@@ -189,16 +209,57 @@ export function createPreviewServer(
     aborters.add(abort);
     const deadline = setTimeout(() => abort.abort(), 30000);
     const lifetime = setTimeout(() => abort.abort(), 3600000);
+    const cleanups: Array<() => void> = [];
     return {
       abort,
+      cleanups,
       admitted: () => clearTimeout(deadline),
       finish: () => {
         clearTimeout(deadline);
         clearTimeout(lifetime);
+        for (const cleanup of cleanups) cleanup();
         aborters.delete(abort);
         active--;
       },
     };
+  }
+  function watchSession(
+    target: Awaited<ReturnType<typeof prepare>>,
+    work: ReturnType<typeof begin>,
+  ) {
+    if (!target.session || !target.cookie || !options.sessions) return;
+    const cookie = target.cookie,
+      sessions = options.sessions;
+    const expiry = setTimeout(
+      () => work.abort.abort(),
+      Math.max(0, target.session.expiresAt - Date.now()),
+    );
+    let busy = false,
+      stopped = false;
+    const check = setInterval(() => {
+      if (busy || stopped) return;
+      busy = true;
+      void sessions
+        .authenticate(
+          { owner: target.route.owner, sandbox: target.route.sandbox },
+          { exposureId: target.route.exposure, origin: target.route.origin },
+          cookie,
+        )
+        .then(
+          (valid) => {
+            if (!valid) work.abort.abort();
+          },
+          () => work.abort.abort(),
+        )
+        .finally(() => {
+          busy = false;
+        });
+    }, 1000);
+    work.cleanups.push(() => {
+      stopped = true;
+      clearTimeout(expiry);
+      clearInterval(check);
+    });
   }
   const server = createServer({ maxHeaderSize: 32768 }, (req, res) => {
     track(
@@ -210,12 +271,32 @@ export function createPreviewServer(
           res.once("close", () => {
             if (!res.writableFinished) work?.abort.abort();
           });
+          if (
+            options.sessions &&
+            new URL(req.url ?? "/", "http://localhost").pathname.startsWith(
+              "/.jetski/",
+            )
+          ) {
+            const route = routeFor(req);
+            await interruptible(
+              previewAuthRequest(
+                req,
+                res,
+                route,
+                options.sessions,
+                work.abort.signal,
+              ),
+              work.abort.signal,
+            );
+            return;
+          }
           const target = await interruptible(
             prepare(req, work.abort),
             work.abort.signal,
           );
           bridge = target.bridge;
           work.admitted();
+          watchSession(target, work);
           await new Promise<void>((resolve, reject) => {
             const upstream = httpRequest(
               {
@@ -306,6 +387,7 @@ export function createPreviewServer(
           );
           bridge = target.bridge;
           work.admitted();
+          watchSession(target, work);
           await new Promise<void>((resolve, reject) => {
             const upstream = httpRequest({
               host: "localhost",

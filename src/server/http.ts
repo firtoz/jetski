@@ -78,7 +78,11 @@ function fields(input: Record<string, unknown>, allowed: string[]) {
 export function createHttpServer(
   manager: SandboxManager,
   authenticate: Authenticate,
-  options: { sshGateway?: boolean; previews?: boolean } = {},
+  options: {
+    sshGateway?: boolean;
+    previews?: boolean;
+    previewRoutes?: import("./preview.js").PreviewRoute[];
+  } = {},
 ) {
   const server = createServer(async (request, response) => {
     try {
@@ -115,6 +119,10 @@ export function createHttpServer(
           streamCancellation: !!manager.streams,
           sshGateway: options.sshGateway === true,
           previews: !!manager.streams && options.previews === true,
+          previewSessions:
+            !!manager.streams &&
+            options.previews === true &&
+            !!options.previewRoutes?.length,
           tcpForwarding: !!manager.streams && options.sshGateway === true,
           cancellationScope: "command",
         } satisfies ApiCapabilities);
@@ -152,6 +160,65 @@ export function createHttpServer(
       if (!sandbox) {
         send(response, 404, { error: "not_found" });
         return;
+      }
+      if (parts[3] === "preview-grants") {
+        if (
+          !manager.streams ||
+          !options.previews ||
+          !options.previewRoutes?.length
+        ) {
+          send(response, 501, { error: "preview_sessions_unavailable" });
+          return;
+        }
+        if (parts.length === 4 && request.method === "POST") {
+          const input = await body(request);
+          fields(input, ["operationId", "exposureId", "origin"]);
+          const exposureId = string(input.exposureId),
+            origin = string(input.origin);
+          const route = options.previewRoutes.find(
+            (entry) =>
+              entry.owner === scope.owner &&
+              entry.sandbox === scope.sandbox &&
+              entry.exposure === exposureId &&
+              new URL(entry.origin).origin === origin,
+          );
+          if (!route) {
+            send(response, 404, { error: "not_found" });
+            return;
+          }
+          const grant = await manager.previewSessions.mint(
+            scope,
+            string(input.operationId),
+            { exposureId, origin },
+          );
+          send(response, 200, {
+            ...grant,
+            url: `${grant.origin}/.jetski/bootstrap#${grant.token}`,
+          });
+          return;
+        }
+        if (parts.length === 5 && request.method === "GET") {
+          send(
+            response,
+            200,
+            await manager.previewSessions.status(scope, string(parts[4])),
+          );
+          return;
+        }
+        if (parts.length === 5 && request.method === "DELETE") {
+          const input = await body(request);
+          fields(input, ["operationId"]);
+          send(
+            response,
+            200,
+            await manager.previewSessions.revoke(
+              scope,
+              string(parts[4]),
+              string(input.operationId),
+            ),
+          );
+          return;
+        }
       }
       if (
         parts[3] === "streams" &&

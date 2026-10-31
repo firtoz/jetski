@@ -48,6 +48,39 @@ export class JetskiClient {
     if (this.base.username || this.base.password)
       throw new Error("URL credentials prohibited");
   }
+  createPreviewGrant(
+    sandbox: string,
+    exposureId: string,
+    origin: string,
+    operationId: string,
+  ): Promise<
+    import("./core/preview-sessions.js").PreviewGrant & { url: string }
+  > {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/preview-grants`,
+      "POST",
+      { exposureId, origin, operationId },
+    );
+  }
+  previewGrantStatus(
+    sandbox: string,
+    id: string,
+  ): Promise<import("./core/preview-sessions.js").PreviewSessionStatus> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/preview-grants/${identifier(id)}`,
+    );
+  }
+  revokePreviewGrant(
+    sandbox: string,
+    id: string,
+    operationId: string,
+  ): Promise<Operation> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/preview-grants/${identifier(id)}`,
+      "DELETE",
+      { operationId },
+    );
+  }
   capabilities(): Promise<import("./core/capabilities.js").ApiCapabilities> {
     return this.request("/v1/capabilities");
   }

@@ -1744,6 +1744,159 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{sandbox}/preview-grants": {
+      "parameters": [
+        {
+          "name": "sandbox",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Mint or replay an owner-scoped 60-second preview grant",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewGrant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or rejected request"
+          },
+          "401": {
+            "description": "Invalid bearer token"
+          },
+          "404": {
+            "description": "Resource or route not found in principal scope"
+          },
+          "501": {
+            "description": "Preview sessions unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "exposureId": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  }
+                },
+                "required": ["operationId", "exposureId", "origin"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{sandbox}/preview-grants/{grant}": {
+      "parameters": [
+        {
+          "name": "sandbox",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "grant",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Inspect redacted preview grant status",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewSessionStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or rejected request"
+          },
+          "401": {
+            "description": "Invalid bearer token"
+          },
+          "404": {
+            "description": "Resource or route not found in principal scope"
+          },
+          "501": {
+            "description": "Preview sessions unavailable"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Revoke a preview session with a stable operation identity",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or rejected request"
+          },
+          "401": {
+            "description": "Invalid bearer token"
+          },
+          "404": {
+            "description": "Resource or route not found in principal scope"
+          },
+          "501": {
+            "description": "Preview sessions unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["operationId"],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1886,6 +2039,9 @@
             },
             "required": ["kind", "architecture", "rootlessPodman"],
             "additionalProperties": false
+          },
+          "previewSessions": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1906,7 +2062,70 @@
           "tcpForwarding",
           "version",
           "cancellationScope",
-          "host"
+          "host",
+          "previewSessions"
+        ],
+        "additionalProperties": false
+      },
+      "PreviewGrant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "token", "origin", "expiresAt", "url"],
+        "additionalProperties": false
+      },
+      "PreviewSessionStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "exposureId": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "grantExpiresAt": {
+            "type": "integer"
+          },
+          "sessionExpiresAt": {
+            "type": "integer"
+          },
+          "redeemed": {
+            "type": "boolean"
+          },
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "exposureId",
+          "origin",
+          "generation",
+          "grantExpiresAt",
+          "sessionExpiresAt",
+          "redeemed",
+          "revoked"
         ],
         "additionalProperties": false
       }

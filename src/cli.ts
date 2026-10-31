@@ -23,6 +23,7 @@ const { values, positionals } = parseArgs({
     offset: { type: "string" },
     "state-dir": { type: "string" },
     checkpoint: { type: "string" },
+    origin: { type: "string" },
   },
 });
 const command = positionals[0];
@@ -100,6 +101,7 @@ if (command === "serve") {
   const server = createHttpServer(manager, authenticate, {
     sshGateway: !!config.sshGateway,
     previews: !!config.preview,
+    previewRoutes: config.preview?.routes ?? [],
   });
   let sshGateway:
     | ReturnType<typeof import("./server/ssh.js").createSshGateway>
@@ -124,7 +126,10 @@ if (command === "serve") {
     | undefined;
   if (config.preview) {
     const { createPreviewServer } = await import("./server/preview.js");
-    preview = createPreviewServer(manager, authenticate, config.preview);
+    preview = createPreviewServer(manager, authenticate, {
+      ...config.preview,
+      sessions: manager.previewSessions,
+    });
     await new Promise<void>((resolve, reject) => {
       preview!.server.once("error", reject);
       preview!.server.listen(
@@ -204,6 +209,27 @@ if (command === "serve") {
   let result: unknown;
   let binaryOutput = false;
   switch (command) {
+    case "preview-open":
+      result = await client.createPreviewGrant(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "exposure ID"),
+        required(values.origin, "--origin"),
+        required(values.id, "--id"),
+      );
+      break;
+    case "preview-status":
+      result = await client.previewGrantStatus(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "grant ID"),
+      );
+      break;
+    case "preview-revoke":
+      result = await client.revokePreviewGrant(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "grant ID"),
+        required(values.operation, "--operation"),
+      );
+      break;
     case "capabilities":
       result = await client.capabilities();
       break;

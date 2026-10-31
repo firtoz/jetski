@@ -93,6 +93,23 @@ workload-specific products.
 
 ## Latest continuation status
 
+Preview session continuation (unpublished): added durable generation/owner/origin
+scoped grants with fixed 60-second bootstrap and 15-minute session expiry;
+one-use redemption with stable lost-ACK recovery; private-state credentials,
+redacted public receipts; bootstrap fragment removal and Secure/HttpOnly cookie;
+HTTP/WS authentication and active expiry/revocation; API/SDK/CLI wiring.
+Local focused9 tests passed in /tmp/jetski-preview-session-integrated.log.
+An initial upgraded-socket fixture hung during cleanup; preserved failure log
+/tmp/jetski-preview-browser-protocol.log and terminated only its owned Node PIDs.
+Adding peer EOF handling to that fixture resolved cleanup; focused rerun passed
+in /tmp/jetski-preview-browser-protocol-fixed.log. API grant tests and OpenAPI docs
+added afterward. Full104TS/70Python tests, build, typecheck, Biome, Ruff and
+C syntax-only checks pass; /tmp/jetski-sessions-full.log and
+/tmp/jetski-sessions-python.log retain evidence. Exact-SHA CI pending. Real browser
+navigation/CSP/cookie acceptance and real-container session tests remain open.
+No paid allocation, desktop runtime or protected experiment changes.
+
+
 Preview transport continuation: previous turn was verified progress at f5e8a0c,
 all five CI jobs green. Added optional Node HostDuplex preserving independent EOF,
 serialized16KiB sends, bounded buffering and delayed authenticated receipt after
@@ -112,14 +129,30 @@ exercise the real reverse-proxy Host boundary. First adapter field name collided
 with Duplex.iterator; corrected. No production-key/parser relaxation.
 Hosted fixture adds native HTTP1.1 and fixed-challenge WebSocket modes, running only
 on disposable CI host/container. Proxy qualification awaits verified closed stream
-receipts for both protocols; pending publication/CI, not yet claimed proven.
+receipts for both protocols. Published65686a9e456b395995cdb9bc7885d7ae89aa669b;
+CI41249296442 passed all5jobs; watcher78939 exited0.
+/tmp/jetski-preview-ci.log and /tmp/jetski-preview-hosted-ssh.log retain evidence.
+SSH job124679244587 verified HTTP/WS native fixture traffic through the real
+rootless container and required durable closed stream receipts. API job124679244599
+passed. Owned fixture cleanup completed. Current turn is verified progress.
 Public API remains experimental: explicit operator route maps and bearer transport
 are not complete browser navigation/session UX. Dynamic scoped URL/session grants,
 browser cookie isolation, iframe/app-cookie policy, lifecycle/recovery and full
 provider/client gates remain open. Preserve this full scope; do not claim the
 preview release gate complete from transport tests alone. No paid hosts, operator
-runtime changes or protected GC experiment changes. Next observe hosted results,
-fix failures, then implement/qualify browser preview sessions and remaining gates.
+runtime changes or protected GC experiment changes. Next implement/qualify
+browser preview sessions and remaining gates.
+Browser session design to implement next: API-authenticated grant minting must bind
+owner/sandbox/exposure/generation and have a stable persisted operation identity.
+Use a short-lived one-use bootstrap credential carried in a URL fragment (not query
+logs); clear it before exchange and set a host-only Secure/HttpOnly scoped session
+cookie on the isolated preview origin. Never put a control-plane bearer in workload
+HTML or forward the reserved session cookie. Authenticate HTTP and WS with the
+session, enforce expiry/revocation, retain generation checks on each admission and
+active-stream fencing. Browser/app cookie and iframe policy need explicit tests;
+current restrictive policy remains until that boundary is implemented and verified.
+Test grant replay/lost ACK/restart/one-use/expiry/foreign origin/cross-owner denial,
+real navigation/assets/fetch/WS and revocation before claiming browser support.
 
 Stream API continuation: previous turn was verified progress at aaf9ad7, all five
 CI jobs green. Added owner-scoped GET/DELETE stream routes, SDK and CLI status/

@@ -17,6 +17,7 @@ import type { HostStreamTransport } from "./host-stream.js";
 import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
 import { PortRegistry } from "./ports.js";
+import { PreviewSessions } from "./preview-sessions.js";
 import { restoreCheckpoint } from "./restore.js";
 import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
 import { StreamCoordinator } from "./streams.js";
@@ -83,6 +84,7 @@ export class SandboxManager {
   private readonly images: Set<string>;
   readonly history: CheckpointHistory;
   readonly ports: PortRegistry;
+  readonly previewSessions: PreviewSessions;
   readonly streams: StreamCoordinator | undefined;
   readonly uploads: UploadCoordinator;
   private readonly terminalInputs: TerminalInputJournal;
@@ -117,6 +119,12 @@ export class SandboxManager {
         running: sandbox.phase === "running",
       };
     });
+    this.previewSessions = new PreviewSessions(
+      state,
+      this.operations,
+      this.ports,
+      this.now,
+    );
     if (options.streamTransport)
       this.streams = new StreamCoordinator(
         state,
