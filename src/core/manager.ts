@@ -121,6 +121,7 @@ export class SandboxManager {
         this.operations,
         transport,
         options.streamTransport,
+        this.now,
       );
     this.checkpoints = new CheckpointRegistry(state, objects, this.now);
     this.outputs = new CommandOutputStore(objects, this.checkpoints);
@@ -533,7 +534,11 @@ export class SandboxManager {
         throw error;
       }
     } finally {
-      this.activeOwners.delete(owner);
+      try {
+        await this.streams?.reconcileOwner(owner);
+      } finally {
+        this.activeOwners.delete(owner);
+      }
     }
   }
   private async reconcileHeldResumes(owner: string) {

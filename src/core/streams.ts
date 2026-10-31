@@ -1,5 +1,6 @@
 import {
   canonical,
+  identifier,
   type Scope,
   type StateStore,
   scopeKey,
@@ -19,11 +20,15 @@ import {
 } from "./transport.js";
 
 const MAX_STREAMS = 64;
+export const STREAM_CONTROLLER_LEASE_MS = 10_000;
+const STREAM_ADMISSION_LEASE_MS = 45_000;
 export type StreamRecord = HostStreamRequest & {
   exposureId: string;
   generation: number;
   phase: "dispatched" | "open" | "closed" | "uncertain" | "cancelled";
   cancelRequested: boolean;
+  controller: string;
+  validUntil: number;
 };
 /** Durable control-plane connection identity. A new controller observes/cancels;
  * it never reopens an already dispatched connection or replays network bytes. */
@@ -34,6 +39,8 @@ export class StreamCoordinator {
     private readonly operations: OperationJournal,
     private readonly control: HostTransport,
     private readonly transport: HostStreamTransport,
+    private readonly now = Date.now,
+    private readonly controller = crypto.randomUUID(),
   ) {}
   private key(scope: Scope, id: string) {
     if (
@@ -90,14 +97,6 @@ export class StreamCoordinator {
     let record = await this.status(scope, id);
     if (record.phase === "closed" || record.phase === "cancelled")
       return record;
-    if (
-      record.cancelRequested ||
-      record.phase === "uncertain" ||
-      !(await this.authority(scope, id))
-    ) {
-      await this.cancel(scope, id);
-      record = await this.status(scope, id);
-    }
     const response = await this.control.request(record.lease.machineId, {
       version: HOST_PROTOCOL_VERSION,
       id,
@@ -116,21 +115,88 @@ export class StreamCoordinator {
         !(receipt.port === null && record.cancelRequested))
     )
       throw Error("Invalid host stream receipt");
-    if (receipt.phase === "closed" && receipt.delivery === "complete")
-      await this.settle(scope, id, true);
-    else if (receipt.phase === "cancelled" && receipt.delivery === "unknown")
+    if (receipt.phase === "closed" && receipt.delivery === "complete") {
+      const permitted = await this.state.transaction((tx) =>
+        this.allowed(tx, scope, record),
+      );
+      await this.settle(scope, id, permitted, !permitted);
+    } else if (receipt.phase === "cancelled" && receipt.delivery === "unknown")
       await this.settle(scope, id, false, true);
-    else if (receipt.phase === "uncertain") await this.settle(scope, id, false);
+    else {
+      if (receipt.phase === "uncertain") await this.settle(scope, id, false);
+      record = await this.status(scope, id);
+      const permitted = await this.state.transaction((tx) =>
+        this.allowed(tx, scope, record),
+      );
+      if (
+        record.cancelRequested ||
+        record.phase === "uncertain" ||
+        !permitted ||
+        record.validUntil <= this.now()
+      )
+        await this.cancel(scope, id);
+    }
     return this.status(scope, id);
   }
-  private async authority(scope: Scope, id: string): Promise<boolean> {
+  async reconcileOwner(owner: string): Promise<void> {
+    identifier(owner);
+    const pending = await this.state.transaction((tx) => {
+      const cursorKey = `stream-reconcile/${owner}`;
+      const rows = tx
+        .scan<StreamRecord>(`stream/${owner}/`)
+        .filter(
+          ({ value }) =>
+            value.phase !== "closed" && value.phase !== "cancelled",
+        )
+        .sort((a, b) => {
+          if (a.key === b.key) return 0;
+          return a.key < b.key ? -1 : 1;
+        });
+      const cursor = tx.get<string>(cursorKey) ?? "";
+      const ordered = [
+        ...rows.filter((row) => row.key > cursor),
+        ...rows.filter((row) => row.key <= cursor),
+      ].slice(0, 8);
+      if (ordered.length) tx.put(cursorKey, ordered[ordered.length - 1]!.key);
+      return ordered.map((row) => row.value);
+    });
+    const errors: unknown[] = [];
+    for (const record of pending) {
+      try {
+        await this.reconcile(
+          { owner, sandbox: record.lease.sandboxId },
+          record.streamId,
+        );
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length)
+      throw new AggregateError(errors, "Stream recovery incomplete");
+  }
+  private async authority(
+    scope: Scope,
+    id: string,
+    renew = false,
+  ): Promise<boolean> {
     return this.state.transaction((tx) => {
       const record = tx.get<StreamRecord>(this.key(scope, id));
-      return (
+      const permitted =
         !!record &&
+        record.controller === this.controller &&
+        record.validUntil > this.now() &&
         (record.phase === "dispatched" || record.phase === "open") &&
-        this.allowed(tx, scope, record)
-      );
+        this.allowed(tx, scope, record);
+      if (
+        permitted &&
+        renew &&
+        record!.validUntil - this.now() <= STREAM_CONTROLLER_LEASE_MS / 2
+      )
+        tx.put(this.key(scope, id), {
+          ...record!,
+          validUntil: this.now() + STREAM_CONTROLLER_LEASE_MS,
+        });
+      return permitted;
     });
   }
   async open(
@@ -169,6 +235,8 @@ export class StreamCoordinator {
         exposureId,
         phase: "dispatched",
         cancelRequested: false,
+        controller: this.controller,
+        validUntil: this.now() + STREAM_ADMISSION_LEASE_MS,
       };
       tx.put(key, record);
       return record;
@@ -195,8 +263,8 @@ export class StreamCoordinator {
       stopped = true;
       connection.abort();
     };
-    const check = async () => {
-      if (!(await this.authority(scope, id))) {
+    const check = async (renew = false) => {
+      if (!(await this.authority(scope, id, renew))) {
         abort();
         throw new HostTransportError(
           "Stream authority withdrawn; cleanup unknown",
@@ -213,7 +281,11 @@ export class StreamCoordinator {
           !this.allowed(tx, scope, latest)
         )
           throw new HostTransportError("Stream admission superseded");
-        tx.put(this.key(scope, id), { ...latest, phase: "open" });
+        tx.put(this.key(scope, id), {
+          ...latest,
+          phase: "open",
+          validUntil: this.now() + STREAM_CONTROLLER_LEASE_MS,
+        });
       });
     } catch (error) {
       abort();
@@ -226,7 +298,7 @@ export class StreamCoordinator {
     const watch = async () => {
       if (stopped) return;
       try {
-        await check();
+        await check(true);
       } catch {
         abort();
       }

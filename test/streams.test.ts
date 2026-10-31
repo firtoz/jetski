@@ -51,6 +51,7 @@ async function fixture(t: TestContext) {
       };
     },
   };
+  let now = Date.now();
   const build = (open: () => Promise<HostConnection>, db = state) =>
     new StreamCoordinator(
       db,
@@ -63,6 +64,7 @@ async function fixture(t: TestContext) {
           return open();
         },
       },
+      () => now,
     );
   return {
     state,
@@ -71,6 +73,9 @@ async function fixture(t: TestContext) {
     ports,
     context,
     build,
+    setNow(value: number) {
+      now = value;
+    },
     setObserved(value: typeof observed) {
       observed = value;
     },
@@ -143,7 +148,7 @@ test("stream admission survives SQLite reopen and uncertain dispatch never repla
   assert.equal(f.opens, 1);
   f.setObserved({ phase: "cancelled", delivery: "unknown" });
   assert.equal((await next.reconcile(scope, id)).phase, "cancelled");
-  assert.equal(f.cancels, 1);
+  assert.equal(f.cancels, 0);
   assert.equal((await f.operations.get(scope, id))?.phase, "uncertain");
 });
 test("completed streams retain outcomes and revoked permissions abort idle connections", async (t) => {
@@ -223,4 +228,44 @@ test("stream capacity counts unresolved outcomes and replacement cannot receive 
   await assert.rejects(live.completed, /not authoritative/);
   assert.equal((await running.status(scope, id)).phase, "uncertain");
   assert.equal((await other.operations.get(scope, id))?.phase, "running");
+});
+
+test("lost acknowledgement recovers exact host completion before sending cancellation", async (t) => {
+  const f = await fixture(t),
+    id = randomUUID();
+  const first = f.build(async () => {
+    throw Error("lost acknowledgement");
+  });
+  await assert.rejects(first.open(scope, "port", id));
+  f.setObserved({ phase: "closed", delivery: "complete" });
+  const restarted = f.build(async () => {
+    throw Error("must not reopen");
+  });
+  await restarted.reconcileOwner(scope.owner);
+  assert.equal((await restarted.status(scope, id)).phase, "closed");
+  assert.equal((await f.operations.get(scope, id))?.phase, "succeeded");
+  assert.equal(f.opens, 1);
+  assert.equal(f.cancels, 0);
+});
+test("another controller preserves a valid connection and cancels an expired owner without replay", async (t) => {
+  const f = await fixture(t),
+    source = connection(),
+    id = randomUUID();
+  const first = f.build(async () => source.wire);
+  const live = await first.open(scope, "port", id);
+  const restarted = f.build(async () => {
+    throw Error("must not reopen");
+  });
+  await restarted.reconcileOwner(scope.owner);
+  assert.equal(f.cancels, 0);
+  f.setNow((await first.status(scope, id)).validUntil + 1);
+  await restarted.reconcileOwner(scope.owner);
+  assert.equal(f.cancels, 1);
+  await assert.rejects(live.send(new Uint8Array([1])), /authority withdrawn/);
+  await assert.rejects(live.completed);
+  assert.equal(source.sends, 0);
+  f.setObserved({ phase: "cancelled", delivery: "unknown" });
+  await restarted.reconcileOwner(scope.owner);
+  assert.equal((await restarted.status(scope, id)).phase, "cancelled");
+  assert.equal(f.opens, 1);
 });

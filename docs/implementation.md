@@ -93,6 +93,38 @@ workload-specific products.
 
 ## Latest continuation status
 
+Recovery scheduling candidate: terminal host receipts are observed before issuing
+cancellation, so a lost completion ACK can recover without network-byte replay.
+An active controller has a durable10second lease, renewed when half remains;
+admission has45seconds for the bounded transport handshake. Expired controllers
+cannot renew or send again. Another controller preserves live leases and cancels
+expired connections. Owner recovery rotates through at most8pending records per
+pass, records its cursor, and preserves failures. Manager maintenance runs stream
+recovery after normal lifecycle work so failed stream inspection cannot prevent
+source quiescence. Standalone SSH wiring injects the stream adapter; public
+forwarding/previews remain disabled. Local87TS tests include terminal ACK recovery
+and controller-expiry fencing. Hosted fixture adds real completion ACK-loss and a
+separate SQLite connection recovering the terminal receipt without reopening.
+Final checks/CI pending. No paid hosts, desktop workloads or protected experiment
+changes. Previous goal turn classified as progress, all five priorCI jobs passed.
+
+
+Published01c215b9a93142f523b9f2251672e36335fcaf12, CI41243142555;
+all five jobs passed, watcher29161 exited0. /tmp/jetski-stream-authority-ci.log,
+/tmp/jetski-stream-authority-ssh.log (job124660986418) and
+/tmp/jetski-stream-authority-api.log (job124660986325) retain terminal evidence.
+Installed SSH fixture verifies coordinator byte transfer, durable success, duplicate
+refusal and real idle revocation: connection rejects completion, core receipt stays
+uncertain, and the listener independently exits1 after its empty socket closes.
+This does not claim per-relay cleanup from the disconnect alone; whole-runtime
+quiescence remains the fallback verification. Local85TS/70Python tests/build/typecheck/
+lint pass. Next wire standalone worker reconciliation and public gateway authority. Cancellation
+still retains uncertainty until trusted termination evidence; conservative unknown
+records consume capacity. Recovery of lost-open ACKs that already finished at the
+host needs exact terminal receipt reconciliation without resending network bytes.
+No paid hosts, protected experiment changes or desktop runtime execution.
+
+
 Core stream authority candidate: optional embedded StreamCoordinator uses an
 atomic operation/connection journal before host dispatch, immutable stream IDs,
 exact owner/permission/image/lease/generation binding and64unresolved/4096history

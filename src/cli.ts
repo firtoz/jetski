@@ -66,7 +66,7 @@ if (command === "serve") {
   const directory = resolve(config.dataDirectory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const state = new SqliteState(join(directory, "state.sqlite"));
-  const { provider, transport } = await standaloneHosts(
+  const { provider, transport, streamTransport } = await standaloneHosts(
     state,
     config.hostProvider,
     config.poolId,
@@ -80,6 +80,7 @@ if (command === "serve") {
     storage.store,
     {
       poolId: config.poolId,
+      ...(streamTransport ? { streamTransport } : {}),
       approvedImages: config.approvedImages,
       hostsPerOwner: config.hostsPerOwner ?? 1,
     },

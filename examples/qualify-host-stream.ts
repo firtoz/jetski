@@ -15,6 +15,7 @@ import {
   StreamDecoder,
 } from "../src/core/stream-protocol.js";
 import { StreamCoordinator } from "../src/core/streams.js";
+import type { HostTransport } from "../src/core/transport.js";
 import { SqliteState } from "../src/state/sqlite.js";
 import {
   type SshHost,
@@ -236,19 +237,20 @@ export async function qualifyHostStream(
     }));
     await ports.expose(scope, "fixture-port", 18080);
     const transport = new SshTransport([host]);
+    const control: HostTransport = {
+      async request(_host, input) {
+        return {
+          version: 1,
+          id: input.id,
+          result: await request(input.action, input.payload),
+        };
+      },
+    };
     const coordinator = new StreamCoordinator(
       state,
       ports,
       operations,
-      {
-        async request(_host, input) {
-          return {
-            version: 1,
-            id: input.id,
-            result: await request(input.action, input.payload),
-          };
-        },
-      },
+      control,
       transport,
     );
     const adapterServer = await startServer(false);
@@ -271,6 +273,71 @@ export async function qualifyHostStream(
       /already admitted/,
     );
     await stopServer(adapterServer);
+    const recoveryServer = await startServer(false),
+      recoveryId = randomUUID();
+    const interruptedCoordinator = new StreamCoordinator(
+      state,
+      ports,
+      operations,
+      control,
+      {
+        async open(hostId, input, signal) {
+          const connected = await transport.open(hostId, input, signal);
+          const completed = connected.completed.then(() => {
+            throw Error("Injected lost stream completion acknowledgement");
+          });
+          void completed.catch(() => {});
+          return { ...connected, completed };
+        },
+      },
+    );
+    const interruptedConnection = await interruptedCoordinator.open(
+      scope,
+      "fixture-port",
+      recoveryId,
+    );
+    await interruptedConnection.send(
+      Buffer.from("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"),
+    );
+    await interruptedConnection.end();
+    await assert.rejects(async () => {
+      for await (const _ of interruptedConnection.output) {
+      }
+    }, /Injected lost/);
+    assert.equal(
+      (await interruptedCoordinator.status(scope, recoveryId)).phase,
+      "uncertain",
+    );
+    const reopened = new SqliteState(join(directory, "state.sqlite"));
+    try {
+      const nextOperations = new OperationJournal(reopened);
+      const nextPorts = new PortRegistry(reopened, nextOperations, () => ({
+        generation: 1,
+        running: true,
+        lease: payload.lease,
+        image: payload.image,
+      }));
+      const recovered = new StreamCoordinator(
+        reopened,
+        nextPorts,
+        nextOperations,
+        control,
+        transport,
+      );
+      await recovered.reconcileOwner(scope.owner);
+      assert.equal((await recovered.status(scope, recoveryId)).phase, "closed");
+      assert.equal(
+        (await nextOperations.get(scope, recoveryId))?.phase,
+        "succeeded",
+      );
+      await assert.rejects(
+        recovered.open(scope, "fixture-port", recoveryId),
+        /already admitted/,
+      );
+    } finally {
+      reopened.close();
+    }
+    await stopServer(recoveryServer);
     const revokedServer = await startServer(false),
       revokedId = randomUUID();
     const revoked = await coordinator.open(scope, "fixture-port", revokedId);
