@@ -76,7 +76,16 @@ try:
         wait_for(b"INTERRUPTED")
     else:
         raise AssertionError("Unknown fixture mode")
-    assert process.wait(timeout=20) == 0, "CLI attach failed"
+    try:
+        result = process.wait(timeout=20)
+    except subprocess.TimeoutExpired:
+        print(
+            "CLI exit timeout; terminal_restored=" + str(termios.tcgetattr(slave) == original),
+            file=sys.stderr,
+            flush=True,
+        )
+        raise
+    assert result == 0, "CLI attach failed"
     assert termios.tcgetattr(slave) == original, "CLI did not restore terminal attributes"
     state = pathlib.Path(directory) / "terminal.sqlite"
     assert state.is_file() and state.stat().st_mode & 0o077 == 0

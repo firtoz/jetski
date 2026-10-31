@@ -76,8 +76,13 @@ export async function attachTty(
     notify();
   };
   const readable = () => {
-    while (!signal.aborted && stdin.readableLength && queuedBytes < 65536) {
-      const count = Math.min(16384, stdin.readableLength, 65536 - queuedBytes);
+    // Read through null even when the buffer is empty, requesting the next TTY read.
+    while (!signal.aborted && queuedBytes < 65536) {
+      const count = Math.min(
+        16384,
+        stdin.readableLength || 1,
+        65536 - queuedBytes,
+      );
       const chunk = stdin.read(count) as Buffer | null;
       if (!chunk) break;
       const at = stdin.isTTY ? chunk.indexOf(0x1d) : -1;

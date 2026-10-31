@@ -93,6 +93,15 @@ workload-specific products.
 
 ## Latest continuation status
 
+Latest diagnostic c9a8da96abd0ec129e1ce5cda20fc5ce35ec48db / CI41236127689
+failed API job124640180235; other four jobs passed. Preserved primary failure:
+Ctrl-] detach times out after successful first input; cleanup also fails. Receipt
+/tmp/jetski-tty-diagnostic-api.log. Next candidate reads stdin through null to
+request subsequent TTY reads rather than stopping at an empty buffer; this is
+an unverified explanation until disposable CI passes. Fixture now reports terminal
+restoration state on exit timeout. Local 69 TS/59 Python tests, build/typecheck/lint
+pass. No desktop terminal or runtime execution.
+
 First raw-TTY qualification:78f6f7f /CI41235795138 API job124639190464
 failed; cleanup HostTransportError masked the original failure. Watcher58456
 exited1. Preserve /tmp/jetski-tty-failed-api.log. Fixture now retains both primary
