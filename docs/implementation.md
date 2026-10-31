@@ -106,8 +106,15 @@ Local93TS/70Python/build/typecheck/lint pass; test/ssh-gateway.test.ts now inclu
 zero admission, listener closure and transport loss. Log:
 /tmp/jetski-cli-forward-final.log. An initial example ID inferred a UUID template
 rather than string; corrected and final typecheck passes. Hosted fixture adds both
-half-close orders through this Node helper, pending publication/CI. Actual CLI
-subprocess signal/config qualification, capability discovery, HTTP/WS previews,
+half-close orders through this Node helper. Publishedf4e07f00d9a9a19ad0ddfa409c25312a1990d31d;
+CI41246645074 passed all5jobs; watcher32944 exited0.
+/tmp/jetski-cli-forward-ci.log and /tmp/jetski-cli-forward-hosted-ssh.log
+preserve real SSH/Podman helper half-close qualification and owned fixture cleanup.
+Actual CLI subprocess/config/stream-ID/byte transfer/SIGTERM listener cleanup now
+passes locally (93TS full suite, /tmp/jetski-cli-subprocess-full.log).
+Documentation no longer claims the implemented SSH gateways are absent.
+These additional test/docs changes are ready for publication; final exact-SHA CI pending.
+Capability discovery, HTTP/WS previews,
 full gateway lifecycle and remaining provider/client/benchmark gates remain open.
 No paid hosts, operator runtime changes or protected experiment changes.
 

@@ -1,7 +1,9 @@
 # Standalone service (implementation preview)
 
 The current server implements creation, inspection/listing, operation receipts,
-command admission/status and resumable output, checkpoint, stop, resume and deletion. Interactive gateways are not implemented yet. Do not
+command admission/status and resumable output, checkpoint, stop, resume and deletion.
+Experimental SSH terminal and TCP gateways are described below; HTTP/WebSocket
+previews remain under development. Do not
 use this preview as a durable hosted service; use disposable qualification hosts.
 The full release gates remain in [implementation.md](implementation.md).
 Select `hostProvider: { "kind": "ssh", "hosts": [...] }` for an adopted host,
@@ -193,7 +195,8 @@ to the caller; the SDK does not restart commands or resend input. Idle observati
 polls every250ms; this is HTTP cursor polling, not a WebSocket stream.
 CLI terminal-follow SANDBOX TERMINAL --offset BYTES writes binary stdout and waits
 for local output drain. It does not persist a cursor automatically. Interactive
-stdin attachment uses the durable journal described below; public gateways remain unfinished.
+stdin attachment uses the durable journal described below; the experimental SSH
+gateway is described in its own section.
 
 For durable interactive input, use
 client.attachTerminal(state, attachmentId, sandboxId, terminalId) with an injected
@@ -213,7 +216,7 @@ contain private text. Server history remains authoritative; the client keeps onl
 its latest input and explicit output cursor. cursor()/acknowledgeOutput(from,to)
 support compare-and-set cursor persistence after consumption. Display and local
 cursor writes are not atomic, so a client crash between them may repeat displayed
-output. The raw-TTY CLI adapter is described below; public gateways remain unfinished.
+output. The raw-TTY CLI adapter and experimental SSH gateway are described below.
 
 CLI terminal-attach SANDBOX TERMINAL --id ATTACHMENT --state-dir PRIVATE_DIRECTORY
 opens an existing terminal using a private, owned SQLite client journal. Reuse the
@@ -293,8 +296,10 @@ and generation. Stopping, replacing or advancing the assignment makes them
 unavailable. Resume requires new permissions; replaying an old grant only returns
 its original outcome. Revocation is permanent for that exposure ID, survives
 controller restart and does not erase history. At most 64 permissions may be
-available per sandbox. Gateway integration, active-stream revocation and host-side
-stream fencing remain required before TCP forwarding or previews are advertised.
+available per sandbox. The experimental SSH gateway uses these permissions and
+the core stream coordinator for active-stream revocation and generation fencing.
+Full gateway lifecycle/replacement qualification and HTTP/WebSocket previews remain
+open release gates.
 
 ## SSH workload TCP forwarding (experimental)
 

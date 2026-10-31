@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { connect as connectSocket } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import ssh2, {
@@ -491,6 +495,103 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
   assert.equal(identities.size, priorAdmissions);
   unrecorded.close();
   await unrecorded.done;
+  // Exercise the actual CLI entrypoint/configuration and signal cleanup too.
+  const directory = await mkdtemp(join(tmpdir(), "jetski-forward-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const keyPath = join(directory, "key"),
+    pinPath = join(directory, "host.pub"),
+    configPath = join(directory, "config.json");
+  await writeFile(keyPath, alice.private, { mode: 0o600 });
+  await writeFile(pinPath, host.public, { mode: 0o600 });
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      host: "127.0.0.1",
+      port: address.port,
+      privateKeyPath: keyPath,
+      hostPublicKeyPath: pinPath,
+      remotePort: 8080,
+    }),
+    { mode: 0o600 },
+  );
+  const cli = spawn(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "src/cli.ts",
+      "forward",
+      "box",
+      "echo",
+      "--config",
+      configPath,
+    ],
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+      env: { PATH: process.env.PATH },
+    },
+  );
+  t.after(() => {
+    cli.kill("SIGKILL");
+  });
+  const cliExit = once(cli, "exit");
+  let cliStream = "",
+    transcript = "";
+  let resolveListening!: (port: number) => void,
+    rejectListening!: (error: Error) => void;
+  const listening = new Promise<number>((resolve, reject) => {
+    resolveListening = resolve;
+    rejectListening = reject;
+  });
+  const startupDeadline = setTimeout(() => {
+    rejectListening(Error("CLI startup timeout"));
+    cli.kill("SIGKILL");
+  }, 15000);
+  t.after(() => clearTimeout(startupDeadline));
+  cli.once("error", rejectListening);
+  cli.once("exit", () => rejectListening(Error("CLI exited before readiness")));
+  cli.stderr.on("data", (chunk: Buffer) => {
+    transcript += chunk.toString();
+    if (transcript.length > 16384) {
+      rejectListening(Error("Unexpected CLI output"));
+      cli.kill("SIGKILL");
+      return;
+    }
+    const lines = transcript.split("\n");
+    transcript = lines.pop()!;
+    for (const line of lines) {
+      try {
+        const value = JSON.parse(line);
+        if (typeof value.streamId === "string") cliStream = value.streamId;
+        if (value.host === "127.0.0.1" && Number.isInteger(value.port))
+          resolveListening(value.port);
+      } catch {
+        rejectListening(Error("Unexpected CLI diagnostic"));
+      }
+    }
+  });
+  const cliPort = await listening;
+  clearTimeout(startupDeadline);
+  const cliSocket = connectSocket({
+    host: "127.0.0.1",
+    port: cliPort,
+    allowHalfOpen: true,
+  });
+  t.after(() => cliSocket.destroy());
+  const cliBytes: Buffer[] = [];
+  cliSocket.on("data", (bytes: Buffer) => cliBytes.push(Buffer.from(bytes)));
+  const cliClosed = once(cliSocket, "close");
+  cliSocket.end(bytes);
+  await cliClosed;
+  assert.ok(cliStream);
+  assert.ok(outcomes.has(cliStream));
+  await outcomes.get(cliStream);
+  assert.deepEqual(Buffer.concat(cliBytes), bytes);
+  cli.kill("SIGTERM");
+  assert.deepEqual(await cliExit, [0, null]);
+  const probe = connectSocket({ host: "127.0.0.1", port: cliPort });
+  await once(probe, "error");
+  probe.destroy();
   const lost = await forwardTcp(config);
   t.after(() => lost.close());
   const loss = assert.rejects(lost.done, /transport lost/);
