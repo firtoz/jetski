@@ -343,6 +343,97 @@ try {
     }
   }
   assert.equal(terminalOutcomes.length, 2);
+  const pressureTerminal = randomUUID();
+  await client.startTerminal(id, pressureTerminal, [
+    "/bin/sh",
+    "-ec",
+    "stty raw -echo; printf PRESSURE-READY; sleep 120 & wait",
+  ]);
+  let pressureReady = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const output = await client.terminalOutput(id, pressureTerminal);
+    if (
+      Buffer.from(output.base64, "base64").toString().includes("PRESSURE-READY")
+    ) {
+      pressureReady = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(pressureReady, true);
+  const pressureIds: string[] = [];
+  const pressureInput = {
+    kind: "stdin" as const,
+    base64: Buffer.alloc(16384).toString("base64"),
+  };
+  // Each identity is admitted at most once here. A failed response is observed,
+  // never replaced with a new identity or blindly resent.
+  for (let attempt = 0; attempt < 128; attempt++) {
+    const inputId = randomUUID();
+    pressureIds.push(inputId);
+    try {
+      const receipt = (await client.terminalInput(
+        id,
+        pressureTerminal,
+        inputId,
+        pressureInput,
+      )) as { phase: string };
+      if (["uncertain", "cancelled"].includes(receipt.phase)) break;
+    } catch {
+      break;
+    }
+  }
+  await waitPhase(pressureTerminal, "failed");
+  const pressureStatus = (await client.terminalStatus(
+    id,
+    pressureTerminal,
+  )) as { phase: string; reason: string; exitCode: number };
+  assert.equal(pressureStatus.reason, "terminal_input_uncertain");
+  assert.equal(pressureStatus.exitCode, 143);
+  const pressureOutcomes = new Map<string, Json>();
+  const pressureDeadline = Date.now() + 60000;
+  while (pressureOutcomes.size < pressureIds.length) {
+    for (const inputId of pressureIds) {
+      if (pressureOutcomes.has(inputId)) continue;
+      const receipt = (await client.terminalInputStatus(
+        id,
+        pressureTerminal,
+        inputId,
+      )) as { phase: string } & Json;
+      if (["sent", "uncertain", "cancelled"].includes(receipt.phase))
+        pressureOutcomes.set(inputId, receipt);
+    }
+    assert.ok(
+      Date.now() < pressureDeadline,
+      "Pressure receipts did not settle",
+    );
+    if (pressureOutcomes.size < pressureIds.length)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const uncertainInputs = [...pressureOutcomes].filter(
+    ([, receipt]) => (receipt as { phase: string }).phase === "uncertain",
+  );
+  assert.equal(uncertainInputs.length, 1);
+  assert.ok(
+    [...pressureOutcomes.values()].some(
+      (receipt) => (receipt as { phase: string }).phase === "sent",
+    ),
+  );
+  const [uncertainId, uncertainOutcome] = uncertainInputs[0]!;
+  assert.deepEqual(
+    await client.terminalInput(
+      id,
+      pressureTerminal,
+      uncertainId,
+      pressureInput,
+    ),
+    uncertainOutcome,
+  );
+  assert.deepEqual(
+    await client.terminalStatus(id, pressureTerminal),
+    pressureStatus,
+  );
+
   const commandId = randomUUID();
   const request = {
     id: commandId,
@@ -490,6 +581,24 @@ try {
     new JetskiClient(url, foreignToken).checkpoint(id, stopped.checkpoint),
   );
   controlUnavailable = true;
+  for (const [inputId, receipt] of pressureOutcomes)
+    assert.deepEqual(
+      await client.terminalInputStatus(id, pressureTerminal, inputId),
+      receipt,
+    );
+  assert.deepEqual(
+    await client.terminalInput(
+      id,
+      pressureTerminal,
+      uncertainId,
+      pressureInput,
+    ),
+    uncertainOutcome,
+  );
+  assert.deepEqual(
+    await client.terminalStatus(id, pressureTerminal),
+    pressureStatus,
+  );
   const terminalCli = await promisify(execFile)(
     process.execPath,
     [
@@ -868,6 +977,8 @@ try {
       standaloneApi: true,
       apiTerminalInputReplay: true,
       terminalOutcomesWithoutHost: true,
+      apiTerminalPressureUncertaintyRetained: true,
+      pressureInputIdentities: pressureIds.length,
       ownerIsolation: true,
       serverProgress: true,
       commandExecution: true,

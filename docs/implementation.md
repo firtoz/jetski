@@ -93,6 +93,32 @@ workload-specific products.
 
 ## Latest continuation status
 
+API pressure continuation: installed standalone fixture now creates a nonreading
+PTY through SDK, submits bounded16KiB inputs with unique durable identities until
+pressure stops admission, and requires failed command/terminal_input_uncertain with
+authenticated143 cleanup. All input receipts must settle; exactly one uncertain
+partial send must remain uncertain on same-ID replay. After normal stop/publication
+and host control disablement, every receipt, replay and terminal status must remain
+identical from control-plane storage. Candidate fixture only; local checks and CI
+pending. No desktop workloads, paid hosts or protected experiment changes.
+Full attachment/gateway/provider/client/benchmark gates remain open.
+
+Verified slow-output fix:f4d3cc4e98044bcb9d7cd68aacdc288eb9a90483,
+CI41233509761 passed all five jobs; watcher23322 exited0. Native job124632392100
+confirmed exact1048576-byte output after a paused reader; separately observed
+workload process reaping while reader stayed paused, then drained370535bytes and
+validated authenticated cancellation proof. Input-pressure regression also passed
+(393216bytes accepted before5.002second timeout; environment-specific observation).
+Evidence /tmp/jetski-slow-output-independent-native.log and
+/tmp/jetski-slow-output-independent-ci.log. Local59Python/61TypeScript tests and
+build/typecheck/lint/C syntax pass. Main source pushed; this verified scratchpad
+update follows code. Previous failed fixture evidence retained below; all watchers
+terminal. No paid hosts, desktop runtime execution or protected experiment changes.
+Next qualify pressure through installed host/API journals, then full interactive
+attachment/reconnect and SSH/preview/TCP gateways. Live providers, client staging,
+cache/replacement and matched benchmarks/full release gates remain open.
+Full goal remains active.
+
 Slow-output first native run e94b0cb / CI41233300069 job124631782473 failed:
 reader pause expired while the fixture's Podman exec observation was blocked
 during concurrent exec removal. Private /tmp/jetski-slow-output-failed-native.log.
@@ -101,7 +127,9 @@ observation with read-only /proc inspection on disposable CI: select the exact
 workload within its container PID namespace before cancellation, bind host PID
 and start time, then verify disappearance while reader remains paused. No PID-based
 signals are introduced. This is a fixture correction; retain original failure.
-First watcher95351 still observed; no duplicate execution on the same runner.
+First watcher95351 exited1. Candidatef4d3cc4e98044bcb9d7cd68aacdc288eb9a90483
+pushed; CI41233509761 running, watcher23322,
+/tmp/jetski-slow-output-independent-ci.log. No duplicate execution on same runner.
 
 Slow-output continuation: native PTY output uses a fixed16KiB nonblocking buffer,
 services private input/cancellation while the outer writer is full, and retains
