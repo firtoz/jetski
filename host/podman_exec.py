@@ -6,6 +6,7 @@ and start intent before dispatch, and never replay an uncertain start.
 
 import http.client
 import json
+import os
 import pathlib
 import re
 import socket
@@ -144,6 +145,7 @@ class ExecApi:
             raise ValueError("exec_initial_input_bound")
         connection = self.connection(timeout)
         response = None
+        input_socket = None
         try:
             connection.request(
                 "POST",
@@ -158,13 +160,19 @@ class ExecApi:
             if initial_input:
                 wire.sendall(initial_input)
             if input_ready is not None:
-                input_ready(wire.sendall)
+                # Both socket objects use nonblocking fds internally, but each
+                # Python object has an independent timeout for select/poll.
+                input_socket = socket.socket(fileno=os.dup(wire.fileno()))
+                input_socket.settimeout(5)
+                input_ready(input_socket.sendall)
             if on_started is not None:
                 on_started()
             # HTTP upgrade's body has no Content-Length; use its buffered socket
             # stream directly rather than HTTPResponse's zero-length 101 body.
             yield from frames(response.fp)
         finally:
+            if input_socket is not None:
+                input_socket.close()
             if response is not None:
                 response.close()
             connection.close()

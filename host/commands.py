@@ -58,10 +58,13 @@ class Commands:
     def __init__(self, fence, root, launch):
         self.fence, self.root, self.launch = fence, pathlib.Path(root), launch
 
-    def start(self, raw, command, argv, cwd="/workspace", timeout=120):
+    def start(self, raw, command, argv, cwd="/workspace", timeout=120, terminal=False):
         lease = identity(raw)
         command_id(command)
         spec = specification(argv, cwd, timeout)
+        if type(terminal) is not bool:
+            raise ValueError("invalid_terminal_mode")
+        spec["terminal"] = terminal
         with self.fence.locked():
             state = self.fence.read()
             self.fence.match(state, lease)
@@ -153,6 +156,7 @@ def worker(command):
     import secrets
     import threading
     from podman_exec import ExecApi, CompletionDecoder
+    from terminal_input import TerminalInputs
     from supervisor import (
         CONTROL_ROOT,
         configuration,
@@ -198,6 +202,8 @@ def worker(command):
     failure = []
     stop_reason = []
     failure_stage, failure_type = "prepare", None
+    terminal_inputs = TerminalInputs(fence, CONTROL_ROOT / "terminal-input")
+    input_sender = []
     try:
         root.mkdir(parents=True, mode=0o700, exist_ok=False)
         nonce = secrets.token_bytes(32)
@@ -205,7 +211,14 @@ def worker(command):
         decoder = CompletionDecoder(nonce)
         failure_stage = "exec-create"
         session = api.create(
-            runtime.container(lease), ["/jetski-supervisor", *spec["argv"]], spec["cwd"], stdin=True
+            runtime.container(lease),
+            [
+                "/jetski-supervisor",
+                "--jetski-pty-v1" if spec["terminal"] else "--jetski-exec-v1",
+                *spec["argv"],
+            ],
+            spec["cwd"],
+            stdin=True,
         )
         failure_stage = "start-intent"
         with fence.locked():
@@ -224,6 +237,11 @@ def worker(command):
             fence.write(state)
         deadline = time.monotonic() + spec["timeout"]
 
+        def send_terminal(data):
+            if data[:1] == b"C" and not stop_reason:
+                stop_reason.append("cancelled")
+            input_sender[0](data)
+
         def monitor():
             try:
                 while not complete.wait(0.05):
@@ -238,8 +256,16 @@ def worker(command):
                             stop_reason.append("cancelled" if requested else "timeout")
                         api.remove(session)
                         return
+                    if spec["terminal"] and input_sender:
+                        terminal_inputs.dispatch_one(lease, command, send_terminal)
             except BaseException:
                 failure.append("command_stop_uncertain")
+                if not stop_reason:
+                    stop_reason.append("terminal_input_uncertain")
+                try:
+                    api.remove(session)
+                except BaseException:
+                    pass
 
         watcher = threading.Thread(target=monitor, daemon=True)
         watcher.start()
@@ -251,7 +277,11 @@ def worker(command):
             sizes = {"stdout": 0, "stderr": 0}
             failure_stage = "attach-stream"
             for channel, data in api.output(
-                session, timeout=spec["timeout"] + 30, initial_input=nonce, on_started=started.set
+                session,
+                timeout=spec["timeout"] + 30,
+                initial_input=nonce,
+                on_started=started.set,
+                input_ready=input_sender.append if spec["terminal"] else None,
             ):
                 if channel == "stderr":
                     data = decoder.feed(data)

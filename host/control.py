@@ -15,6 +15,7 @@ import subprocess
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from archive import capture, sync_dir  # noqa: E402
+from terminal_input import TerminalInputs  # noqa: E402
 from commands import Commands  # noqa: E402
 from files import Files  # noqa: E402
 from file_upload import FileUpload  # noqa: E402
@@ -115,7 +116,7 @@ def dispatch(request, config, account, run, launch=None):
             payload.get("expectedVersion"),
         )
     commands = Commands(fence, CONTROL_ROOT / "commands", launch)
-    if action == "command-start":
+    if action in ("command-start", "terminal-start"):
         if launch is None:
             raise ValueError("command_launcher_unavailable")
         return commands.start(
@@ -124,7 +125,15 @@ def dispatch(request, config, account, run, launch=None):
             payload.get("argv"),
             payload.get("cwd", "/workspace"),
             payload.get("timeout", 120),
+            terminal=action == "terminal-start",
         )
+    if action in ("terminal-input", "terminal-input-status"):
+        inputs = TerminalInputs(fence, CONTROL_ROOT / "terminal-input")
+        if action == "terminal-input":
+            return inputs.admit(
+                lease, payload.get("commandId"), payload.get("inputId"), payload.get("input")
+            )
+        return inputs.status(lease, payload.get("commandId"), payload.get("inputId"))
     if action == "command-status":
         return commands.status(lease, payload.get("commandId"))
     if action == "command-output":

@@ -19,6 +19,7 @@ MODULES = {
     "archive.py",
     "bootstrap.py",
     "commands.py",
+    "terminal_input.py",
     "podman_exec.py",
     "command-supervisor.c",
     "control.py",

@@ -139,7 +139,7 @@ static int terminal_pump(struct terminal *term) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) return 125;
+    if (argc < 3) return 125;
     if (prctl(PR_SET_CHILD_SUBREAPER, 1) || prctl(PR_SET_DUMPABLE, 0)) return 125;
     struct sigaction action = {0};
     action.sa_handler = cancel;
@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
         received += (size_t)n;
     }
     int interactive = strcmp(argv[1], "--jetski-pty-v1") == 0;
-    if (interactive && argc < 3) return 125;
+    if (!interactive && strcmp(argv[1], "--jetski-exec-v1") != 0) return 125;
     struct terminal term = {.master = -1};
     char slave_path[128];
     int slave = -1;
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
             if (null_input < 0 || dup2(null_input, STDIN_FILENO) < 0) _exit(125);
             if (null_input != STDIN_FILENO) close(null_input);
         }
-        execvp(argv[interactive ? 2 : 1], argv + (interactive ? 2 : 1));
+        execvp(argv[2], argv + 2);
         _exit(127);
     }
     if (interactive) close(slave);

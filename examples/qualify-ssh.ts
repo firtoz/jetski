@@ -235,6 +235,96 @@ try {
     argv: ["/bin/sh", "-ec", 'test "$(cat /workspace/counter)" = 1'],
   });
   assert.equal((await waitCommand(verifyId)).phase, "succeeded");
+  const terminalId = randomUUID();
+  await request("terminal-start", {
+    ...payload,
+    commandId: terminalId,
+    argv: [
+      "/bin/sh",
+      "-ec",
+      'stty -echo; printf TERMINAL-READY; IFS= read -r first; printf "FIRST:%s\\n" "$first"; stty size; IFS= read -r second; test "$second" = second; trap "printf INTERRUPTED; exit 0" INT; printf SIGNAL-READY; while :; do sleep 1; done',
+    ],
+  });
+  const terminalOutput = async (marker: string) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const output = (await request("command-output", {
+        ...payload,
+        commandId: terminalId,
+        channel: "stdout",
+        offset: 0,
+        bytes: 262144,
+      })) as { base64: string };
+      const text = Buffer.from(output.base64, "base64").toString();
+      if (text.includes(marker)) return text;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw Error("Terminal output deadline");
+  };
+  const terminalInput = async (
+    inputId: string,
+    input: import("../src/core/contracts.js").Json,
+  ) =>
+    request("terminal-input", {
+      ...payload,
+      commandId: terminalId,
+      inputId,
+      input,
+    });
+  await terminalOutput("TERMINAL-READY");
+  await terminalInput(randomUUID(), { kind: "resize", rows: 40, columns: 100 });
+  const firstInput = randomUUID(),
+    firstBytes = {
+      kind: "stdin",
+      base64: Buffer.from("first\n").toString("base64"),
+    };
+  await assert.rejects(
+    (async () => {
+      await terminalInput(firstInput, firstBytes);
+      throw Error("Injected input admission ACK loss");
+    })(),
+    /admission ACK loss/,
+  );
+  await terminalOutput("FIRST:first");
+  await terminalInput(firstInput, firstBytes);
+  const receipt = (await request("terminal-input-status", {
+    ...payload,
+    commandId: terminalId,
+    inputId: firstInput,
+  })) as { phase: string };
+  assert.equal(receipt.phase, "sent");
+  await assert.rejects(
+    request("terminal-input", {
+      ...payload,
+      lease: { ...lease, owner: "foreign" },
+      commandId: terminalId,
+      inputId: randomUUID(),
+      input: firstBytes,
+    }),
+  );
+  await assert.rejects(terminalInput(firstInput, { kind: "close" }));
+  await terminalInput(randomUUID(), {
+    kind: "stdin",
+    base64: Buffer.from("second\n").toString("base64"),
+  });
+  const terminalText = await terminalOutput("SIGNAL-READY");
+  assert.ok(terminalText.includes("40 100\r\n"));
+  assert.equal(terminalText.split("FIRST:first").length, 2);
+  await terminalInput(randomUUID(), { kind: "signal", signal: "INT" });
+  assert.equal((await waitCommand(terminalId)).phase, "succeeded");
+  assert.ok((await terminalOutput("INTERRUPTED")).endsWith("INTERRUPTED"));
+  const closingTerminal = randomUUID();
+  await request("terminal-start", {
+    ...payload,
+    commandId: closingTerminal,
+    argv: ["/bin/sh", "-c", "sleep 120"],
+  });
+  await request("terminal-input", {
+    ...payload,
+    commandId: closingTerminal,
+    inputId: randomUUID(),
+    input: { kind: "close" },
+  });
+  assert.equal((await waitCommand(closingTerminal)).phase, "cancelled");
   const cancelId = randomUUID();
   await request("command-start", {
     ...payload,
@@ -369,6 +459,9 @@ try {
       verifiedLocalPublication: true,
       durableExecution: true,
       binaryOutputReconnect: true,
+      durableHostTerminalInput: true,
+      terminalInputAdmissionAckRecovery: true,
+      terminalResizeSignalClose: true,
       assignmentCancellation: true,
       sourceDeletedTransportRecovery: true,
       repeatedCheckpointIdentical: true,

@@ -61,6 +61,8 @@ def main():
         nonces, completions = {}, {}
 
         def create(argv):
+            if argv[1] != "--jetski-pty-v1":
+                argv = [argv[0], "--jetski-exec-v1", *argv[1:]]
             session = api.create(container, argv, stdin=True)
             nonces[session] = secrets.token_bytes(32)
             return session

@@ -34,6 +34,7 @@ MODULES = (
     "supervisor.py",
     "control.py",
     "commands.py",
+    "terminal_input.py",
     "podman_exec.py",
     "files.py",
     "file_upload.py",

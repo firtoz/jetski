@@ -93,6 +93,47 @@ workload-specific products.
 
 ## Latest continuation status
 
+Host terminal integration candidate: dedicated input journal keeps bounded queued
+payloads outside public command status/checkpoints, stable IDs/sequences/digests,
+and queued/dispatched/sent/uncertain receipts. Intent is fsynced before attach send;
+uncertain inputs are never replayed. Sent means socket acceptance, not application
+consumption. Worker drains the journal with owner/generation fence and a5s send bound
+on an independently timed duplicate socket, keeping read timeout separate. Explicit
+native exec/PTY mode markers prevent workload argv selecting supervisor mode.
+Host actions terminal-start/input/input-status support private integration; public
+terminal capability remains false. Installed SSH fixture covers admission-ACK loss,
+replay without duplicate input, resize, INT, close and foreign-owner denial. Local
+57TypeScript/51Python tests, build/typecheck/lint and C syntax-only pass. CI pending.
+No desktop native execution or paid/protected-resource changes.
+
+Next after host qualification: controller/worker death and uncertain input receipts,
+then durable core/API/SDK/CLI terminal lifecycle, retained operation outcomes before
+host release, streaming reconnect, SSH gateway/previews/TCP and full remaining gates.
+Input journals are host-only and currently retained with host control history; do
+not advertise durable terminal operation history across replacement until core
+retention is implemented. Preserve uncertain-source quarantine semantics.
+
+
+Verified140d874dcf4716d4bdf7ac54381a82d6cf99cd6d, CI41228823260 all five
+jobs passed; watcher32177 exited0. Rootless job124618521323 confirms real native
+PTY stdin/stdout/stderr,40x100resize, foregroundSIGINT, exactNUL/FF/CRrawinput,
+close with authenticated descendant cleanup; prior binary/ordinary/detached cleanup
+checks also pass. Private /tmp/jetski-native-pty-runtime.log. Installed SSH/API
+regressions pass unchanged. Public terminal integration is explicitly false.
+No native execution on desktop, paid resources or protected experiment changes.
+
+Next integrate durable terminal admission and input delivery: stable terminal and
+input IDs; queue/dispatched/sent/uncertain receipts persisted before side effects;
+never replay uncertain stdin. Worker owns the private live attach writer and nonce.
+Keep input payloads out of unbounded public command status and checkpoint metadata.
+Add host input/reconnect/fence tests, then core/API/SDK/CLI and real installed-host
+qualification before advertising terminal support. Preserve source on lost worker
+or missing cleanup proof. Separate SSH gateway/previews/TCP, provider/R2 physical
+replacement, client staging and matched benchmarks remain required. Consider explicit
+exec/terminal mode markers so workload argv cannot select internal supervisor mode.
+All current CI handles terminal; scratchpad-only verified update follows main code.
+
+
 Native PTY candidate: supervisor optional versioned terminal mode allocates a real
 PTY without requiring a workload language runtime. Private attach stdin carries
 bounded input/resize/foreground-signal/close frames; the workload gets only slave
