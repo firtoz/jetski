@@ -180,6 +180,8 @@ export async function attachTty(
       if (raw) stdin.setRawMode(originalRaw);
     } finally {
       stdin.pause();
+      // A paused TTY can still keep the standalone CLI event loop alive.
+      if (stdin.isTTY) stdin.unref();
       state.close();
     }
   }

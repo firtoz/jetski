@@ -93,6 +93,13 @@ workload-specific products.
 
 ## Latest continuation status
 
+5c4781c7ff4f0e2ca85f77b6cc10ccb1a7a02e12 / CI41236570528 failed only
+API job124641498203. /tmp/jetski-tty-read-api.log confirms terminal_restored=True
+at detach exit timeout: cleanup runs, but process remains alive. Reading through
+null was not sufficient. Next fix unreferences the paused local TTY after restoring
+its mode and removing owned listeners; no forced process exit or remote close.
+Watcher83086 exited1. Four other jobs passed. Full acceptance remains open.
+
 Latest diagnostic c9a8da96abd0ec129e1ce5cda20fc5ce35ec48db / CI41236127689
 failed API job124640180235; other four jobs passed. Preserved primary failure:
 Ctrl-] detach times out after successful first input; cleanup also fails. Receipt
