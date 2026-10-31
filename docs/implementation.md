@@ -93,6 +93,40 @@ workload-specific products.
 
 ## Latest continuation status
 
+Command integration candidate: bootstrap now compiles/installs the supervisor on
+owned/disposable hosts and enables the private rootless socket. Command workers
+persist exec/start intent, stream bounded output and require authenticated cleanup
+before terminal success/cancellation. Queued cancellations prevent start; running
+ones target the exec session. Core persists cancellation intent and reconciles it;
+API/SDK/CLI expose owner-scoped cancellation. Missing proof remains uncertain and
+quarantines the assignment. Added queued replay/fencing checks and a real API fixture
+for independent survivor/descendant cleanup and lost cancellation acknowledgement.
+Local build/typecheck/lint and47Python tests pass. Full TypeScript and disposable
+CI qualification pending; no hosted or API integration success claimed yet. No paid
+resources, desktop runtime execution or protected experiment changes.
+
+
+Integration constraints for the next worker change: nonce material must never enter
+public command status/inspect responses, arguments, environment, checkpoints or
+logs. Keep it in a separate mode0600 host-control file if restart recovery needs
+persistence. Public receipts contain only verified status/exit/cleanup evidence.
+Persist the runtime exec ID and start intent before attach; uncertain starts are
+not replayable. A queued cancellation can finish without execution, but an admitted
+start requires authenticated cleanup or whole-assignment quiescence evidence.
+Drain/verify output concurrently with cancellation so the supervisor can emit its
+receipt. Stream failure/forced supervisor death stays uncertain and quarantined.
+Bootstrap must install the native artifact and private runtime socket on owned
+hosts; never compile/run workload helpers on the operator desktop. A native build
+in each disposable/owned host is an initial option; pinned release artifacts and
+priming cost remain a later packaging/benchmark consideration.
+
+Current candidate **bacf98bf3f05d6e52ff6863dc178fc0ffbd9375e**, CI **41225610972**
+passed all five jobs; watcher70912 exited0. Rootless job124609014763 confirms
+authenticatedCompletion=true and killedSupervisorRejected=true, plus all prior
+ordinary/detached descendant, binary-stream and independent-session checks. No
+public command API integration is claimed. Disposable resources cleaned. Continue
+with host install/worker/core/API/SDK integration using the constraints above.
+
 Completion-proof continuation: prior supervisor turn was verified progress with
 all five CI jobs passing. Added a 256-bit per-command nonce delivered over private
 attach stdin only after the supervisor disables dumpability. The child erases its

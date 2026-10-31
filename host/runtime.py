@@ -11,13 +11,14 @@ from fence import identity
 
 
 class PodmanRuntime:
-    def __init__(self, fence, run, image, data_root, approved_images):
+    def __init__(self, fence, run, image, data_root, approved_images, supervisor=None):
         if not isinstance(image, str) or not re.fullmatch(
             r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image
         ):
             raise ValueError("digest_pinned_image_required")
         if image not in approved_images:
             raise ValueError("image_not_approved")
+        self.supervisor = supervisor
         self.fence = fence
         self.run = run
         self.image = image
@@ -102,6 +103,13 @@ class PodmanRuntime:
                             + str(self.data_root / lease["assignmentId"] / source)
                             + ",dst="
                             + target,
+                        ]
+                    )
+                if self.supervisor is not None:
+                    args.extend(
+                        [
+                            "--mount",
+                            "type=bind,src=" + self.supervisor + ",dst=/jetski-supervisor,ro",
                         ]
                     )
                 args.extend([self.image, "/bin/sh", "-c", "exec sleep infinity"])

@@ -1056,6 +1056,54 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{sandboxId}/commands/{commandId}/cancel": {
+      "parameters": [
+        {
+          "name": "sandboxId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "commandId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Persist a command-scoped cancellation intent; retries observe the same command",
+        "description": "Queued commands never start. Running commands require authenticated descendant-cleanup proof; uncertain completion quarantines the assignment. Other commands continue on successful cancellation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Cancellation requested or retained terminal outcome"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "404": {
+            "description": "Command unavailable in owner scope"
+          }
+        }
+      }
     }
   },
   "components": {

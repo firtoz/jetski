@@ -367,6 +367,19 @@ export class SandboxManager {
     if (this.activeOwners.has(owner)) return;
     this.activeOwners.add(owner);
     try {
+      const cancellations = await this.state.transaction((tx) =>
+        tx
+          .scan<{ owner: string; sandbox: string; id: string; outcome: Json }>(
+            `command-cancel/${identifier(owner)}/`,
+          )
+          .map((row) => row.value),
+      );
+      for (const cancel of cancellations)
+        if (cancel.outcome === null)
+          await this.cancelCommand(
+            { owner: cancel.owner, sandbox: cancel.sandbox },
+            cancel.id,
+          );
       await this.recoverObservedCreates(owner);
       await this.drainExpiringHosts(owner);
       await this.shutdown.reconcile(owner);
@@ -745,6 +758,43 @@ export class SandboxManager {
     );
     if (!command) throw new Error("Command unavailable");
     return command;
+  }
+  /** The command ID also identifies its one durable cancellation intent. */
+  async cancelCommand(scope: Scope, id: string): Promise<Json> {
+    const command = await this.command(scope, id);
+    const key = `command-cancel/${scopeKey(scope)}/${id}`;
+    const row = await this.state.transaction((tx) => {
+      const prior = tx.get<{
+        owner: string;
+        sandbox: string;
+        id: string;
+        outcome: Json;
+      }>(key);
+      if (prior) return prior;
+      const value = { ...scope, id, outcome: null };
+      tx.put(key, value);
+      return value;
+    });
+    if (row.outcome !== null) return row.outcome;
+    let result = await this.commandStatus(scope, id);
+    const terminal = (value: Json) =>
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      ["succeeded", "failed", "cancelled", "uncertain"].includes(
+        String(value.phase),
+      );
+    if (!terminal(result))
+      result = await this.request(command.lease, "command-cancel", {
+        lease: command.lease,
+        image: command.image,
+        commandId: id,
+      });
+    if (terminal(result))
+      await this.state.transaction((tx) =>
+        tx.put(key, { ...row, outcome: result }),
+      );
+    return result;
   }
   async commandStatus(scope: Scope, id: string): Promise<Json> {
     const command = await this.command(scope, id);

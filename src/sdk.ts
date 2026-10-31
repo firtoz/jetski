@@ -48,6 +48,13 @@ export class JetskiClient {
       throw new Error(`Jetski request failed (${response.status})`);
     return (await response.json()) as T;
   }
+  cancelCommand(sandbox: string, command: string): Promise<Json> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/commands/${identifier(command)}/cancel`,
+      "POST",
+      {},
+    );
+  }
   readFile(
     sandbox: string,
     path: string,

@@ -9,6 +9,8 @@ const modules = [
   "archive.py",
   "bootstrap.py",
   "commands.py",
+  "podman_exec.py",
+  "command-supervisor.c",
   "control.py",
   "fence.py",
   "file_upload.py",
@@ -48,7 +50,14 @@ export class BoatBootstrap {
     identifier(host);
     const files: Record<string, string> = {};
     for (const name of modules) {
-      const bytes = await readFile(new URL(name, root));
+      const bytes = await readFile(
+        new URL(
+          name === "command-supervisor.c"
+            ? "native/command-supervisor.c"
+            : name,
+          root,
+        ),
+      );
       if (!bytes.length || bytes.length > 256 * 1024)
         throw Error("Bootstrap module bound");
       files[name] = bytes.toString("base64");
@@ -91,7 +100,7 @@ export class BoatBootstrap {
     // Only install missing prerequisites on the allocated machine. Do not upgrade
     // unrelated system packages. This program never runs on the controller host.
     const prepare =
-      'import shutil,subprocess; tools=("podman","newuidmap","newgidmap","runuser","useradd","loginctl","systemctl","slirp4netns","fuse-overlayfs","dbus-run-session"); missing=any(shutil.which(t) is None for t in tools); subprocess.run(["apt-get","update","-qq"],check=True) if missing else None; subprocess.run(["apt-get","install","-y","--no-install-recommends","podman","uidmap","slirp4netns","fuse-overlayfs","dbus-user-session"],check=True) if missing else None';
+      'import shutil,subprocess; tools=("podman","newuidmap","newgidmap","runuser","useradd","loginctl","systemctl","slirp4netns","fuse-overlayfs","dbus-run-session","cc"); missing=any(shutil.which(t) is None for t in tools); subprocess.run(["apt-get","update","-qq"],check=True) if missing else None; subprocess.run(["apt-get","install","-y","--no-install-recommends","podman","uidmap","slirp4netns","fuse-overlayfs","dbus-user-session","gcc","libc6-dev"],check=True) if missing else None';
     const rootProgram = [
       "sudo",
       "-n",

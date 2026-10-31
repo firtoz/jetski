@@ -1,17 +1,14 @@
 """Durable host command admission and bounded output cursors.
 
 Workers outlive SSH connections. A running receipt is never automatically replayed
-following a worker/host restart. Interim cancellation stops the entire assignment;
-precise per-process signals and PTYs remain separate runtime capabilities.
+following a worker/host restart. Cancellation is durable intent; authenticated supervisor completion proves that
+command descendants were reaped without stopping unrelated commands.
 """
 
 import base64
 import json
 import os
 import pathlib
-import signal
-import resource
-import subprocess
 import sys
 import time
 import uuid
@@ -146,14 +143,16 @@ class Commands:
             if receipt["phase"] in ("succeeded", "failed", "cancelled"):
                 return receipt
             state["commands"][command] = {**receipt, "cancelRequested": True}
+            if receipt["phase"] == "queued":
+                state["commands"][command].update(phase="cancelled", neverStarted=True)
             self.fence.write(state)
-        # Conservative cancellation: observe container stop, never infer remote
-        # cancellation from termination of the local SSH/Podman client.
-        runtime.quiesce(lease)
         return self.status(lease, command)
 
 
 def worker(command):
+    import secrets
+    import threading
+    from podman_exec import ExecApi, CompletionDecoder
     from supervisor import (
         CONTROL_ROOT,
         configuration,
@@ -166,6 +165,7 @@ def worker(command):
     command_id(command)
     config = configuration()
     account = runtime_account()
+    api = ExecApi(account.pw_uid)
     fence = Fence(CONTROL_ROOT / "slot")
     with fence.locked():
         state = fence.read()
@@ -174,7 +174,7 @@ def worker(command):
             return
         lease = identity(state["lease"])
         if state["phase"] != "open" or receipt["cancelRequested"]:
-            state["commands"][command] = {**receipt, "phase": "cancelled"}
+            state["commands"][command] = {**receipt, "phase": "cancelled", "neverStarted": True}
             fence.write(state)
             return
         receipt = {**receipt, "phase": "running"}
@@ -189,83 +189,113 @@ def worker(command):
         fence, run, image, pathlib.Path("/var/lib/jetski/data"), config["images"]
     )
     root = CONTROL_ROOT / "commands" / lease["assignmentId"] / command
-    root.mkdir(parents=True, mode=0o700, exist_ok=False)
     spec = receipt["spec"]
-    argv = runtime_argv(account) + [
-        "exec",
-        "--user",
-        "1000:1000",
-        "--workdir",
-        spec["cwd"],
-        "--",
-        runtime.container(lease),
-        *spec["argv"],
-    ]
     phase, exit_code, reason = "uncertain", None, None
-    proc = None
+    complete, started = threading.Event(), threading.Event()
+    watcher = None
+    session = None
+    authenticated = False
+    failure = []
+    stop_reason = []
     try:
-        with open(root / "stdout", "xb") as out, open(root / "stderr", "xb") as err:
+        root.mkdir(parents=True, mode=0o700, exist_ok=False)
+        nonce = secrets.token_bytes(32)
+        # Nonce remains in this host worker's memory; never in public receipts.
+        decoder = CompletionDecoder(nonce)
+        session = api.create(
+            runtime.container(lease), ["/jetski-supervisor", *spec["argv"]], spec["cwd"], stdin=True
+        )
+        with fence.locked():
+            state = fence.read()
+            fence.match(state, lease)
+            current = state["commands"][command]
+            if current["cancelRequested"] or state["phase"] != "open":
+                api.remove(session)
+                phase, reason = "cancelled", "never_started"
+                return
+            state["commands"][command] = {
+                **current,
+                "execSession": session,
+                "startDispatched": True,
+            }
+            fence.write(state)
+        deadline = time.monotonic() + spec["timeout"]
 
-            def output_limit():
-                resource.setrlimit(resource.RLIMIT_FSIZE, (OUTPUT_BYTES, OUTPUT_BYTES))
+        def monitor():
+            try:
+                while not complete.wait(0.05):
+                    if not started.is_set():
+                        continue
+                    with fence.locked():
+                        state = fence.read()
+                        fence.match(state, lease)
+                        requested = state["commands"][command]["cancelRequested"]
+                    if requested or time.monotonic() >= deadline or stop_reason:
+                        if not stop_reason:
+                            stop_reason.append("cancelled" if requested else "timeout")
+                        api.remove(session)
+                        return
+            except BaseException:
+                failure.append("command_stop_uncertain")
 
-            proc = subprocess.Popen(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=out,
-                stderr=err,
-                start_new_session=True,
-                preexec_fn=output_limit,
-                env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
-            )
-            deadline = time.monotonic() + spec["timeout"]
-            while proc.poll() is None:
-                if (
-                    max(os.fstat(out.fileno()).st_size, os.fstat(err.fileno()).st_size)
-                    > OUTPUT_BYTES
-                ):
-                    reason = "output_limit"
-                    break
-                if time.monotonic() > deadline:
-                    reason = "timeout"
-                    break
-                time.sleep(0.01)
-            if max(os.fstat(out.fileno()).st_size, os.fstat(err.fileno()).st_size) >= OUTPUT_BYTES:
-                reason = "output_limit"
-            if proc.returncode is not None and proc.returncode < 0 and reason is None:
-                reason = "exec_transport_terminated"
-            if reason:
-                runtime.quiesce(lease)
-                proc.wait(timeout=20)
-            exit_code = proc.returncode
-            phase = "succeeded" if exit_code == 0 and reason is None else "failed"
-            out.flush()
-            err.flush()
-            os.fsync(out.fileno())
-            os.fsync(err.fileno())
+        watcher = threading.Thread(target=monitor, daemon=True)
+        watcher.start()
+        with (
+            open(root / "stdout", "xb", buffering=0) as out,
+            open(root / "stderr", "xb", buffering=0) as err,
+        ):
+            outputs = {"stdout": out, "stderr": err}
+            sizes = {"stdout": 0, "stderr": 0}
+            for channel, data in api.output(
+                session, timeout=spec["timeout"] + 30, initial_input=nonce, on_started=started.set
+            ):
+                if channel == "stderr":
+                    data = decoder.feed(data)
+                allowed = max(0, OUTPUT_BYTES - sizes[channel])
+                outputs[channel].write(data[:allowed])
+                sizes[channel] += len(data[:allowed])
+                if len(data) > allowed and not stop_reason:
+                    stop_reason.append("output_limit")
+            proof = decoder.finish()
+            authenticated = True
+            exit_code = proof["exitCode"]
+            reason = stop_reason[0] if stop_reason else None
+            if not proof["cancelled"] and reason == "cancelled":
+                reason = None
+            if proof["cancelled"] and reason == "cancelled":
+                phase = "cancelled"
+            elif exit_code == 0 and reason is None:
+                phase = "succeeded"
+            else:
+                phase = "failed"
+            for output in outputs.values():
+                output.flush()
+                os.fsync(output.fileno())
     except BaseException:
-        reason = "worker_failure"
-        # Do not call this complete. Recovery must inspect the preserved state.
+        phase, reason = "uncertain", "worker_failure"
+        # An absent exec session/EOF is not proof of command-tree cleanup.
         try:
             runtime.quiesce(lease)
         except BaseException:
             pass
     finally:
-        if proc and proc.poll() is None:
-            os.killpg(proc.pid, signal.SIGKILL)
-            proc.wait(timeout=10)
+        complete.set()
+        if watcher is not None:
+            watcher.join(timeout=35)
+            if watcher.is_alive() or (failure and not authenticated):
+                phase, reason = "uncertain", "command_stop_uncertain"
         with fence.locked():
             state = fence.read()
             fence.match(state, lease)
             current = state["commands"][command]
-            if current["cancelRequested"] and state.get("runtime", {}).get("phase") == "stopped":
-                phase = "cancelled"
             state["commands"][command] = {
                 **current,
                 "phase": phase,
                 "exitCode": exit_code,
                 "reason": reason,
             }
+            if phase == "uncertain":
+                state["phase"] = "quarantined"
             fence.write(state)
 
 

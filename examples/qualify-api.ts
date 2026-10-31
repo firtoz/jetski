@@ -59,6 +59,8 @@ objects.put = async (...args) => {
   }
   return committed;
 };
+let loseCancelAck = false,
+  lostCancelAcks = 0;
 let controlUnavailable = false;
 let loseWriteAck = true;
 let lostWriteAcks = 0;
@@ -81,6 +83,11 @@ const manager = new SandboxManager(
         loseImportAck = false;
         lostImportAcks++;
         throw Error("Injected import acknowledgement loss");
+      }
+      if (request.action === "command-cancel" && loseCancelAck) {
+        loseCancelAck = false;
+        lostCancelAcks++;
+        throw Error("Injected cancellation acknowledgement loss");
       }
       return response;
     },
@@ -179,6 +186,75 @@ try {
     ...uploadSpec,
     path: "/workspace/incomplete",
   });
+  const victim = randomUUID(),
+    survivor = randomUUID();
+  const status = async (command: string) =>
+    client.request<{ phase: string }>(
+      `/v1/sandboxes/${id}/commands/${command}`,
+    );
+  const waitPhase = async (command: string, phase: string) => {
+    for (let attempt = 0; attempt < 150; attempt++) {
+      const observed = await status(command);
+      if (observed.phase === phase) return;
+      if (
+        ["failed", "uncertain", "cancelled", "succeeded"].includes(
+          observed.phase,
+        )
+      )
+        assert.equal(observed.phase, phase);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.equal((await status(command)).phase, phase);
+  };
+  await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
+    id: victim,
+    argv: [
+      "/bin/sh",
+      "-ec",
+      "sleep 120 & echo $! > /workspace/cancel-child; printf ready; wait",
+    ],
+  });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const out = await client.request<{ base64: string }>(
+      `/v1/sandboxes/${id}/commands/${victim}/output`,
+    );
+    if (Buffer.from(out.base64, "base64").toString() === "ready") break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const ready = await client.request<{ base64: string }>(
+    `/v1/sandboxes/${id}/commands/${victim}/output`,
+  );
+  assert.equal(Buffer.from(ready.base64, "base64").toString(), "ready");
+  await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
+    id: survivor,
+    argv: ["/bin/sh", "-ec", "sleep 3; printf survived"],
+  });
+  await assert.rejects(
+    new JetskiClient(url, foreignToken).cancelCommand(id, victim),
+  );
+  loseCancelAck = true;
+  await client.cancelCommand(id, victim).catch(() => undefined);
+  await waitPhase(victim, "cancelled");
+  assert.equal(lostCancelAcks, 1);
+  assert.equal(
+    ((await client.cancelCommand(id, victim)) as { phase: string }).phase,
+    "cancelled",
+  );
+  await waitPhase(survivor, "succeeded");
+  const cleanupCheck = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
+    id: cleanupCheck,
+    argv: [
+      "/bin/sh",
+      "-ec",
+      "test ! -e /proc/$(cat /workspace/cancel-child); rm /workspace/cancel-child",
+    ],
+  });
+  await waitPhase(cleanupCheck, "succeeded");
+  assert.equal(
+    (await client.request<Sandbox>(`/v1/sandboxes/${id}`)).phase,
+    "running",
+  );
   const commandId = randomUUID();
   const request = {
     id: commandId,
@@ -646,6 +722,8 @@ try {
       ownerIsolation: true,
       serverProgress: true,
       commandExecution: true,
+      independentCommandCancellation: true,
+      lostCancellationAcknowledgementRecovery: true,
       outputWithoutHostControl: true,
       sdk: true,
       cli: true,

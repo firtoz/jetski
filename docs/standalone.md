@@ -142,3 +142,13 @@ roots are rejected before placement or generation advance.
 
 Optional S3-compatible checkpoint storage is configured as described in
 [storage contracts and qualification limits](storage.md). Local remains the default.
+
+Command cancellation uses `POST /v1/sandboxes/{sandboxId}/commands/{commandId}/cancel`
+with `{}`, SDK `cancelCommand`, or CLI `cancel SANDBOX COMMAND`. The command ID
+identifies one durable cancellation intent; a controller restart reconciles pending
+intents. A queued cancellation prevents execution. Running cancellation targets its
+supervised exec session and requires authenticated evidence that descendants were
+reaped. An unrelated command can continue; missing cleanup proof quarantines the
+assignment and reports uncertainty. A naturally completed command retains its
+original outcome. Host bootstrap requires a C compiler and static libc development
+files to build the supervisor, and enables the private rootless Podman socket.

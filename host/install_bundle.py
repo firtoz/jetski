@@ -19,6 +19,8 @@ MODULES = {
     "archive.py",
     "bootstrap.py",
     "commands.py",
+    "podman_exec.py",
+    "command-supervisor.c",
     "control.py",
     "fence.py",
     "file_upload.py",
@@ -78,7 +80,11 @@ def install(data):
             if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o077:
                 raise ValueError("unsafe_bootstrap_receipt")
             prior = json.loads(receipt.read_text())
-            if prior != {"version": 1, "digest": digest}:
+            if (
+                set(prior) != {"version", "digest", "nativeSha256"}
+                or prior["version"] != 1
+                or prior["digest"] != digest
+            ):
                 raise ValueError("bootstrap_identity_conflict")
         if prior is None and pathlib.Path("/etc/jetski/host.json").exists():
             if json.loads(pathlib.Path("/etc/jetski/host.json").read_text()) != bundle["config"]:
@@ -113,7 +119,16 @@ def install(data):
         if prior is None:
             bootstrap(bundle["config"])
             write_file(
-                ROOT / "receipt.pending", json.dumps({"version": 1, "digest": digest}).encode()
+                ROOT / "receipt.pending",
+                json.dumps(
+                    {
+                        "version": 1,
+                        "digest": digest,
+                        "nativeSha256": hashlib.sha256(
+                            pathlib.Path("/opt/jetski/command-supervisor").read_bytes()
+                        ).hexdigest(),
+                    }
+                ).encode(),
             )
             os.replace(ROOT / "receipt.pending", receipt)
             directory = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY)
@@ -121,11 +136,17 @@ def install(data):
                 os.fsync(directory)
             finally:
                 os.close(directory)
+        proof_receipt = json.loads(receipt.read_text())
+        if (
+            hashlib.sha256(pathlib.Path("/opt/jetski/command-supervisor").read_bytes()).hexdigest()
+            != proof_receipt["nativeSha256"]
+        ):
+            raise ValueError("installed_supervisor_corrupt")
         config = configuration()
         if config != bundle["config"]:
             raise ValueError("bootstrap_configuration_conflict")
         # Validate installed bytes too: a receipt is not readiness evidence.
-        for name in MODULES - {"bootstrap.py"}:
+        for name in MODULES - {"bootstrap.py", "command-supervisor.c"}:
             path = pathlib.Path("/opt/jetski/host") / name
             meta = path.lstat()
             if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o077:

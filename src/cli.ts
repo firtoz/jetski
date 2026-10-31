@@ -178,6 +178,12 @@ if (command === "serve") {
         image: required(values.image, "--image"),
       });
       break;
+    case "cancel":
+      result = await client.cancelCommand(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "command ID"),
+      );
+      break;
     case "exec":
       result = await client.request(
         `/v1/sandboxes/${required(positionals[1], "sandbox ID")}/commands`,

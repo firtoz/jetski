@@ -61,7 +61,9 @@ def dispatch(request, config, account, run, launch=None):
             fence.match(state, lease)
             return state
     image = payload.get("image")
-    runtime = PodmanRuntime(fence, run, image, DATA_ROOT, config["images"])
+    runtime = PodmanRuntime(
+        fence, run, image, DATA_ROOT, config["images"], "/opt/jetski/command-supervisor"
+    )
     importer = CheckpointImport(fence, ARCHIVE_ROOT, DATA_ROOT, account)
     if action == "import-begin":
         return importer.begin(

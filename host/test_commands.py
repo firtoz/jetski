@@ -82,6 +82,22 @@ class CommandTests(unittest.TestCase):
                 self.lease, lambda *_: True, dict(checkpointId=str(uuid.uuid4()), sha256="a" * 64)
             )
 
+    def test_queued_cancel_is_durable_and_never_quiesces_other_commands(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        result = self.commands.cancel(self.lease, self.command, None)
+        self.assertEqual(result["phase"], "cancelled")
+        self.assertTrue(result["neverStarted"])
+        restarted = Commands(
+            Fence(self.base / "control"), self.base / "outputs", self.launched.append
+        )
+        self.assertEqual(restarted.cancel(self.lease, self.command, None), result)
+        self.assertEqual(restarted.start(self.lease, self.command, ["true"]), result)
+        self.assertEqual(self.launched, [self.command])
+        with self.assertRaisesRegex(ValueError, "stale_lease"):
+            restarted.cancel(dict(self.lease, generation=2), self.command, None)
+        with self.assertRaises(ValueError):
+            restarted.cancel(dict(self.lease, owner="other"), self.command, None)
+
     def test_invalid_command_specs(self):
         for argv, cwd, timeout in [
             ([], "/workspace", 1),

@@ -101,7 +101,7 @@ export function createHttpServer(
           pty: false,
           previews: false,
           tcpForwarding: false,
-          cancellationScope: "assignment",
+          cancellationScope: "command",
         });
         return;
       }
@@ -360,6 +360,15 @@ export function createHttpServer(
           return;
         }
         const id = string(parts[4]);
+        if (
+          parts.length === 6 &&
+          parts[5] === "cancel" &&
+          request.method === "POST"
+        ) {
+          fields(await body(request), []);
+          send(response, 202, await manager.cancelCommand(scope, id));
+          return;
+        }
         if (parts.length === 5 && request.method === "GET") {
           send(response, 200, await manager.commandStatus(scope, id));
           return;

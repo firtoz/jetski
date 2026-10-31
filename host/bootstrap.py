@@ -34,6 +34,7 @@ MODULES = (
     "supervisor.py",
     "control.py",
     "commands.py",
+    "podman_exec.py",
     "files.py",
     "file_upload.py",
     "import_checkpoint.py",
@@ -111,6 +112,44 @@ def bootstrap(config):
         if result["exitCode"]:
             raise RuntimeError("approved_image_pull_failed")
     source = pathlib.Path(__file__).resolve().parent
+    native = source / "native" / "command-supervisor.c"
+    if not native.exists():
+        native = source / "command-supervisor.c"
+    target_binary = pathlib.Path("/opt/jetski/command-supervisor")
+    pending_binary = pathlib.Path("/opt/jetski/command-supervisor.pending")
+    if target_binary.is_symlink() or pending_binary.is_symlink():
+        raise ValueError("unsafe_supervisor_binary")
+    compiled = bounded_command(
+        [
+            "/usr/bin/cc",
+            "-static",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            str(native),
+            "-o",
+            str(pending_binary),
+        ],
+        CONTROL_ROOT,
+        timeout=120,
+    )
+    if compiled["exitCode"]:
+        raise ValueError("supervisor_build_failed")
+    os.chmod(pending_binary, 0o755)
+    with open(pending_binary, "rb") as binary:
+        os.fsync(binary.fileno())
+    os.replace(pending_binary, target_binary)
+    fd = os.open(target_binary.parent, os.O_RDONLY | os.O_DIRECTORY)
+    os.fsync(fd)
+    os.close(fd)
+    socket_started = bounded_command(
+        runtime_argv(account)[:-1] + ["systemctl", "--user", "enable", "--now", "podman.socket"],
+        CONTROL_ROOT,
+        timeout=30,
+    )
+    if socket_started["exitCode"]:
+        raise ValueError("runtime_socket_unavailable")
     for name in MODULES:
         target = pathlib.Path("/opt/jetski/host") / name
         if target.is_symlink():
