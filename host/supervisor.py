@@ -6,6 +6,7 @@ import pathlib
 import platform
 import pwd
 import signal
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -63,8 +64,11 @@ def runtime_account():
 
 
 def runtime_argv(account):
+    runuser = shutil.which("runuser", path="/usr/sbin:/usr/bin:/sbin:/bin")
+    if runuser is None:
+        raise ValueError("runuser_unavailable")
     return [
-        "runuser",
+        runuser,
         "-u",
         ACCOUNT,
         "--",

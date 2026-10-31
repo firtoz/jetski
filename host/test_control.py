@@ -6,7 +6,7 @@ import unittest
 import uuid
 from unittest.mock import patch
 import control
-from supervisor import bounded_command
+from supervisor import bounded_command, runtime_argv
 
 
 class ControlTests(unittest.TestCase):
@@ -81,6 +81,14 @@ class ControlTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported_host_action"):
             self.request("outer-shell", dict(lease=self.lease, image=self.config["images"][0]))
         self.assertEqual(self.calls, [])
+
+    def test_runtime_runner_resolves_system_tool_without_ambient_path(self):
+        account = types.SimpleNamespace(pw_uid=1002, pw_dir="/var/lib/jetski-runtime")
+        with patch.dict(os.environ, {"PATH": "/nonexistent"}):
+            argv = runtime_argv(account)
+        self.assertTrue(pathlib.Path(argv[0]).is_absolute())
+        self.assertIn("env", argv)
+        self.assertIn("-i", argv)
 
     def test_bounded_runner_stops_excess_output_and_timeout(self):
         with self.assertRaisesRegex(ValueError, "output_limit"):
