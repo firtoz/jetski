@@ -93,6 +93,17 @@ workload-specific products.
 
 ## Latest continuation status
 
+CI41227046559 failed installed bootstrap API readiness: correcting XDG runtime
+revealed another inherited path, /home/runner/.config/containers/storage.conf.
+Private evidence /tmp/jetski-runtime-owner-api.log. Replace incremental environment
+exclusions with a dedicated ordinary Python service entry: explicit account paths,
+PATH/LANG and only systemd activation fields retained. execve preserves activation
+PID. Per-user service drop-in invokes it; bundle verifies installed bytes. Unit test
+rejects inherited storage/config/credential variables and root identity. Local
+56TypeScript/48Python tests, build/typecheck/lint pass. Hosted CI pending. Previous
+failures remain evidence; no real-provider spend or protected experiment changes.
+
+
 Environment fix22e909d, CI41226947132 exposed bootstrap configuration-directory
 ownership: root-created user unit directories prevent systemctl enable writing its
 wants symlink. New directories now belong to the dedicated runtime account; the

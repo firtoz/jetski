@@ -18,6 +18,7 @@ const modules = [
   "frames.py",
   "import_checkpoint.py",
   "runtime.py",
+  "runtime_service.py",
   "supervisor.py",
 ];
 const root = new URL("../../host/", import.meta.url);

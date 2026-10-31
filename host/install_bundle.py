@@ -28,6 +28,7 @@ MODULES = {
     "frames.py",
     "import_checkpoint.py",
     "runtime.py",
+    "runtime_service.py",
     "supervisor.py",
 }
 
@@ -148,8 +149,11 @@ def install(data):
         # Validate installed bytes too: a receipt is not readiness evidence.
         for name in MODULES - {"bootstrap.py", "command-supervisor.c"}:
             path = pathlib.Path("/opt/jetski/host") / name
+            if name == "runtime_service.py":
+                path = pathlib.Path("/opt/jetski/runtime_service.py")
             meta = path.lstat()
-            if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o077:
+            forbidden = 0o022 if name == "runtime_service.py" else 0o077
+            if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & forbidden:
                 raise ValueError("unsafe_installed_module")
             if path.read_bytes() != decoded[name]:
                 raise ValueError("installed_module_corrupt")

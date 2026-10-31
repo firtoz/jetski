@@ -157,13 +157,16 @@ def bootstrap(config):
     unit = dropin / "10-jetski.conf"
     if unit.is_symlink():
         raise ValueError("unsafe_runtime_unit")
+    entry = pathlib.Path("/opt/jetski/runtime_service.py")
+    if entry.is_symlink():
+        raise ValueError("unsafe_runtime_entry")
+    with open(source / "runtime_service.py", "rb") as input_file, open(entry, "wb") as output:
+        shutil.copyfileobj(input_file, output)
+        os.fchmod(output.fileno(), 0o644)
+        output.flush()
+        os.fsync(output.fileno())
     unit.write_text(
-        "[Service]\n"
-        + f'Environment="HOME={account.pw_dir}" "USER={ACCOUNT}" "LOGNAME={ACCOUNT}" '
-        + f'"XDG_RUNTIME_DIR=/run/user/{account.pw_uid}" '
-        + f'"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{account.pw_uid}/bus"\n'
-        + "UnsetEnvironment=CONTAINER_HOST CONTAINER_CONNECTION "
-        + "_CONTAINERS_USERNS_CONFIGURED _CONTAINERS_ROOTLESS_UID _CONTAINERS_ROOTLESS_GID\n"
+        "[Service]\nExecStart=\nExecStart=/usr/bin/python3 -I /opt/jetski/runtime_service.py\n"
     )
     os.chmod(unit, 0o644)
     reload = bounded_command(
