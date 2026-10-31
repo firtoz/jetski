@@ -25,6 +25,7 @@ export type Sandbox = {
   createOperation: string;
   placementOperation: string;
   restoreCheckpoint: string | null;
+  pendingResume: string | null;
   phase:
     | "queued"
     | "starting"
@@ -36,6 +37,12 @@ export type Sandbox = {
   lease: HostLease | null;
   checkpoint: string | null;
   generation: number;
+};
+type ResumeRecord = {
+  generation: number;
+  checkpointId: string;
+  releaseId: string | null;
+  placed: boolean;
 };
 type CommandRecord = {
   id: string;
@@ -152,6 +159,7 @@ export class SandboxManager {
         createOperation: operationId,
         placementOperation: operationId,
         restoreCheckpoint: null,
+        pendingResume: null,
         phase: "queued",
         lease: null,
         checkpoint: null,
@@ -279,6 +287,7 @@ export class SandboxManager {
     try {
       await this.recoverObservedCreates(owner);
       await this.shutdown.reconcile(owner);
+      await this.reconcileHeldResumes(owner);
       await this.retireIdleHosts(owner);
       // Repair admission interrupted between sandbox, operation and queue commits.
       for (const sandbox of await this.list(owner))
@@ -380,22 +389,83 @@ export class SandboxManager {
       this.activeOwners.delete(owner);
     }
   }
+  private async reconcileHeldResumes(owner: string) {
+    const pending = await this.state.transaction((tx) =>
+      tx
+        .scan<ResumeRecord>(`resume/${owner}/`)
+        .filter((row) => !row.value.placed),
+    );
+    for (const row of pending) {
+      const [, recordOwner, sandboxId, id] = row.key.split("/");
+      if (!recordOwner || !sandboxId || !id || !row.value.releaseId)
+        throw Error("Invalid resume intent");
+      const scope = { owner: recordOwner, sandbox: sandboxId };
+      const release = await this.operations.get(scope, row.value.releaseId);
+      if (release?.phase !== "succeeded") continue;
+      await this.state.transaction((tx) => {
+        const intent = tx.get<ResumeRecord>(row.key);
+        if (!intent || intent.placed) return;
+        const sandbox = tx.get<Sandbox>(this.key(scope));
+        if (
+          !sandbox ||
+          sandbox.phase !== "stopped" ||
+          sandbox.lease ||
+          sandbox.pendingResume !== id ||
+          sandbox.generation !== intent.generation ||
+          sandbox.checkpoint !== intent.releaseId
+        )
+          throw Error("Resume release authority changed");
+        const fence = { ...scope, generation: intent.generation };
+        const next = this.checkpoints.advanceIn(tx, fence);
+        this.operations.advanceIn(tx, fence);
+        this.operations.rebaseQueuedIn(tx, next, id, fence.generation);
+        tx.put(row.key, {
+          ...intent,
+          generation: next.generation,
+          placed: true,
+        });
+        tx.put(this.key(scope), {
+          ...sandbox,
+          phase: "queued",
+          generation: next.generation,
+          placementOperation: id,
+          restoreCheckpoint: intent.checkpointId,
+          pendingResume: null,
+        });
+      });
+    }
+  }
   async resume(scope: Scope, id: string) {
     this.uuid(id);
     await this.state.transaction((tx) => {
-      const prior = tx.get<{ generation: number; checkpointId: string }>(
-        `resume/${scopeKey(scope)}/${id}`,
-      );
+      const prior = tx.get<ResumeRecord>(`resume/${scopeKey(scope)}/${id}`);
       if (prior) return prior;
       const sandbox = tx.get<Sandbox>(this.key(scope));
       if (
         !sandbox ||
         sandbox.phase !== "stopped" ||
-        sandbox.lease ||
+        sandbox.pendingResume ||
         !sandbox.checkpoint
       )
         throw Error("Resume requires a durably released checkpoint");
       const fence = { ...scope, generation: sandbox.generation };
+      if (sandbox.lease) {
+        const releaseId = crypto.randomUUID();
+        this.operations.admitIn(tx, fence, id, "resume", {
+          checkpointId: sandbox.checkpoint,
+        });
+        this.shutdown.admitIn(tx, fence, releaseId, "stop");
+        const current = tx.get<Sandbox>(this.key(scope))!;
+        tx.put(this.key(scope), { ...current, pendingResume: id });
+        const record: ResumeRecord = {
+          generation: fence.generation,
+          checkpointId: sandbox.checkpoint,
+          releaseId,
+          placed: false,
+        };
+        tx.put(`resume/${scopeKey(scope)}/${id}`, record);
+        return record;
+      }
       const next = this.checkpoints.advanceIn(tx, fence);
       this.operations.advanceIn(tx, fence);
       this.operations.admitIn(tx, next, id, "resume", {
@@ -404,6 +474,8 @@ export class SandboxManager {
       const record = {
         generation: next.generation,
         checkpointId: sandbox.checkpoint,
+        releaseId: null,
+        placed: true,
       };
       tx.put(`resume/${scopeKey(scope)}/${id}`, record);
       tx.put(this.key(scope), {
@@ -421,6 +493,7 @@ export class SandboxManager {
     this.uuid(id);
     const sandbox = await this.get(scope);
     if (!sandbox) throw Error("Sandbox unavailable");
+    if (sandbox.pendingResume) throw Error("Resume transition pending");
     if (sandbox.lease) return this.shutdown.admit(scope, id, "delete");
     const fence = await this.operations.generation(scope);
     return this.state.transaction((tx) => {
@@ -428,6 +501,7 @@ export class SandboxManager {
       if (
         !current ||
         current.lease ||
+        current.pendingResume ||
         !["stopped", "deleted"].includes(current.phase)
       )
         throw Error("Sandbox deletion requires resolved placement");

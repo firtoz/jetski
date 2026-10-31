@@ -230,7 +230,7 @@ try {
     "succeeded",
   );
   const secondStop = randomUUID();
-  await client.request(`/v1/sandboxes/${id}/stop`, "POST", {
+  await client.request(`/v1/sandboxes/${id}/checkpoint`, "POST", {
     operationId: secondStop,
   });
   for (let attempt = 0; attempt < 150; attempt++) {
@@ -249,11 +249,49 @@ try {
     parseArchive(firstRoot.metadata).sha256,
     parseArchive(secondRoot.metadata).sha256,
   );
+  const held = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
+  assert.ok(held.lease);
+  const heldResume = randomUUID();
+  await client.request(`/v1/sandboxes/${id}/resume`, "POST", {
+    operationId: heldResume,
+  });
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const operation = await client.operation(id, heldResume);
+    if (operation.phase === "succeeded") break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal((await client.operation(id, heldResume)).phase, "succeeded");
+  const resumedHeld = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
+  assert.equal(resumedHeld.phase, "running");
+  assert.equal(resumedHeld.generation, 3);
+  assert.notEqual(resumedHeld.lease?.assignmentId, held.lease.assignmentId);
+  assert.equal(resumedHeld.lease?.machineId, held.lease.machineId);
+  await client.request(`/v1/sandboxes/${id}/resume`, "POST", {
+    operationId: heldResume,
+  });
+  assert.equal(
+    (await client.request<Sandbox>(`/v1/sandboxes/${id}`)).lease?.assignmentId,
+    resumedHeld.lease?.assignmentId,
+  );
+  fence.generation = 3;
   const deletion = randomUUID();
   await client.request(`/v1/sandboxes/${id}`, "DELETE", {
     operationId: deletion,
   });
+  for (let attempt = 0; attempt < 150; attempt++) {
+    const operation = await client.operation(id, deletion);
+    if (operation.phase === "succeeded") break;
+    if (operation.phase === "uncertain")
+      throw Error("Assigned deletion uncertain");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   assert.equal((await client.operation(id, deletion)).phase, "succeeded");
+  const finalRoot = await registry.root(fence, deletion);
+  assert.ok(finalRoot);
+  assert.equal(
+    parseArchive(finalRoot.metadata).sha256,
+    parseArchive(firstRoot.metadata).sha256,
+  );
   assert.equal(
     (await client.request<Sandbox>(`/v1/sandboxes/${id}`)).phase,
     "deleted",
@@ -317,6 +355,8 @@ try {
       repeatedCheckpointEqual: true,
       idleRetirementWithoutPowerOff: true,
       deletedSandboxRetainsHistory: true,
+      heldCheckpointResume: true,
+      assignedDeletion: true,
       completeLifecycle: false,
     }),
   );

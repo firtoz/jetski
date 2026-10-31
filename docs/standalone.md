@@ -54,10 +54,10 @@ Poll `operation ID --id UUID` for completion. Failed publication quarantines the
 source; it never reports successful release. A lost release acknowledgement can
 be reconciled using the existing receipt without creating a new assignment.
 
-`resume ID --operation UUID` restores a stopped, released sandbox into a fresh
-writable assignment. Checkpoints and prior command output remain retained across
-generations. For now, issue `stop` before resuming a checkpoint that still holds
-its host; direct resume from a held checkpoint is not yet implemented.
+`resume ID --operation UUID` restores a stopped sandbox into a fresh writable
+assignment. If its checkpoint still holds the host, the same durable resume request
+first releases that assignment. Checkpoints and prior command output remain
+retained across generations. Repeating the resume ID observes its existing work.
 
 The worker retires released idle host allocations after ten minutes, or when their
 allocation lifetime expires. It does not replenish idle hosts without queued demand.

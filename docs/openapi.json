@@ -527,7 +527,7 @@
     },
     "/v1/sandboxes/{sandboxId}/resume": {
       "post": {
-        "summary": "Queue restore of a stopped released sandbox into a fresh assignment",
+        "summary": "Queue resume from a stopped checkpoint, releasing any held assignment before fresh restore",
         "parameters": [
           {
             "name": "sandboxId",

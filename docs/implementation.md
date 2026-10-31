@@ -451,3 +451,27 @@ retained history. Await CI qualification. Queued/starting/quarantined deletion i
 still rejected pending resolved placement; full deletion/recovery coverage remains
 open, as do held-checkpoint resume and all other listed release gates. No paid
 resources or existing GC-test state changed.
+
+Verified deletion source: **f7545811e76865e704f7b55280b391faf56bcda4**, CI
+**41212548510**, all four jobs passed; watcher 59967 terminal0. Real API evidence
+reports deletedSandboxRetainsHistory=true after source-deleted resume/repeated
+save, then successful idle retirement without poweroff. Assigned deletion has
+unit-level restart/replay/publication evidence; this CI addition directly exercises
+released deletion. Complete lifecycle qualification is still false. Next prioritize
+held-checkpoint resume and interruption recovery, then queued/uncertain deletion
+and active-host expiry drain; retain the full provider/storage/transport/GC/client
+and benchmark scope. No paid allocation or prior experiment state was touched.
+
+Held-checkpoint resume continuation: a single persisted resume intent now reserves
+its release dependency atomically with shutdown admission. After verified release,
+reconciliation advances both generations and carries only the undispatched resume
+operation into fresh placement. A pending-resume marker excludes competing lifecycle
+requests across the release/placement boundary. Replays observe the existing intent.
+Local tests cover lost release ACK, controller restart, retained source restoration,
+competing deletion denial and no repeated import. All 55 unit tests and build,
+typecheck/Biome/Ruff pass. The real API fixture now attempts held-checkpoint resume
+then deletion of its active assignment, comparing the final checkpoint SHA with
+the original and retaining historical output. Await CI before claiming those paths
+qualified. Interrupted import/save recovery, queued/uncertain deletion, active-host
+expiry drain and all remaining adapter/transport/GC/client/benchmark gates remain.
+No paid resources, operator host configuration or original GC experiment changed.

@@ -145,6 +145,29 @@ export class OperationJournal {
     tx.put(key, next);
     return next;
   }
+  /** Carry only an undispatched operation across an atomic lifecycle fence. */
+  rebaseQueuedIn(
+    tx: Transaction,
+    fence: Fence,
+    id: string,
+    previousGeneration: number,
+  ) {
+    this.check(tx, fence);
+    const key = this.key(fence, id),
+      operation = tx.get<Operation>(key);
+    if (
+      !operation ||
+      operation.phase !== "queued" ||
+      operation.generation !== previousGeneration ||
+      fence.generation !== previousGeneration + 1
+    )
+      throw Error("Operation cannot cross generation");
+    tx.put(key, {
+      ...operation,
+      generation: fence.generation,
+      updatedAt: this.now(),
+    });
+  }
   async pending(scope: Scope): Promise<Operation[]> {
     return this.state.transaction((tx) =>
       tx

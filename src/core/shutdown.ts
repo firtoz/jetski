@@ -3,10 +3,12 @@ import { decodeBase64 } from "./command-output.js";
 import {
   type CheckpointStore,
   canonical,
+  type Fence,
   type Json,
   type Scope,
   type StateStore,
   scopeKey,
+  type Transaction,
 } from "./contracts.js";
 import type { Sandbox } from "./manager.js";
 import type { OperationJournal } from "./operations.js";
@@ -64,33 +66,36 @@ export class ShutdownCoordinator {
     const { state, operations } = this.deps;
     const fence = await operations.generation(scope);
 
-    await state.transaction((tx) => {
-      operations.admitIn(tx, fence, id, mode, {});
-      const key = this.key(scope, id),
-        prior = tx.get<Shutdown>(key);
-      if (prior) {
-        if (prior.mode !== mode) throw Error("Shutdown identity conflict");
-        return;
-      }
-      const sandbox = tx.get<Sandbox>(sandboxKey(scope));
-      if (!sandbox?.lease || !["running", "stopped"].includes(sandbox.phase))
-        throw Error("Sandbox cannot stop");
-      tx.put(key, {
-        ...scope,
-        id,
-        mode,
-        lease: sandbox.lease,
-        image: sandbox.image,
-        generation: sandbox.generation,
-        previous: sandbox.checkpoint,
-        stage: "quiesce",
-        archive: null,
-        blocked: false,
-      });
-      // Shares the command-admission transaction boundary: no later command starts.
-      tx.put(sandboxKey(scope), { ...sandbox, phase: "stopping" });
-    });
+    await state.transaction((tx) => this.admitIn(tx, fence, id, mode));
     return operations.get(scope, id);
+  }
+  admitIn(tx: Transaction, fence: Fence, id: string, mode: ShutdownMode) {
+    const scope = { owner: fence.owner, sandbox: fence.sandbox };
+    const operations = this.deps.operations;
+    operations.admitIn(tx, fence, id, mode, {});
+    const key = this.key(scope, id),
+      prior = tx.get<Shutdown>(key);
+    if (prior) {
+      if (prior.mode !== mode) throw Error("Shutdown identity conflict");
+      return;
+    }
+    const sandbox = tx.get<Sandbox>(sandboxKey(scope));
+    if (!sandbox?.lease || !["running", "stopped"].includes(sandbox.phase))
+      throw Error("Sandbox cannot stop");
+    tx.put(key, {
+      ...scope,
+      id,
+      mode,
+      lease: sandbox.lease,
+      image: sandbox.image,
+      generation: sandbox.generation,
+      previous: sandbox.checkpoint,
+      stage: "quiesce",
+      archive: null,
+      blocked: false,
+    });
+    // Shares the command-admission transaction boundary: no later command starts.
+    tx.put(sandboxKey(scope), { ...sandbox, phase: "stopping" });
   }
   private async advance(
     record: Shutdown,

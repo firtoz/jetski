@@ -167,6 +167,37 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     if (failure === "none") {
       assert.ok((await manager.get(scope))?.lease, "checkpoint retains host");
       assert.equal(actions.includes("remove"), false);
+      const heldResume = randomUUID();
+      await manager.resume(scope, heldResume);
+      await assert.rejects(
+        manager.deleteSandbox(scope, randomUUID()),
+        /Resume transition pending/,
+      );
+      failRelease = true;
+      await assert.rejects(manager.reconcile("alice"), /release ACK lost/);
+      manager = new SandboxManager(
+        state,
+        provider,
+        transport,
+        objects,
+        options,
+      );
+      await manager.reconcile("alice");
+      assert.equal((await manager.get(scope))?.phase, "running");
+      assert.equal((await manager.get(scope))?.generation, 2);
+      assert.equal(
+        (await manager.operation(scope, heldResume))?.phase,
+        "succeeded",
+      );
+      assert.deepEqual(Buffer.concat(imported), archive);
+      imported.length = 0;
+      await manager.resume(scope, heldResume);
+      await manager.reconcile("alice");
+      assert.equal(
+        imported.length,
+        0,
+        "held resume replay never repeats import",
+      );
       await manager.stop(scope, randomUUID());
       await manager.reconcile("alice");
     }
@@ -185,12 +216,13 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       count,
       "completed stop replay has no host effects",
     );
+    const oldGeneration = failure === "none" ? 2 : 1;
     const registry = new CheckpointRegistry(state, objects),
-      oldFence = { ...scope, generation: 1 };
+      oldFence = { ...scope, generation: oldGeneration };
     await assert.rejects(manager.resume(scope, stopId), /identity conflict/);
     assert.equal(
       (await manager.get(scope))?.generation,
-      1,
+      oldGeneration,
       "conflicting operation rolls back both generations",
     );
     await registry.admit(
@@ -213,8 +245,11 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     manager = new SandboxManager(state, provider, transport, objects, options);
     await manager.reconcile("alice");
     assert.equal((await manager.get(scope))?.phase, "running");
-    assert.equal((await manager.get(scope))?.generation, 2);
-    assert.equal((await manager.get(scope))?.lease?.generation, 2);
+    assert.equal((await manager.get(scope))?.generation, oldGeneration + 1);
+    assert.equal(
+      (await manager.get(scope))?.lease?.generation,
+      oldGeneration + 1,
+    );
     assert.deepEqual(Buffer.concat(imported), archive);
     now += DEFAULTS.idleMs;
     await manager.reconcile("alice");
@@ -258,7 +293,7 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     assert.equal(
       (await manager.get({ owner: "alice", sandbox: fresh }))?.lease
         ?.generation,
-      3,
+      oldGeneration + 2,
     );
     const freshScope = { owner: "alice", sandbox: fresh },
       deletion = randomUUID();
@@ -299,7 +334,9 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       beforeReplay,
       "released deletion needs no host",
     );
-    assert.ok(await registry.root({ ...scope, generation: 2 }, stopId));
+    assert.ok(
+      await registry.root({ ...scope, generation: oldGeneration + 1 }, stopId),
+    );
     await assert.rejects(
       manager.deleteSandbox({ owner: "bob", sandbox: fresh }, randomUUID()),
       /unavailable/,
