@@ -93,11 +93,19 @@ workload-specific products.
 
 ## Latest continuation status
 
-Current source: **e221820da5a8968a91ae75dcaa1031ca8c1f9607**, CI **41222088859**.
-Watcher **79933** is live. First poll exact handle/run; do not restart on timeout.
-Unit/build/typecheck/lint job passed with51TypeScript+42Python tests. Runtime/SSH/API
-qualification is still running. Prior5234d11 passed all4jobs inCI41221713515;
-watcher84585 exited0 and disposable resources were cleaned.
+Current source: **21f8b39b72e56281096f2a42ef6b3bb433c2c360**, CI **41222561910**.
+Watcher **63739** is live; poll exact handle/run first on continuation. Unit/build/
+typecheck/lint job passed with53TypeScript+42Python tests. Runtime/SSH/API jobs
+remain running. Do not restart on an observation timeout. Priore221820 passed all4
+jobs inCI41222088859; watcher79933 exited0 and disposable resources cleaned.
+
+BoatTransport now sends owned-host protocol requests through bounded command/file
+APIs without retrying uncertain effects. Above48KiB, input goes to a fresh private
+temporary directory and is length/SHA-verified before dispatch, avoiding argv limits.
+Cleanup is nonrecursive, owner/mode/symlink checked. Tests use injected HTTP only;
+actual large-request script execution on disposable CI Linux is the next gate.
+Then implement automatic bootstrap and standalone Boat configuration. No live Boat
+allocation or cloud-storage request was made. Paid qualification remains unapproved.
 
 Boat allocation/inspection/retirement implementation now exists behind its own
 subpath. HTTP fixture tests qualify frozen create replay acrossSQLite reopen,
@@ -827,3 +835,13 @@ receipts. These are wire fixtures; actual script execution and bootstrap/configu
 are still required. No paid VM or remote storage changes. Next qualify on disposable
 CI Linux, then wire automatic Boat bootstrap and standalone configuration. Main CI
 pending; all remaining interactive/client/provider/benchmark gates stay open.
+
+Boat host-script qualification continuation: added a third disposable CI matrix
+variant. It runs BoatTransport's actual shell/Python commands against the installed
+host-control agent and rootless runtime, with an emulated provider response envelope.
+Small and >argv-limit requests must report real readiness; corrupt uploaded bytes
+must fail before control dispatch; private request directories must be absent after
+success/failure. This neither calls Boat nor qualifies its network/API service.
+Local build/typecheck/lint pass before final fixture-write adjustment. CI execution
+is pending; do not run this privileged fixture on the operator desktop. Bootstrap
+and standalone Boat configuration still follow, plus full remaining release gates.
