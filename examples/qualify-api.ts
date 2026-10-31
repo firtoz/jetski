@@ -35,10 +35,16 @@ const transport = new SshTransport([
     knownHostsPath: knownHosts,
   },
 ]);
+let controlUnavailable = false;
 const manager = new SandboxManager(
   state,
   new SshHostProvider(["ssh-ci"], state, transport),
-  transport,
+  {
+    request: async (host, request) => {
+      if (controlUnavailable) throw Error("Control transport unavailable");
+      return transport.request(host, request);
+    },
+  },
   new LocalCheckpointStore(join(directory, "objects")),
   { poolId: "ci", approvedImages: [image] },
 );
@@ -111,6 +117,19 @@ try {
     `/v1/sandboxes/${id}/commands/${commandId}/output`,
   );
   assert.equal(Buffer.from(output.base64, "base64").toString(), "api-ok");
+  await manager.retainCommand(
+    { owner: "qualification", sandbox: id },
+    commandId,
+  );
+  controlUnavailable = true;
+  const retainedOutput = await client.request<{ base64: string }>(
+    `/v1/sandboxes/${id}/commands/${commandId}/output`,
+  );
+  assert.equal(retainedOutput.base64, output.base64);
+  assert.deepEqual(
+    await client.request(`/v1/sandboxes/${id}/commands/${commandId}`),
+    command,
+  );
   const cli = await promisify(execFile)(
     process.execPath,
     ["dist/cli.js", "list"],
@@ -123,6 +142,7 @@ try {
       ownerIsolation: true,
       serverProgress: true,
       commandExecution: true,
+      outputWithoutHostControl: true,
       sdk: true,
       cli: true,
       completeLifecycle: false,

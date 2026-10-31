@@ -1,4 +1,5 @@
 import { CheckpointRegistry } from "./checkpoints.js";
+import { CommandOutputStore, type OutputChannel } from "./command-output.js";
 import {
   type CheckpointStore,
   canonical,
@@ -30,6 +31,13 @@ export type Sandbox = {
   checkpoint: string | null;
   generation: number;
 };
+type CommandRecord = {
+  id: string;
+  lease: HostLease;
+  image: string;
+  spec: { argv: string[]; cwd: string; timeout: number };
+};
+
 export type ManagerOptions = {
   poolId: string;
   approvedImages: string[];
@@ -42,6 +50,7 @@ export class SandboxManager {
   private readonly pool: PoolJournal;
   private readonly operations: OperationJournal;
   private readonly checkpoints: CheckpointRegistry;
+  private readonly outputs: CommandOutputStore;
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
   constructor(
@@ -60,6 +69,7 @@ export class SandboxManager {
     );
     this.operations = new OperationJournal(state);
     this.checkpoints = new CheckpointRegistry(state, objects);
+    this.outputs = new CommandOutputStore(objects, this.checkpoints);
     this.images = new Set(options.approvedImages);
     for (const image of this.images)
       if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}$/.test(image))
@@ -292,43 +302,98 @@ export class SandboxManager {
     timeout = 120,
   ): Promise<Json> {
     this.uuid(id);
-    const sandbox = await this.get(scope);
-    if (!sandbox?.lease || sandbox.phase !== "running")
-      throw new Error("Sandbox not running");
-    // Host admission is idempotent on this exact ID and specification. A transport
-    // failure is observed by ID; the SDK must not choose a replacement command ID.
-    return this.request(sandbox.lease, "command-start", {
-      lease: sandbox.lease,
-      image: sandbox.image,
+    const spec = { argv, cwd, timeout };
+    const admission = await this.state.transaction((tx) => {
+      const key = `command/${scopeKey(scope)}/${id}`;
+      const prior = tx.get<CommandRecord>(key);
+      if (prior) {
+        if (canonical(prior.spec) !== canonical(spec))
+          throw new Error("Command identity conflict");
+        return { record: prior, fresh: false };
+      }
+      const sandbox = tx.get<Sandbox>(this.key(scope));
+      if (!sandbox?.lease || sandbox.phase !== "running")
+        throw new Error("Sandbox not running");
+      const record: CommandRecord = {
+        id,
+        lease: sandbox.lease,
+        image: sandbox.image,
+        spec,
+      };
+      tx.put(key, record);
+      return { record, fresh: true };
+    });
+    // Persist before crossing the host boundary. Even a controller crash before
+    // dispatch is uncertain: reconnect observes this ID and never reexecutes it.
+    if (!admission.fresh) return this.commandStatus(scope, id);
+    return this.request(admission.record.lease, "command-start", {
+      lease: admission.record.lease,
+      image: admission.record.image,
       commandId: id,
-      argv,
-      cwd,
-      timeout,
+      ...spec,
     });
   }
-  async commandStatus(scope: Scope, id: string): Promise<Json> {
+  private async command(scope: Scope, id: string) {
     this.uuid(id);
+    const command = await this.state.transaction((tx) =>
+      tx.get<CommandRecord>(`command/${scopeKey(scope)}/${id}`),
+    );
+    if (!command) throw new Error("Command unavailable");
+    return command;
+  }
+  async commandStatus(scope: Scope, id: string): Promise<Json> {
+    const command = await this.command(scope, id);
     const sandbox = await this.get(scope);
-    if (!sandbox?.lease) throw new Error("Sandbox unavailable");
-    return this.request(sandbox.lease, "command-status", {
-      lease: sandbox.lease,
-      image: sandbox.image,
+    if (!sandbox) throw new Error("Sandbox unavailable");
+    const retained = await this.outputs.retained(
+      { ...scope, generation: sandbox.generation },
+      id,
+    );
+    if (retained !== undefined) return retained;
+    return this.request(command.lease, "command-status", {
+      lease: command.lease,
+      image: command.image,
       commandId: id,
     });
+  }
+  /** Called by lifecycle reconciliation before host release. A failed transfer
+   * keeps its writer admission, preventing collection and successful release. */
+  async retainCommand(scope: Scope, id: string): Promise<void> {
+    const command = await this.command(scope, id);
+    const sandbox = await this.get(scope);
+    if (!sandbox) throw new Error("Sandbox unavailable");
+    const status = await this.commandStatus(scope, id);
+    await this.outputs.retain(
+      { ...scope, generation: sandbox.generation },
+      id,
+      status,
+      (channel, offset, bytes) =>
+        this.request(command.lease, "command-output", {
+          lease: command.lease,
+          image: command.image,
+          commandId: id,
+          channel,
+          offset,
+          bytes,
+        }),
+    );
   }
   async commandOutput(
     scope: Scope,
     id: string,
-    channel: "stdout" | "stderr",
+    channel: OutputChannel,
     offset: number,
     bytes: number,
   ): Promise<Json> {
-    this.uuid(id);
+    const command = await this.command(scope, id);
     const sandbox = await this.get(scope);
-    if (!sandbox?.lease) throw new Error("Sandbox unavailable");
-    return this.request(sandbox.lease, "command-output", {
-      lease: sandbox.lease,
-      image: sandbox.image,
+    if (!sandbox) throw new Error("Sandbox unavailable");
+    const fence = { ...scope, generation: sandbox.generation };
+    if ((await this.outputs.retained(fence, id)) !== undefined)
+      return this.outputs.read(fence, id, channel, offset, bytes);
+    return this.request(command.lease, "command-output", {
+      lease: command.lease,
+      image: command.image,
       commandId: id,
       channel,
       offset,

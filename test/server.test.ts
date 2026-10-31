@@ -142,7 +142,9 @@ test("uncertain create retains assignment and does not allocate or execute twice
     await rm(directory, { recursive: true, force: true });
   });
   let allocations = 0,
-    creations = 0;
+    creations = 0,
+    commandStarts = 0;
+  let hostLost = false;
   const provider: HostProvider = {
     capabilities: () => ({
       kind: "machine-host",
@@ -158,6 +160,32 @@ test("uncertain create retains assignment and does not allocate or execute twice
   };
   const transport: HostTransport = {
     request: async (_host, request) => {
+      if (hostLost) throw Error("host removed");
+      const payload = request.payload as Record<
+        string,
+        import("../src/core/contracts.js").Json
+      >;
+      if (request.action === "command-start") {
+        commandStarts++;
+        throw Error("command ACK lost");
+      }
+      if (request.action === "command-status")
+        return {
+          version: 1,
+          id: request.id,
+          result: { id: payload.commandId!, phase: "succeeded", exitCode: 0 },
+        };
+      if (request.action === "command-output")
+        return {
+          version: 1,
+          id: request.id,
+          result: {
+            base64: payload.channel === "stdout" ? "AP8=" : "",
+            nextOffset: payload.channel === "stdout" ? 2 : 0,
+            terminal: true,
+          },
+        };
+
       if (request.action === "create") {
         creations++;
         throw Error("lost ACK");
@@ -210,4 +238,39 @@ test("uncertain create retains assignment and does not allocate or execute twice
     (await manager.get({ owner: "alice", sandbox: id }))?.phase,
     "running",
   );
+  const scope = { owner: "alice", sandbox: id },
+    commandId = randomUUID();
+  await assert.rejects(
+    manager.startCommand(scope, commandId, ["true"]),
+    /command ACK lost/,
+  );
+  const restarted = new SandboxManager(
+    state,
+    provider,
+    transport,
+    objects,
+    options,
+  );
+  assert.deepEqual(await restarted.startCommand(scope, commandId, ["true"]), {
+    id: commandId,
+    phase: "succeeded",
+    exitCode: 0,
+  });
+  assert.equal(commandStarts, 1);
+  await assert.rejects(
+    restarted.startCommand(scope, commandId, ["false"]),
+    /identity conflict/,
+  );
+  await restarted.retainCommand(scope, commandId);
+  hostLost = true;
+  assert.deepEqual(
+    await restarted.commandOutput(scope, commandId, "stdout", 0, 256),
+    { base64: "AP8=", nextOffset: 2, terminal: true },
+  );
+  assert.deepEqual(await restarted.startCommand(scope, commandId, ["true"]), {
+    id: commandId,
+    phase: "succeeded",
+    exitCode: 0,
+  });
+  assert.equal(commandStarts, 1);
 });

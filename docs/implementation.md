@@ -314,3 +314,27 @@ ambiguous effects still remain quarantined; full interrupted-stage recovery is
 not yet complete. API fixture cleanup closes its local server even when remote
 cleanup fails, while surfacing that failure. Next: stop/checkpoint/resume/delete
 coordinator paths and durable output retention, then full standalone recovery.
+
+Latest verified source: **994d5bf2f6f1cfe4eb99acc684b05c154884c887**, CI
+**41210175537**, all four jobs successful (unit/build/lint, rootless runtime,
+direct SSH recovery, and real standalone API/SDK/CLI). Watcher 55071 terminal0.
+This continuation made implementation and qualification progress. Full acceptance
+is still unproven: the API fixture intentionally covers create/execute only.
+Next continuation should implement durable stop/checkpoint/resume/delete through
+the coordinator, retaining command outcomes/output before releasing a host. Keep
+all earlier gates and operational constraints; no new budget has been approved.
+
+Command retention continuation: controller admission now persists each command's
+identity, original assignment and specification before dispatch. Repeated starts
+observe that identity instead of redispatching, including after a lost ACK or
+controller restart. A portable command-output store publishes verified immutable
+binary segments and terminal outcomes through the retained-root registry; readers
+verify hashes and hold reader admissions. Failed saves preserve writer exclusion.
+Nineteen TypeScript and thirty-one Python tests pass, including multi-frame binary
+cursor recovery, source-unavailable replay, corrupt-object rejection, owner denial,
+conflicting outcomes and interrupted publication. Build/typecheck/Biome/Ruff pass.
+The real API fixture now retains command output and reads it with its host-control
+transport disabled; CI qualification remains pending. This does not yet prove
+full host retirement or automatic lifecycle retention: stop/checkpoint/resume/delete
+remain the next coordinator work, and interrupted retention still quarantines
+rather than automatically retries. No paid resources or existing GC state touched.
