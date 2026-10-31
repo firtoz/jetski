@@ -93,12 +93,19 @@ workload-specific products.
 
 ## Latest continuation status
 
-Verified source: **dea458a79213019c512d1029542d3911b8133c6e**, CI **41219691405**,
-all four jobs successful; watcher 12089 terminated with exit 0. Local build,
-typecheck, Biome, Ruff and all **80 unit tests** pass (38 TypeScript, 42 Python).
-Real API logs confirm checkpointHistoryAndReplaySafePins=true alongside the prior
-upload, expiry, queue, shutdown, output retention and replacement recovery checks.
-No active CI work remains; disposable hosts/listeners were cleaned by the fixtures.
+Current source: **5ff2a89d1a1f68a32fbfd93f72b76c4da772a6d6**, CI **41221063301**.
+Watcher **11645** is live. Unit/build/lint and rootless-runtime jobs passed; SSH/API
+qualification remains running. Poll this exact watcher/run first; do not restart on
+observation timeout. All 43 TypeScript and 42 Python tests pass in CI. The preceding
+source ba42eab9774694fb9442624a055b7e32cc3c864b passed all four jobs in CI41220566212.
+No paid host resources or remote storage requests were used. Live R2 qualification
+still awaits bucket-scoped S3 credentials through a private local configuration.
+
+Next implementation: complete scoped object inventory and orphan first-observation
+journaling with minimum24hgrace and full retained-root verification before deletion.
+Incomplete listings or ambiguous journals must keep collection excluded and delete
+nothing. Do not conflate this local injected-clock work with the protected real-grace
+experiment. All other provider/interactive/client/benchmark release gates remain.
 
 The independent SSH/Podman + SQLite/local-store vertical slice now executes commands,
 streams bounded files through SDK helpers, admits resumable uploads, checkpoints,
@@ -748,3 +755,16 @@ verification. Added malformed payload/index tests proving zero storage calls, pl
 a restore test proving no host contact on a corrupt map. Two old test fixtures now
 use complete valid output metadata instead of partial sentinels. Final checks/CI
 pending. Full inventory GC, interactive/provider/client qualification remain open.
+
+Inventory continuation: complete scoped enumeration now precedes deletion planning.
+Durable 64-object pages have explicit completion receipts; retries start a fresh
+fenced attempt and re-enumerate. First-observation records impose24hgrace on orphans.
+Known roots remain authoritative, including an orphan published after discovery.
+Duplicate/foreign entries, inconsistent observations and omitted existing known
+objects fail closed. A66object test exercises two pages, the grace boundary, retained
+publication, interrupted listing with zero deletes, lost delete ACK, SQLite reopen
+and stable result replay.45TypeScript tests pass before the final omitted-object
+check; finalchecks/CI pending. Core caps inventory at100000objects and retains its
+map in memory; metadata compaction and broader concurrency/live-provider tests remain.
+PreviousCI41221063301 at5ff2a89 passed all4jobs; watcher11645 exited0. No remote
+storage writes, paid hosts, or protected experiment changes.

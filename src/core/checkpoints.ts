@@ -11,6 +11,13 @@ import {
   scopeKey,
   type Transaction,
 } from "./contracts.js";
+import {
+  inventoryObjects,
+  type ObjectObservation,
+  observationKey,
+  sameObject,
+  validObservation,
+} from "./inventory.js";
 import { validateRootPayload } from "./root-payload.js";
 
 export type CheckpointRoot = {
@@ -548,8 +555,8 @@ export class CheckpointRegistry {
       tx.put(this.key(fence), state);
     });
   }
-  /** Scoped known-frame collection only. Unknown orphan collection needs a separate
-   * complete object inventory journal and is intentionally not enabled here. */
+  /** Scoped collection requires complete inventory, retained reachability and
+   * durable grace observations. Incomplete enumeration cannot authorize deletion. */
   async collect(
     fence: Fence,
     collection: string,
@@ -576,11 +583,13 @@ export class CheckpointRegistry {
           journal.candidates.some(
             (frame) =>
               !frame ||
-              !state.roots.some((root) =>
-                root.frames.some(
-                  (known) => canonical(known) === canonical(frame),
-                ),
-              ),
+              (!state.roots.some((root) =>
+                root.frames.some((known) => sameObject(known, frame)),
+              ) &&
+                !validObservation(
+                  tx.get<ObjectObservation>(observationKey(fence, frame.id))!,
+                  frame,
+                )),
           ) ||
           new Set(journal.candidates.map((frame) => frame.id)).size !==
             journal.candidates.length)
@@ -618,6 +627,46 @@ export class CheckpointRegistry {
         else candidates.set(frame.id, frame);
       }
     }
+    const inventory = await inventoryObjects(
+      this.state,
+      this.objects,
+      fence,
+      collection,
+      now,
+      (tx) => {
+        const current = this.load(tx, fence);
+        if (
+          current.collection !== collection ||
+          current.accesses.length ||
+          tx.scan(`checkpoint-reference/${scopeKey(fence)}/`).length
+        )
+          throw Error("Collector fenced");
+      },
+    );
+    const known = new Map([...candidates, ...live]);
+    for (const frame of known.values()) {
+      if (!inventory.has(frame.id) && (await this.objects.head(frame)))
+        throw Error("Incomplete inventory omitted a known object");
+    }
+    for (const row of inventory.values()) {
+      const referenced = known.get(row.object.id);
+      if (referenced && !sameObject(referenced, row.object))
+        throw Error("Inventory root integrity failure");
+      if (!referenced && row.firstSeen <= cutoff)
+        candidates.set(row.object.id, row.object);
+    }
+    // A deletion may have succeeded just before its acknowledgement was lost.
+    // Preserve the original plan for absent objects; immutable IDs cannot recur.
+    await this.state.transaction((tx) => {
+      const prior = tx.get<CollectionJournal>(journalKey);
+      for (const object of prior?.candidates ?? []) {
+        if (known.has(object.id) || inventory.has(object.id)) continue;
+        const row = tx.get<ObjectObservation>(observationKey(fence, object.id));
+        if (!row || !validObservation(row, object) || row.firstSeen > cutoff)
+          throw Error("Ambiguous orphan collection journal");
+        candidates.set(object.id, object);
+      }
+    });
     // Complete retained reachability verification precedes the first delete.
     for (const frame of live.values()) {
       const actual = await this.objects.head(frame);

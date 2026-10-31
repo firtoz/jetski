@@ -25,6 +25,8 @@ export const DEFAULTS = Object.freeze({
   hostDrainMs: 5 * 60_000,
   hostsPerOwner: 1,
   gcGraceMs: 24 * 60 * 60_000,
+  gcInventoryObjects: 100_000,
+  gcInventoryPageObjects: 64,
   frameBytes: 4 * 1024 * 1024,
   maxObjectBytes: 8 * 1024 * 1024,
   outputChannelBytes: 16 * 1024 * 1024,

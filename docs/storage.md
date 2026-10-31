@@ -99,3 +99,28 @@ replacement. Protocol fault-injection tests remain a separate part of the suite.
 The executable S3 qualification forces one-entry list pages, exercising continuation
 tokens with a small fixture. Normal standalone operation defaults to 1,000 entries
 per page; `listPageSize` can set a smaller bound.
+
+## Scoped collection inventory
+
+Collection excludes admitted readers/writers and lifecycle restore references. It
+validates all root descriptors and recognized payloads, completes scoped object
+enumeration, then verifies retained reachability before any deletion. An omitted
+known object that still exists, duplicate/foreign entries, a failed listing, or
+ambiguous observation metadata stops collection. The collector remains excluded
+until the same operation is safely resumed.
+
+Each inventory attempt persists pages of 64 objects and an explicit completion
+receipt. A restarted attempt re-enumerates from the beginning; partial pages never
+authorize deletion. The current core has a 100,000-object inventory ceiling and
+holds the completed map in memory. S3 enumerates provider pages; local storage
+currently reads directory names before yielding entries. This is bounded core
+qualification, not an unlimited-scale claim.
+
+Previously unreferenced objects become eligible only 24 hours after their durable
+first observation, with a fresh complete inventory and retained-root check. An
+object published into a checkpoint during that interval is protected by its root.
+Retired checkpoint objects keep their separate retirement grace. Immutable object
+IDs and persistent observation records let a lost deletion acknowledgement retry
+the same object after restart. Observation and collection receipts remain in the
+metadata database; automatic metadata compaction is not implemented. Tests use an
+injected clock, not an elapsed real-time cloud qualification.
