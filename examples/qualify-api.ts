@@ -314,14 +314,36 @@ try {
     base64: Buffer.from("first\n").toString("base64"),
   };
   const attachmentId = randomUUID();
-  let attachment = await client.attachTerminal(
+  let clientInputAckLost = false;
+  const interruptedClient = new JetskiClient(
+    url,
+    token,
+    async (request, options) => {
+      const response = await fetch(request, options);
+      if (
+        options?.method === "POST" &&
+        new URL(String(request)).pathname.endsWith("/inputs") &&
+        !clientInputAckLost
+      ) {
+        clientInputAckLost = true;
+        await response.arrayBuffer();
+        throw Error("Injected client terminal response loss");
+      }
+      return response;
+    },
+  );
+  let attachment = await interruptedClient.attachTerminal(
     clientJournal,
     attachmentId,
     id,
     terminalId,
   );
   await attachment.acknowledgeOutput(0, initialTerminalChunk.nextOffset);
-  await assert.rejects(attachment.send(firstInput));
+  await assert.rejects(
+    attachment.send(firstInput),
+    /Injected client terminal response loss/,
+  );
+  assert.equal(clientInputAckLost, true);
   clientJournal.close();
   clientJournal = new SqliteState(join(directory, "client-terminal.sqlite"));
   attachment = await client.attachTerminal(

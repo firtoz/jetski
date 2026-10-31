@@ -93,6 +93,15 @@ workload-specific products.
 
 ## Latest continuation status
 
+Attachment qualification refinement: source0ae2e2fec0ec8d9736a451b252f234049f53864b
+pushed; CI41234896681 running, /tmp/jetski-attachment-ci.log. Review found the
+background reconciler can receive the injected host ACK loss instead of the HTTP
+caller, making an assert.rejects on the latter race-dependent. Fixture now also
+drops exactly the client POST response after it completes, guaranteeing the
+client journal must recover independently of that scheduling race. Existing host
+ACK injection and no-duplicate workload assertions remain. This is a deterministic
+fault boundary refinement, not weaker acceptance.68local tests/build/lint passed.
+
 Durable input attachment continuation: portable client journal/SDK attachTerminal
 persists one bounded input before remote admission, binds server credential
 fingerprint/terminal, observes existing identity on reconnect, and only admits on
