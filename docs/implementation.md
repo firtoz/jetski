@@ -93,9 +93,9 @@ workload-specific products.
 
 ## Latest continuation status
 
-Verified source: **937fc4688ab6a568aa1ed53a1ae31a31534e4699**, CI **41217621891**,
-all four jobs successful; watcher 39879 terminated with exit 0. Local build,
-typecheck, Biome, Ruff and all **74 unit tests** pass (32 TypeScript, 42 Python).
+Verified source: **2f6e706024dc5ea5352bffbf76d2258fb3c8933a**, CI **41218243748**,
+all four jobs successful; watcher 63038 terminated with exit 0. Local build,
+typecheck, Biome, Ruff and all **75 unit tests** pass (33 TypeScript, 42 Python).
 Real API logs confirm checkpointHistoryAndReplaySafePins=true alongside the prior
 upload, expiry, queue, shutdown, output retention and replacement recovery checks.
 No active CI work remains; disposable hosts/listeners were cleaned by the fixtures.
@@ -132,9 +132,25 @@ and conflicting operation replays fail before allocation. Unit tests verify thes
 cases and preservation of newer history. All 75 tests, build/typecheck and linters
 pass. Real API qualification now writes different newer bytes, saves them, selects
 an older root, and checks older bytes plus retained newer history and reference cleanup.
-CI pending. This remains same-host container replacement, not cloud-host qualification.
+CI **41218243748** passed all four jobs; API logs confirm historicalCheckpointSelection=true
+and preserve all previous recovery checks. Source **2f6e706024dc5ea5352bffbf76d2258fb3c8933a**
+is verified; watcher 63038 exited 0 and disposable resources were cleaned. This remains
+same-host container replacement, not cloud-host qualification.
 
-Next: observe exact-SHA CI, then complete remaining interactive/API scope;
+S3 continuation: added an explicitly exported Node adapter using pinned AWS SDK v3
+3.1161.0 and optional standalone configuration with explicit credential environment
+names and HTTPS. Immutable reservation markers survive deletion. Upload/read bounds,
+full SHA-256 verification and fail-closed pagination protect the core's publication
+contract. Actual SDK HTTP-fixture tests cover conditional headers, concurrent puts,
+reservation/data ACK loss, corruption, namespace isolation and pagination failures.
+All 77 unit tests, build/typecheck and linters pass; npm audit reports zero findings.
+See docs/storage.md for provenance, upstream contract sources and limitations.
+These are protocol-fixture tests, not live S3/R2 conformance or cloud recovery proof.
+Live storage qualification and complete orphan GC remain open. No cloud requests or
+paid resources were used. CI pending for the new dependency and standalone wiring.
+
+Next: observe exact-SHA CI; qualify S3/R2 adapter parity and replacement recovery,
+then complete remaining interactive/API scope and machine-provider adapters;
 qualify unresolved assignment deletion, orphan-reader/multi-controller recovery;
 finish complete safe GC, Boat/S3/R2 adapters, fresh physical-host recovery, downstream
 staging integration and matched benchmarks. Keep every original acceptance gate.

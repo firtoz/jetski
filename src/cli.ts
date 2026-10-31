@@ -34,6 +34,7 @@ if (command === "serve") {
     approvedImages: string[];
     port?: number;
     hostsPerOwner?: number;
+    storage?: import("./server/storage.js").StorageConfig;
     sshHosts: import("./transport/ssh.js").SshHost[];
     principals: Array<{ owner: string; tokenEnv: string }>;
   };
@@ -42,14 +43,14 @@ if (command === "serve") {
     { SshHostProvider },
     { SshTransport },
     { SqliteState },
-    { LocalCheckpointStore },
+    { standaloneStorage },
     { createHttpServer, bearerAuthentication, startWorker },
   ] = await Promise.all([
     import("./core/manager.js"),
     import("./providers/ssh.js"),
     import("./transport/ssh.js"),
     import("./state/sqlite.js"),
-    import("./storage/local.js"),
+    import("./server/storage.js"),
     import("./server/http.js"),
   ]);
   const directory = resolve(config.dataDirectory);
@@ -61,11 +62,12 @@ if (command === "serve") {
     state,
     transport,
   );
+  const storage = await standaloneStorage(directory, config.storage);
   const manager = new SandboxManager(
     state,
     provider,
     transport,
-    new LocalCheckpointStore(join(directory, "objects")),
+    storage.store,
     {
       poolId: config.poolId,
       approvedImages: config.approvedImages,
@@ -94,7 +96,10 @@ if (command === "serve") {
     if (stopping) return;
     stopping = true;
     await stopWorker();
-    server.close(() => state.close());
+    server.close(() => {
+      state.close();
+      storage.close();
+    });
   };
   process.on("SIGINT", () => void stop());
   process.on("SIGTERM", () => void stop());

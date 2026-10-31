@@ -135,3 +135,7 @@ queued placement is cancelled. User pin removal cannot remove this reference.
 Uncertain restore preserves it. Replaying the same operation observes its original
 selection; an explicitly different target conflicts. Invalid, retired or non-filesystem
 roots are rejected before placement or generation advance.
+
+
+Optional S3-compatible checkpoint storage is configured as described in
+[storage contracts and qualification limits](storage.md). Local remains the default.
