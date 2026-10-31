@@ -119,3 +119,24 @@ Boat documents its non-root guest and passwordless sudo in
 [the machine reference](https://docs.boat.dev/machines). Earlier disposable tests
 ran the command envelope as root and did not qualify that privilege boundary;
 the corrected fixture explicitly rejects a root provider-command process.
+
+## Interactive stream transport
+
+`jetski/transport/boat-stream` supplies `BoatStreamTransport`, automatically selected
+by the standalone Boat factory. It registers a per-machine Ed25519 public key with
+the authenticated Boat API and pins the returned SSH host key in transactional
+controller state. Private keys stay in that state, outside workloads and public
+receipts; protect the state database as a credential store. Lost registration
+responses reuse the same key. Changed host keys require explicit reconciliation.
+
+Only unexpired, owned allocations matching the lease owner may connect. SSH runs
+the fixed privileged host-control entry point as Boat's `user`; it does not expose
+an outer-host shell through the sandbox API. Workload access still requires the
+normal generation-fenced stream reservation. Connections have bounded admission,
+framing and lifetime, and are never automatically replayed after interruption.
+The adapter accepts Boat's IPv4 forwarding endpoint or direct IPv4/IPv6 address.
+Provider registration currently runs per connection; live latency and provider
+compatibility remain qualification gates.
+
+Wire contract: [Boat's versioned OpenAPI](https://docs.boat.dev/openapi/boat-v1.yaml),
+`POST /sandboxes/{sandboxId}/sshkey`.

@@ -358,9 +358,8 @@ that an application processed the bytes.
 Port revocation, assignment changes and controller expiry use the same durable
 stream authority as embedded clients. Interruption closes the forwarding channel
 and preserves uncertain delivery/cleanup until reconciled. Arbitrary IP addresses,
-Unix sockets, remote listeners and host ports remain unavailable. Boat streaming,
-authenticated HTTP/WebSocket previews, full gateway stop/replacement qualification
-and broader release gates remain open; see the implementation matrix.
+Unix sockets, remote listeners and host ports remain unavailable. Live Boat
+streaming and physical replacement qualification remain open; see the implementation matrix.
 
 
 ## Stream inspection and cancellation
@@ -385,9 +384,9 @@ the provider's machine-host/platform/runtime capabilities. hostStreams and strea
 inspection/cancellation require a configured stream transport. tcpForwarding also
 requires an explicitly configured SSH gateway; an embedded HTTP server defaults
 that declaration to false. These are feature declarations, not host health,
-per-owner authorization or per-sandbox readiness. Boat currently lacks its stream
-adapter, so it does not advertise TCP forwarding or previews. previews requires
-a configured preview listener and stream adapter.
+per-owner authorization or per-sandbox readiness. The Boat host factory supplies
+an SSH stream adapter with provider-authenticated host-key pinning. Previews still
+require a configured preview listener; live Boat qualification remains pending.
 
 
 ## Isolated HTTP/WebSocket preview transport (experimental)

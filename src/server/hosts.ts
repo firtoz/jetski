@@ -40,17 +40,23 @@ export async function standaloneHosts(
     !environment[config.tokenEnv]
   )
     throw Error("Boat credential environment variable missing or invalid");
-  const [{ BoatApi, BoatHostProvider }, { BoatTransport }, { BoatBootstrap }] =
-    await Promise.all([
-      import("../providers/boat.js"),
-      import("../transport/boat.js"),
-      import("../providers/boat-bootstrap.js"),
-    ]);
+  const [
+    { BoatApi, BoatHostProvider },
+    { BoatTransport },
+    { BoatBootstrap },
+    { BoatStreamTransport },
+  ] = await Promise.all([
+    import("../providers/boat.js"),
+    import("../transport/boat.js"),
+    import("../providers/boat-bootstrap.js"),
+    import("../transport/boat-stream.js"),
+  ]);
   const api = new BoatApi(environment[config.tokenEnv]!);
   const transport = new BoatTransport(state, api);
   const bootstrap = new BoatBootstrap(state, api, poolId, approvedImages);
   return {
     transport,
+    streamTransport: new BoatStreamTransport(state, api),
     provider: new BoatHostProvider(
       state,
       api,

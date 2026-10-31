@@ -44,7 +44,7 @@ export class BoatApi {
     } = {},
   ): Promise<Reply> {
     if (
-      !/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+(?:\/(?:commands|files))?)?$/.test(
+      !/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+(?:\/(?:commands|files|sshkey))?)?$/.test(
         path,
       )
     )

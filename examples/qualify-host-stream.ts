@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Json } from "../src/core/contracts.js";
+import type { HostStreamTransport } from "../src/core/host-stream.js";
 import { OperationJournal } from "../src/core/operations.js";
 import type { HostLease } from "../src/core/pool.js";
 import { PortRegistry } from "../src/core/ports.js";
@@ -31,6 +32,7 @@ export async function qualifyHostStream(
   host: SshHost,
   payload: { lease: HostLease; image: string },
   request: (action: string, payload: Json) => Promise<Json>,
+  streamTransport?: HostStreamTransport,
 ) {
   if (process.env.GITHUB_ACTIONS !== "true")
     throw Error("disposable_ci_required");
@@ -256,7 +258,7 @@ export async function qualifyHostStream(
       image: payload.image,
     }));
     await ports.expose(scope, "fixture-port", 18080);
-    const transport = new SshTransport([host]);
+    const transport = streamTransport ?? new SshTransport([host]);
     const control: HostTransport = {
       async request(_host, input) {
         return {

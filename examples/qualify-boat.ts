@@ -3,11 +3,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import type { Json } from "../src/core/contracts.js";
 import { HostTransportError } from "../src/core/transport.js";
 import { BoatApi } from "../src/providers/boat.js";
 import { BoatBootstrap } from "../src/providers/boat-bootstrap.js";
 import { SqliteState } from "../src/state/sqlite.js";
 import { BoatTransport } from "../src/transport/boat.js";
+import { BoatStreamTransport } from "../src/transport/boat-stream.js";
+import { qualifyHostStream } from "./qualify-host-stream.js";
 
 if (process.env.GITHUB_ACTIONS !== "true" || !process.env.JETSKI_TEST_IMAGE)
   throw Error("Requires disposable configured CI host");
@@ -60,10 +63,36 @@ let commandCalls = 0;
 try {
   await state.transaction((tx) => {
     tx.put("boat-host/bx_ci", "allocation");
-    tx.put("allocation", { id: "bx_ci", retired: false });
+    tx.put("allocation", {
+      id: "bx_ci",
+      retired: false,
+      owner: "qualification",
+      expiresAt: Date.now() + 3600000,
+    });
   });
   const api = new BoatApi("fixture-only", async (url, init) => {
     const body = JSON.parse(init?.body as string);
+    if (String(url).endsWith("/sshkey")) {
+      assert.match(body.key, /^ssh-ed25519 [A-Za-z0-9+/=]+$/);
+      const registered = await run(
+        ["sudo", "tee", "-a", "/etc/ssh/jetski-test/authorized_keys"],
+        Buffer.from(`${body.key}\n`),
+      );
+      assert.equal(registered.code, 0);
+      const pinned = await run([
+        "sudo",
+        "cat",
+        "/etc/ssh/jetski-test/host.pub",
+      ]);
+      assert.equal(pinned.code, 0);
+      return Response.json({
+        success: true,
+        sshUser: "user",
+        machineIp: "127.0.0.1",
+        sshEndpoint: "127.0.0.1:2222",
+        hostKey: pinned.stdout.trim(),
+      });
+    }
     if (String(url).endsWith("/files")) {
       assert.match(
         body.path,
@@ -176,10 +205,53 @@ try {
   assert.equal(cleanups, 4);
   for (const directory of directories)
     assert.equal((await run(["test", "!", "-e", directory])).code, 0);
+  corrupt = false;
+  const request = async (action: string, payload: Json) =>
+    (
+      await transport.request("bx_ci", {
+        version: 1,
+        id: randomUUID(),
+        action,
+        payload,
+      })
+    ).result;
+  const payload = {
+    image: process.env.JETSKI_TEST_IMAGE!,
+    lease: {
+      owner: "qualification",
+      poolId: "ci",
+      machineId: "bx_ci",
+      slotId: randomUUID(),
+      sandboxId: randomUUID(),
+      assignmentId: randomUUID(),
+      generation: 1,
+    },
+  };
+  await request("claim", { lease: payload.lease });
+  try {
+    await request("create", payload);
+    await qualifyHostStream(
+      {
+        id: "bx_ci",
+        hostname: "127.0.0.1",
+        port: 2222,
+        user: "root",
+        privateKeyPath: process.env.JETSKI_TEST_SSH_KEY!,
+        knownHostsPath: process.env.JETSKI_TEST_KNOWN_HOSTS!,
+      },
+      payload,
+      request,
+      new BoatStreamTransport(state, api),
+    );
+  } finally {
+    await request("quiesce", payload);
+    await request("remove", payload);
+  }
   console.log(
     JSON.stringify({
       provider: "emulated",
       realHostControl: true,
+      realEncryptedStreams: true,
       nonRootProviderCommands: true,
       automaticBootstrap: true,
       bootstrapAcknowledgementRecovery: true,

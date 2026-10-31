@@ -105,7 +105,15 @@ jobs:
           sudo mkdir -p -m 700 /etc/ssh/jetski-test
           sudo ssh-keygen -q -t ed25519 -N '' -f /etc/ssh/jetski-test/host
           sudo cp "$RUNNER_TEMP/jetski-ssh/client.pub" /etc/ssh/jetski-test/authorized_keys
-          sudo chmod 600 /etc/ssh/jetski-test/authorized_keys
+          sudo chmod 644 /etc/ssh/jetski-test/authorized_keys
+          sudo chmod 755 /etc/ssh/jetski-test
+          if [ "${{ matrix.suite }}" = "boat" ]; then
+            sudo useradd -m -s /bin/bash user
+            sudo passwd -d user
+            echo 'user ALL=(root) NOPASSWD: /usr/bin/env -i PATH=/usr/bin\:/bin python3 -I /opt/jetski/host/control.py' | sudo tee /etc/sudoers.d/jetski-test-user >/dev/null
+            sudo chmod 440 /etc/sudoers.d/jetski-test-user
+            sudo visudo -cf /etc/sudoers.d/jetski-test-user
+          fi
           sudo mkdir -p /run/sshd
           sudo tee /etc/ssh/jetski-test/config >/dev/null <<'CONFIG'
           Port 2222
@@ -117,10 +125,10 @@ jobs:
           KbdInteractiveAuthentication no
           PermitRootLogin prohibit-password
           AuthenticationMethods publickey
-          AllowUsers root
+          AllowUsers root user
           AllowTcpForwarding no
           X11Forwarding no
-          ForceCommand env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py
+          ForceCommand sudo -n env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py
           CONFIG
           sudo /usr/sbin/sshd -f /etc/ssh/jetski-test/config
           sudo cat /etc/ssh/jetski-test/host.pub | awk '{print "[127.0.0.1]:2222 " $1 " " $2}' > "$RUNNER_TEMP/jetski-ssh/known_hosts"
@@ -130,7 +138,7 @@ jobs:
           echo "JETSKI_TEST_WRONG_HOSTS=$RUNNER_TEMP/jetski-ssh/wrong_hosts" >> "$GITHUB_ENV"
       - run: npm run build
       - name: Build disposable stream listener fixture
-        if: matrix.suite == 'ssh'
+        if: matrix.suite == 'ssh' || matrix.suite == 'boat'
         run: |
           cc -static -O2 -Wall -Wextra -Werror host/fixtures/http-server.c -o "$RUNNER_TEMP/jetski-http-fixture"
           echo "JETSKI_TEST_HTTP_FIXTURE=$RUNNER_TEMP/jetski-http-fixture" >> "$GITHUB_ENV"
