@@ -42,7 +42,7 @@ export async function qualifyHostStream(
       const status = (await request("command-status", {
         ...payload,
         commandId: id,
-      })) as { phase: string };
+      })) as { phase: string; exitCode: number | null };
       if (
         ["succeeded", "failed", "cancelled", "uncertain"].includes(status.phase)
       )
@@ -210,5 +210,9 @@ export async function qualifyHostStream(
     ).phase,
     "uncertain",
   );
-  await stopServer(next);
+  // Cancellation closes the accepted socket before a request is sent.
+  // The strict fixture must independently finish with its invalid-request exit.
+  const interruptedServer = await wait(next);
+  assert.equal(interruptedServer.phase, "failed");
+  assert.equal(interruptedServer.exitCode, 1);
 }

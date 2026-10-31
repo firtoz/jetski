@@ -93,6 +93,16 @@ workload-specific products.
 
 ## Latest continuation status
 
+CI41241321510 at e36a041 completed with three passing jobs and two failures.
+SSH relay completion/replay/cancellation passed before the fixture incorrectly
+expected cancellation of a listener that had already rejected the empty request
+with exit1. Assert that exact authenticated failure instead. Bundle installation
+also treated the relay C source as an installed Python module and omitted the new
+relay hash from replay receipt validation; both contracts are corrected. Preserve
+/tmp/jetski-host-stream-ssh-failed.log and /tmp/jetski-host-stream-boat-failed.log.
+Added bounded CI installer diagnostics; rerun qualification before claiming a fix.
+No paid hosts, desktop workloads or protected experiment changes.
+
 Authenticated host-stream broker candidate: bounded JETSKI-STREAM/1 header over
 existing forced SSH control, strict binary relay framing, owner/lease/image checks,
 durable fresh-only dispatch and bounded input/output threads. Bootstrap compiles,

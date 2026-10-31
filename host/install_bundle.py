@@ -87,7 +87,7 @@ def install(data):
                 raise ValueError("unsafe_bootstrap_receipt")
             prior = json.loads(receipt.read_text())
             if (
-                set(prior) != {"version", "digest", "nativeSha256"}
+                set(prior) != {"version", "digest", "nativeSha256", "relaySha256"}
                 or prior["version"] != 1
                 or prior["digest"] != digest
             ):
@@ -160,7 +160,7 @@ def install(data):
         if config != bundle["config"]:
             raise ValueError("bootstrap_configuration_conflict")
         # Validate installed bytes too: a receipt is not readiness evidence.
-        for name in MODULES - {"bootstrap.py", "command-supervisor.c"}:
+        for name in MODULES - {"bootstrap.py", "command-supervisor.c", "tcp-relay.c"}:
             path = pathlib.Path("/opt/jetski/host") / name
             if name == "runtime_service.py":
                 path = pathlib.Path("/opt/jetski/runtime_service.py")

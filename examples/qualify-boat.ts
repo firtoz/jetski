@@ -100,6 +100,8 @@ try {
     if (directory) directories.add(directory);
     commandCalls++;
     const result = await run(["sh", "-c", body.command]);
+    if (body.command.includes("bytes.fromhex") && result.code !== 0)
+      console.error("Fixture bootstrap failed:", result.stderr.slice(-8192));
     if (
       body.command.includes("bytes.fromhex") &&
       result.code === 0 &&
