@@ -42,11 +42,19 @@ const transport = new SshTransport([
 const objects = new LocalCheckpointStore(join(directory, "objects"));
 let loseOutputAck = false,
   lostOutputAcks = 0;
+let loseMultiOutputAck = false,
+  lostMultiOutputAcks = 0,
+  armCheckpointFault = false;
 let loseSaveAck = false,
   lostSaveAcks = 0;
 const objectPut = objects.put.bind(objects);
 objects.put = async (...args) => {
   const committed = await objectPut(...args);
+  if (loseMultiOutputAck) {
+    loseMultiOutputAck = false;
+    lostMultiOutputAcks++;
+    throw Error("Injected multi-command output acknowledgement loss");
+  }
   if (loseOutputAck) {
     loseOutputAck = false;
     lostOutputAcks++;
@@ -74,6 +82,10 @@ const manager = new SandboxManager(
     request: async (host, request) => {
       if (controlUnavailable) throw Error("Control transport unavailable");
       const response = await transport.request(host, request);
+      if (request.action === "read-checkpoint" && armCheckpointFault) {
+        armCheckpointFault = false;
+        loseSaveAck = true;
+      }
       if (request.action === "file-write-finish" && loseWriteAck) {
         loseWriteAck = false;
         lostWriteAcks++;
@@ -332,9 +344,10 @@ try {
     { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
   );
   assert.equal(cliRead.stdout, "1");
-  // This run deliberately loses an ACK while retaining several new commands.
-  // Keep the later checkpoint-specific failure test independent of this case.
-  loseSaveAck = true;
+  // Target two distinct publication boundaries: an output object first, then
+  // the filesystem archive only after its source read begins.
+  loseMultiOutputAck = true;
+  armCheckpointFault = true;
   const firstStopStarted = Date.now();
   const firstStopErrors = errors.length;
   const stopId = randomUUID();
@@ -363,8 +376,10 @@ try {
     .slice(firstStopErrors)
     .map((error) => (error instanceof Error ? error.message : String(error)));
   assert.deepEqual(stopRecoveryErrors, [
+    "Injected multi-command output acknowledgement loss",
     "Injected checkpoint store acknowledgement loss",
   ]);
+  assert.equal(lostMultiOutputAcks, 1);
   console.log(
     JSON.stringify({
       multiOutputStopMs: Date.now() - firstStopStarted,
@@ -764,6 +779,7 @@ try {
       lostImportAcknowledgementRecovery: true,
       lostCheckpointStoreAcknowledgementRecovery: true,
       lostOutputStoreAcknowledgementRecovery: true,
+      multiCommandOutputAcknowledgementRecovery: true,
       assignedDeletion: true,
       queuedDeletion: true,
       proactiveExpiryCheckpoint: true,

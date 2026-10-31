@@ -93,6 +93,21 @@ workload-specific products.
 
 ## Latest continuation status
 
+Verified0343980ac5541ba9d69678919dc6e5e160ddf4a1, CI41227984607 all five
+jobs passed; watcher67716 exited0. API job124616057194 recovered the original
+multi-output ACK fault in15623ms with exactly the injected error, exceeding the
+old15s fixture window. Private /tmp/jetski-multi-output-api.log. No product recovery
+change was needed; retain60s bounded fixture deadline plus exact error assertion.
+The original failed receipt is retained. Local57TypeScript/48Python tests pass.
+
+Final fixture candidate independently targets output ACK loss and filesystem
+checkpoint ACK loss during the same shutdown: the latter is armed only after the
+host archive read, so added output objects cannot accidentally consume that fault.
+Require both exact errors once, preserve later independent output/import/restore
+checks, and qualify on CI. Remaining full interactive/provider/client/benchmark
+requirements stay open; no new paid-host or protected experiment changes.
+
+
 Next regression now exists: test/shutdown-output.test.ts passes real SQLite reopen
 and three distinct binary output objects after first committed upload ACK loss,
 checks no release before publication, exact retained bytes/statuses and no duplicate
