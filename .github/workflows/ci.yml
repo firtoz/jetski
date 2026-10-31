@@ -40,6 +40,10 @@ jobs:
       - name: Qualify rootless lifecycle and filesystem recovery
         run: python3 host/qualify_podman.py
   ssh-control:
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [ssh, api]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -91,8 +95,9 @@ jobs:
           echo "JETSKI_TEST_SSH_KEY=$RUNNER_TEMP/jetski-ssh/client" >> "$GITHUB_ENV"
           echo "JETSKI_TEST_KNOWN_HOSTS=$RUNNER_TEMP/jetski-ssh/known_hosts" >> "$GITHUB_ENV"
           echo "JETSKI_TEST_WRONG_HOSTS=$RUNNER_TEMP/jetski-ssh/wrong_hosts" >> "$GITHUB_ENV"
-      - name: Qualify encrypted control and bootstrap
-        run: npx tsx examples/qualify-ssh.ts
+      - run: npm run build
+      - name: Qualify encrypted control and standalone API
+        run: npx tsx examples/qualify-${{ matrix.suite }}.ts
       - name: Retire disposable listener
         if: always()
         run: |

@@ -1,0 +1,19 @@
+{
+  "dataDirectory": "/var/lib/jetski-server",
+  "poolId": "example",
+  "approvedImages": [
+    "docker.io/library/alpine@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f"
+  ],
+  "port": 8788,
+  "sshHosts": [
+    {
+      "id": "example-host",
+      "hostname": "host.example.invalid",
+      "port": 22,
+      "user": "root",
+      "privateKeyPath": "/run/secrets/jetski-host-key",
+      "knownHostsPath": "/etc/jetski/known_hosts"
+    }
+  ],
+  "principals": [{ "owner": "example", "tokenEnv": "JETSKI_API_TOKEN" }]
+}

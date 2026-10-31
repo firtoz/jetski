@@ -265,3 +265,36 @@ source only after verified publication, imports from the independent local store
 executes against the restored tree and compares the next checkpoint SHA exactly.
 Await CI before claiming that combined restore path qualified. Cancellation still
 stops the full assignment; fine-grained signals/PTYs remain open.
+
+Verified combined path: **979bc1cfe1eb9393ef194a16b0ddcc8a60d9eed6**, CI
+**41208777287**, all three jobs successful. Real SSH control reports durable
+execution, binary output reconnection, assignment cancellation, verified local
+publication, source-deleted transport recovery and identical repeated checkpoint
+SHA. This is same-physical-host/new-assignment recovery from independent local
+storage, not a replacement-host or S3/Boat qualification. Standalone server/CLI,
+transactional pooling/scheduling, precise signals/PTYs/networking, S3/Boat, complete
+GC and downstream staging remain open. No live watcher remains (91700 terminal0),
+no Boat spending or original experiment changes. Next continuation should build
+the lifecycle coordinator and standalone API over these tested transport primitives.
+
+
+Lifecycle/API continuation: added transactional owner-bound placement, persisted
+FIFO tickets and allocation reservations, generation continuity across SSH host
+re-adoption, quarantine capacity retention and stale-release receipts. Three pool
+tests cover concurrency, queued excess demand, owner isolation, idle retirement,
+expiry and lost release acknowledgement. Added the portable sandbox manager,
+optional bearer-authenticated loopback HTTP server, standalone worker, thin CLI,
+operator configuration example, generic digest-pinned Linux Containerfile and
+OpenAPI for implemented routes. Server tests prove owner scoping and progress with
+no browser polling; unknown create effects retain/quarantine rather than rerun.
+Seventeen TypeScript and thirty-one Python tests pass locally, plus build,
+expanded typecheck and both linters. A real API/SDK/CLI CI fixture is now added
+alongside the direct SSH lifecycle fixture; its result remains pending.
+
+This is not the completed standalone vertical slice: stop/resume/delete and
+checkpoint HTTP endpoints, autonomous recovery of every interrupted lifecycle
+stage, durable command output beyond host retirement, full scheduling/expiry
+maintenance and interactive gateways remain open. The manager currently preserves
+unknown operations in quarantine instead of automatically resuming them. Existing
+transport-level full save/import/recovery evidence remains valid and separate.
+No Boat spending, desktop workload or original GC-experiment change occurred.

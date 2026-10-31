@@ -26,3 +26,7 @@ This example does not execute a workload. The full sandbox example remains a rel
 CI exercises real rootless Podman on a disposable Linux runner, including source
 deletion and exact filesystem recovery into a new container. This does not yet
 qualify replacement hosts, remote checkpoint stores, networking or the server API.
+
+The initial [standalone server and CLI](docs/standalone.md) support queued creation
+and command execution over an adopted SSH host. [OpenAPI](docs/openapi.json) covers
+currently implemented routes. Full lifecycle and interactive APIs remain in progress.
