@@ -83,12 +83,15 @@ export async function qualifyHostStream(
     let flag = half ? " --half" : "";
     if (preview && preview !== "browser") flag = ` --preview-${preview}`;
     const script =
+      (preview === "browser"
+        ? "mv /workspace/relay-browser-fixture /tmp/relay-browser-fixture; "
+        : "") +
       (move
         ? "mv /workspace/relay-http-fixture /tmp/relay-http-fixture; "
         : "") +
       "rm -f /tmp/jetski-http-ready /tmp/jetski-http-complete; exec " +
       (preview === "browser"
-        ? "/workspace/relay-browser-fixture"
+        ? "/tmp/relay-browser-fixture"
         : "/tmp/relay-http-fixture") +
       flag;
     await request("command-start", {

@@ -104,9 +104,20 @@ public CA issuance. The full path uses actual host-control/container streams,
 checks browser page/asset/binary HTTP/WSS, requires durable closed receipts, then
 revokes and proves no new host admission. Fresh Chrome profile, TLS sockets,
 preview and fixture command are owned and cleaned. No desktop workloads or paid
-resources. Local build/typecheck/lint and C syntax-only pass; hosted execution
-pending. Old browser run41250945239 still live in Boat preparation; watcher2136
-remains the existing observer, do not duplicate it.
+resources. Local104TS/build/typecheck/lint and C syntax-only pass; evidence
+/tmp/jetski-browser-container-local.log. Published c9fb5d8d663fadaf57890e465b870c8738ab3bfc;
+CI41252044899 SSH job124687408865 failed after the combined browser path passed.
+/tmp/jetski-browser-container-first-failure.log preserves the result: the later
+checkpoint expected six entries, but the new fixture binary remained in /workspace.
+Fix moves that owned fixture into /tmp before execution, matching the existing
+fixture; the checkpoint assertion remains unchanged. Browser page/asset/exact
+binary HTTP/WSS, closed receipts and revoked admission already passed. Local
+checks and a fresh exact-SHA run are required for the corrected fixture cleanup.
+Watcher91248 still observes the original run until terminal; preserve it.
+Old run41250945239 ended cancelled at the15-minute setup bound; preserved
+/tmp/jetski-browser-old-boat-stall.log. Cleanup and orphan process retirement ran.
+The old setup produced no diagnostic output, so the precise dependency stall is
+unknown; do not describe it as a product failure or silently discard it.
 
 
 Container session continuation: prior turn made real-browser progress and left a
