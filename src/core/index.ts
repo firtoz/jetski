@@ -8,6 +8,7 @@ export * from "./operations.js";
 export type { HostLease } from "./pool.js";
 export * from "./ports.js";
 export * from "./stream-protocol.js";
+export * from "./streams.js";
 export type { TerminalGeometry, TerminalInput } from "./terminal-input.js";
 export * from "./transfer.js";
 export * from "./transport.js";

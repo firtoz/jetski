@@ -154,15 +154,37 @@ export class PortRegistry {
       };
     });
   }
+  authorizeIn(
+    tx: Transaction,
+    scope: Scope,
+    id: string,
+  ): {
+    lease: HostLease;
+    image: string;
+    port: number;
+    generation: number;
+  } {
+    const record = tx.get<Exposure>(this.key(scope, id));
+    if (!record || !this.available(tx, scope, record))
+      throw Error("Port exposure unavailable");
+    return {
+      lease: record.lease,
+      image: record.image,
+      port: record.port,
+      generation: record.generation,
+    };
+  }
   async authorize(
     scope: Scope,
     id: string,
-  ): Promise<{ lease: HostLease; image: string; port: number }> {
+  ): Promise<{
+    lease: HostLease;
+    image: string;
+    port: number;
+  }> {
     return this.state.transaction((tx) => {
-      const record = tx.get<Exposure>(this.key(scope, id));
-      if (!record || !this.available(tx, scope, record))
-        throw Error("Port exposure unavailable");
-      return { lease: record.lease, image: record.image, port: record.port };
+      const { lease, image, port } = this.authorizeIn(tx, scope, id);
+      return { lease, image, port };
     });
   }
 }

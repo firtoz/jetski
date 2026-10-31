@@ -93,6 +93,47 @@ workload-specific products.
 
 ## Latest continuation status
 
+Core stream authority candidate: optional embedded StreamCoordinator uses an
+atomic operation/connection journal before host dispatch, immutable stream IDs,
+exact owner/permission/image/lease/generation binding and64unresolved/4096history
+limits per assignment. Duplicate admission never reopens a connection. Live
+connections recheck permission before send/yield and watch durable authority every
+100ms without overlapping polls. A later controller can persist cancellation and
+inspect host receipts; cancellation ACK never proves termination. Observed host
+cancellation preserves unknown delivery. Stale generation completion cannot settle
+new-generation operations or claim successful delivery. Public forwarding/previews
+remain disabled; service reconciliation scheduling, gateway admission/revocation
+acknowledgement semantics and all broader acceptance gates are still required.
+Local restart/revocation/race/capacity tests added; installed SSH fixture now tests
+coordinator completion and idle revocation through a real rootless workload.
+Final local checks and hosted CI pending. Previous turn was verified progress.
+No paid resources, desktop runtime execution or protected experiment changes.
+
+
+Published b5245c94b7c51ae07d3177cb0c81e8e7dad3c394, CI41242456278.
+All five jobs passed; watcher35196 exited0. /tmp/jetski-ssh-duplex-ci.log,
+/tmp/jetski-ssh-duplex-hosted.log (SSH job124658962685), and
+/tmp/jetski-ssh-duplex-api.log retain exact-source qualification receipts. The
+installed SSH fixture used SshTransport.open for real workload HTTP bytes,
+both-FIN completion, durable closed receipt and duplicate stream rejection.
+Existing raw cancellation, API recovery and cleanup checks also passed.
+Local81TS/70Python checks pass. Next implement durable core stream admission tied
+to port permission, generation and owner; connect active revocation/restart handling
+before public forwarding/previews. Admission-only authorization is insufficient.
+Source is published on main; this verified scratchpad update is uncommitted.
+
+Provider research for the later Boat stream adapter: official
+https://docs.boat.dev/ssh-access documents POST /sandboxes/{id}/sshkey with a
+public key, returning hostKey plus sshEndpoint or machineIp. Pin that key from
+authenticated HTTPS; do not use first-contact trust or an automatically reconnecting
+CLI tunnel. Current BoatApi route allowlist does not include sshkey. Any adapter
+must ownership-check allocation, protect private key/known-host files, use fixed
+privileged host control for the provider's non-root account, and preserve a
+single stream identity without redispatch. This is a documented feasible route,
+not implemented or live-provider-qualified. No remote credentials or hosts were
+created while researching it; separate paid-host allowance remains required.
+
+
 Reusable SSH duplex transport candidate: portable HostConnection contract plus
 SshTransport.open with pinned host keys, scrubbed child environment, fixed host
 control command, immutable stream UUID/header and exact host-lease match. Node

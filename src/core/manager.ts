@@ -13,11 +13,13 @@ import {
   scopeKey,
 } from "./contracts.js";
 import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
+import type { HostStreamTransport } from "./host-stream.js";
 import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
 import { PortRegistry } from "./ports.js";
 import { restoreCheckpoint } from "./restore.js";
 import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
+import { StreamCoordinator } from "./streams.js";
 import {
   type TerminalGeometry,
   type TerminalInput,
@@ -64,6 +66,7 @@ type CommandRecord = {
 
 export type ManagerOptions = {
   poolId: string;
+  streamTransport?: HostStreamTransport;
   approvedImages: string[];
   hostsPerOwner?: number;
   now?: () => number;
@@ -80,6 +83,7 @@ export class SandboxManager {
   private readonly images: Set<string>;
   readonly history: CheckpointHistory;
   readonly ports: PortRegistry;
+  readonly streams: StreamCoordinator | undefined;
   readonly uploads: UploadCoordinator;
   private readonly terminalInputs: TerminalInputJournal;
   private readonly shutdown: ShutdownCoordinator;
@@ -110,6 +114,14 @@ export class SandboxManager {
         running: sandbox.phase === "running",
       };
     });
+    if (options.streamTransport)
+      this.streams = new StreamCoordinator(
+        state,
+        this.ports,
+        this.operations,
+        transport,
+        options.streamTransport,
+      );
     this.checkpoints = new CheckpointRegistry(state, objects, this.now);
     this.outputs = new CommandOutputStore(objects, this.checkpoints);
     this.history = new CheckpointHistory(

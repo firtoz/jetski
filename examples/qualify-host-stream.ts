@@ -2,14 +2,20 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Json } from "../src/core/contracts.js";
+import { OperationJournal } from "../src/core/operations.js";
 import type { HostLease } from "../src/core/pool.js";
+import { PortRegistry } from "../src/core/ports.js";
 import {
   encodeStreamFrame,
   STREAM_MAGIC,
   StreamDecoder,
 } from "../src/core/stream-protocol.js";
+import { StreamCoordinator } from "../src/core/streams.js";
+import { SqliteState } from "../src/state/sqlite.js";
 import {
   type SshHost,
   SshTransport,
@@ -213,32 +219,72 @@ export async function qualifyHostStream(
   const interruptedServer = await wait(next);
   assert.equal(interruptedServer.phase, "failed");
   assert.equal(interruptedServer.exitCode, 1);
-  const adapterServer = await startServer(false);
-  const transport = new SshTransport([host]);
-  const adapterId = randomUUID();
-  const connection = await transport.open(host.id, {
-    ...payload,
-    streamId: adapterId,
-    port: 18080,
-  });
-  await connection.send(
-    Buffer.from("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"),
-  );
-  await connection.end();
-  const adapterBytes: Uint8Array[] = [];
-  for await (const part of connection.output) adapterBytes.push(part);
-  await connection.completed;
-  assert.ok(Buffer.concat(adapterBytes).toString().endsWith("relay-container"));
-  assert.equal(
-    (
-      (await request("stream-status", { ...payload, streamId: adapterId })) as {
-        phase: string;
-      }
-    ).phase,
-    "closed",
-  );
-  await assert.rejects(
-    transport.open(host.id, { ...payload, streamId: adapterId, port: 18080 }),
-  );
-  await stopServer(adapterServer);
+  const directory = await mkdtemp(join(tmpdir(), "jetski-stream-authority-"));
+  const state = new SqliteState(join(directory, "state.sqlite"));
+  try {
+    const scope = {
+      owner: payload.lease.owner,
+      sandbox: payload.lease.sandboxId,
+    };
+    const operations = new OperationJournal(state);
+    await operations.generation(scope);
+    const ports = new PortRegistry(state, operations, () => ({
+      generation: 1,
+      running: true,
+      lease: payload.lease,
+      image: payload.image,
+    }));
+    await ports.expose(scope, "fixture-port", 18080);
+    const transport = new SshTransport([host]);
+    const coordinator = new StreamCoordinator(
+      state,
+      ports,
+      operations,
+      {
+        async request(_host, input) {
+          return {
+            version: 1,
+            id: input.id,
+            result: await request(input.action, input.payload),
+          };
+        },
+      },
+      transport,
+    );
+    const adapterServer = await startServer(false);
+    const adapterId = randomUUID();
+    const connection = await coordinator.open(scope, "fixture-port", adapterId);
+    await connection.send(
+      Buffer.from("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"),
+    );
+    await connection.end();
+    const adapterBytes: Uint8Array[] = [];
+    for await (const part of connection.output) adapterBytes.push(part);
+    await connection.completed;
+    assert.ok(
+      Buffer.concat(adapterBytes).toString().endsWith("relay-container"),
+    );
+    assert.equal((await coordinator.status(scope, adapterId)).phase, "closed");
+    assert.equal((await operations.get(scope, adapterId))?.phase, "succeeded");
+    await assert.rejects(
+      coordinator.open(scope, "fixture-port", adapterId),
+      /already admitted/,
+    );
+    await stopServer(adapterServer);
+    const revokedServer = await startServer(false),
+      revokedId = randomUUID();
+    const revoked = await coordinator.open(scope, "fixture-port", revokedId);
+    await ports.revoke(scope, "fixture-port", "revoke-fixture-port");
+    await assert.rejects(revoked.completed);
+    assert.equal(
+      (await coordinator.status(scope, revokedId)).phase,
+      "uncertain",
+    );
+    const interrupted = await wait(revokedServer);
+    assert.equal(interrupted.phase, "failed");
+    assert.equal(interrupted.exitCode, 1);
+  } finally {
+    state.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 }
