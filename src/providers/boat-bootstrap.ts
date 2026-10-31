@@ -11,8 +11,11 @@ const modules = [
   "commands.py",
   "terminal_input.py",
   "streams.py",
+  "stream_protocol.py",
+  "stream_broker.py",
   "podman_exec.py",
   "command-supervisor.c",
+  "tcp-relay.c",
   "control.py",
   "fence.py",
   "file_upload.py",
@@ -54,12 +57,7 @@ export class BoatBootstrap {
     const files: Record<string, string> = {};
     for (const name of modules) {
       const bytes = await readFile(
-        new URL(
-          name === "command-supervisor.c"
-            ? "native/command-supervisor.c"
-            : name,
-          root,
-        ),
+        new URL(name.endsWith(".c") ? `native/${name}` : name, root),
       );
       if (!bytes.length || bytes.length > 256 * 1024)
         throw Error("Bootstrap module bound");

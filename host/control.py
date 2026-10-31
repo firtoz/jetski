@@ -9,6 +9,9 @@ import shutil
 import pathlib
 import sys
 import subprocess
+import select
+import struct
+import time
 
 # Python -I excludes the script directory. Installation makes this directory
 # root-owned and not group/world writable before enabling the SSH command.
@@ -68,7 +71,13 @@ def dispatch(request, config, account, run, launch=None):
             reconcile_workers_locked(fence, state)
     image = payload.get("image")
     runtime = PodmanRuntime(
-        fence, run, image, DATA_ROOT, config["images"], "/opt/jetski/command-supervisor"
+        fence,
+        run,
+        image,
+        DATA_ROOT,
+        config["images"],
+        "/opt/jetski/command-supervisor",
+        "/opt/jetski/tcp-relay",
     )
     streams = Streams(fence)
     if action == "stream-reserve":
@@ -277,7 +286,35 @@ def dispatch(request, config, account, run, launch=None):
 
 
 def main():
-    raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+    if not select.select([0], [], [], 10)[0]:
+        raise ValueError("host_header_deadline")
+    first = os.read(0, 1)
+    if first == b"J":
+        from stream_protocol import MAGIC
+        from stream_broker import serve
+
+        deadline = time.monotonic() + 10
+
+        def exact(count):
+            data = bytearray()
+            while len(data) < count:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([0], [], [], remaining)[0]:
+                    raise ValueError("stream_header_deadline")
+                chunk = os.read(0, count - len(data))
+                if not chunk:
+                    raise ValueError("truncated_stream_header")
+                data.extend(chunk)
+            return bytes(data)
+
+        if first + exact(len(MAGIC) - 1) != MAGIC:
+            raise ValueError("invalid_stream_protocol")
+        length = struct.unpack(">I", exact(4))[0]
+        if not 1 <= length <= 16384:
+            raise ValueError("stream_header_bound")
+        serve(json.loads(exact(length)), configuration(), runtime_account())
+        return
+    raw = first + sys.stdin.buffer.read(1024 * 1024 + 1)
     if len(raw) > 1024 * 1024:
         raise ValueError("host_request_limit")
     request = json.loads(raw)

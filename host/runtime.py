@@ -12,13 +12,14 @@ from streams import stopped_streams
 
 
 class PodmanRuntime:
-    def __init__(self, fence, run, image, data_root, approved_images, supervisor=None):
+    def __init__(self, fence, run, image, data_root, approved_images, supervisor=None, relay=None):
         if not isinstance(image, str) or not re.fullmatch(
             r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image
         ):
             raise ValueError("digest_pinned_image_required")
         if image not in approved_images:
             raise ValueError("image_not_approved")
+        self.relay = relay
         self.supervisor = supervisor
         self.fence = fence
         self.run = run
@@ -42,7 +43,9 @@ class PodmanRuntime:
             if state["phase"] != "open":
                 raise ValueError("closed_lease")
             existing = state.get("runtime")
-            requested = dict(image=self.image, memoryMb=memory_mb, cpus=cpus)
+            requested = dict(
+                image=self.image, memoryMb=memory_mb, cpus=cpus, relay=self.relay is not None
+            )
             if existing:
                 if existing.get("configuration") != requested:
                     raise ValueError("runtime_configuration_conflict")
@@ -112,6 +115,10 @@ class PodmanRuntime:
                             "--mount",
                             "type=bind,src=" + self.supervisor + ",dst=/jetski-supervisor,ro",
                         ]
+                    )
+                if self.relay is not None:
+                    args.extend(
+                        ["--mount", "type=bind,src=" + self.relay + ",dst=/jetski-tcp-relay,ro"]
                     )
                 args.extend([self.image, "/bin/sh", "-c", "exec sleep infinity"])
                 result = self.run(args)

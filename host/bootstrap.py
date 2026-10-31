@@ -36,6 +36,8 @@ MODULES = (
     "commands.py",
     "terminal_input.py",
     "streams.py",
+    "stream_protocol.py",
+    "stream_broker.py",
     "podman_exec.py",
     "files.py",
     "file_upload.py",
@@ -114,37 +116,38 @@ def bootstrap(config):
         if result["exitCode"]:
             raise RuntimeError("approved_image_pull_failed")
     source = pathlib.Path(__file__).resolve().parent
-    native = source / "native" / "command-supervisor.c"
-    if not native.exists():
-        native = source / "command-supervisor.c"
-    target_binary = pathlib.Path("/opt/jetski/command-supervisor")
-    pending_binary = pathlib.Path("/opt/jetski/command-supervisor.pending")
-    if target_binary.is_symlink() or pending_binary.is_symlink():
-        raise ValueError("unsafe_supervisor_binary")
-    compiled = bounded_command(
-        [
-            "/usr/bin/cc",
-            "-static",
-            "-O2",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            str(native),
-            "-o",
-            str(pending_binary),
-        ],
-        CONTROL_ROOT,
-        timeout=120,
-    )
-    if compiled["exitCode"]:
-        raise ValueError("supervisor_build_failed")
-    os.chmod(pending_binary, 0o755)
-    with open(pending_binary, "rb") as binary:
-        os.fsync(binary.fileno())
-    os.replace(pending_binary, target_binary)
-    fd = os.open(target_binary.parent, os.O_RDONLY | os.O_DIRECTORY)
-    os.fsync(fd)
-    os.close(fd)
+    for name in ("command-supervisor", "tcp-relay"):
+        native = source / "native" / f"{name}.c"
+        if not native.exists():
+            native = source / f"{name}.c"
+        target_binary = pathlib.Path(f"/opt/jetski/{name}")
+        pending_binary = pathlib.Path(f"/opt/jetski/{name}.pending")
+        if target_binary.is_symlink() or pending_binary.is_symlink():
+            raise ValueError("unsafe_supervisor_binary")
+        compiled = bounded_command(
+            [
+                "/usr/bin/cc",
+                "-static",
+                "-O2",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                str(native),
+                "-o",
+                str(pending_binary),
+            ],
+            CONTROL_ROOT,
+            timeout=120,
+        )
+        if compiled["exitCode"]:
+            raise ValueError("supervisor_build_failed")
+        os.chmod(pending_binary, 0o755)
+        with open(pending_binary, "rb") as binary:
+            os.fsync(binary.fileno())
+        os.replace(pending_binary, target_binary)
+        fd = os.open(target_binary.parent, os.O_RDONLY | os.O_DIRECTORY)
+        os.fsync(fd)
+        os.close(fd)
     # Dedicated account only: do not inherit another login's runtime directory
     # from the systemd user manager. Never change the host-wide Podman unit.
     dropin = pathlib.Path(account.pw_dir) / ".config/systemd/user/podman.service.d"

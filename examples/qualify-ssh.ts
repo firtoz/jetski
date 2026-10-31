@@ -14,6 +14,7 @@ import {
 import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 import { SshTransport } from "../src/transport/ssh.js";
+import { qualifyHostStream } from "./qualify-host-stream.js";
 
 const key = process.env.JETSKI_TEST_SSH_KEY;
 const knownHosts = process.env.JETSKI_TEST_KNOWN_HOSTS;
@@ -141,6 +142,18 @@ try {
     }
     throw new Error("Command did not reach a terminal receipt");
   };
+  await qualifyHostStream(
+    {
+      id: "ssh-ci",
+      hostname: "127.0.0.1",
+      port: 2222,
+      user: "root",
+      privateKeyPath: key,
+      knownHostsPath: knownHosts,
+    },
+    payload,
+    request,
+  );
   const uploadId = randomUUID();
   const uploadBytes = Buffer.alloc(300000);
   for (let index = 0; index < uploadBytes.length; index++)
@@ -606,6 +619,7 @@ os.close(matches[0])
       replaySafeFileUpload: true,
       sshControl: true,
       durableStreamAdmissionAndQuiescence: true,
+      authenticatedRelayBytesAndCancellation: true,
       bootstrap: true,
       rootlessCreate: true,
       createReplay: true,

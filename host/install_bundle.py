@@ -21,8 +21,11 @@ MODULES = {
     "commands.py",
     "terminal_input.py",
     "streams.py",
+    "stream_protocol.py",
+    "stream_broker.py",
     "podman_exec.py",
     "command-supervisor.c",
+    "tcp-relay.c",
     "control.py",
     "fence.py",
     "file_upload.py",
@@ -127,6 +130,9 @@ def install(data):
                     {
                         "version": 1,
                         "digest": digest,
+                        "relaySha256": hashlib.sha256(
+                            pathlib.Path("/opt/jetski/tcp-relay").read_bytes()
+                        ).hexdigest(),
                         "nativeSha256": hashlib.sha256(
                             pathlib.Path("/opt/jetski/command-supervisor").read_bytes()
                         ).hexdigest(),
@@ -145,6 +151,11 @@ def install(data):
             != proof_receipt["nativeSha256"]
         ):
             raise ValueError("installed_supervisor_corrupt")
+        if (
+            hashlib.sha256(pathlib.Path("/opt/jetski/tcp-relay").read_bytes()).hexdigest()
+            != proof_receipt["relaySha256"]
+        ):
+            raise ValueError("installed_relay_corrupt")
         config = configuration()
         if config != bundle["config"]:
             raise ValueError("bootstrap_configuration_conflict")

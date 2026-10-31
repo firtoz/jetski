@@ -141,6 +141,7 @@ class ExecApi:
         on_started=None,
         input_ready=None,
         input_close_ready=None,
+        abort_ready=None,
     ):
         """Starts once; yields binary stdout/stderr frames until remote closure.
 
@@ -152,7 +153,7 @@ class ExecApi:
             raise ValueError("invalid_exec_stream_deadline")
         if not isinstance(initial_input, bytes) or len(initial_input) > 4096:
             raise ValueError("exec_initial_input_bound")
-        connection = self.connection(timeout)
+        connection = self.connection(min(timeout, 30))
         response = None
         input_socket = None
         try:
@@ -163,9 +164,19 @@ class ExecApi:
                 {"Content-Type": "application/json", "Connection": "Upgrade", "Upgrade": "tcp"},
             )
             wire = connection.sock
+            if abort_ready is not None:
+
+                def abort():
+                    try:
+                        wire.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+
+                abort_ready(abort)
             response = connection.getresponse()
             if response.status not in (101, 200) or response.fp is None:
                 raise ValueError("exec_attach_failed")
+            wire.settimeout(timeout)
             if initial_input:
                 wire.sendall(initial_input)
             if input_ready is not None or input_close_ready is not None:

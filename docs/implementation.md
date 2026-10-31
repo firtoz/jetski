@@ -93,6 +93,39 @@ workload-specific products.
 
 ## Latest continuation status
 
+Authenticated host-stream broker candidate: bounded JETSKI-STREAM/1 header over
+existing forced SSH control, strict binary relay framing, owner/lease/image checks,
+durable fresh-only dispatch and bounded input/output threads. Bootstrap compiles,
+verifies and mounts the static relay; runtime configuration records relay support.
+Successful receipt requires both FINs and verified zero-exit relay termination.
+Cancellation/disconnect attempts removal of the exact exec identity, but removal
+ACK alone leaves delivery/cleanup uncertain until verified whole-runtime stop.
+No automatic reopen or byte replay. Public forwarding/previews remain disabled;
+core port authorization/revocation integration and Boat streaming are still open.
+Local73TS/70Python tests/build/typecheck/lint pass, including framing fragments,
+direction violations, normal broker completion, duplicate/foreign admission and
+malformed output retaining uncertainty. New installed SSH fixture uploads a static
+HTTP listener, moves it out of persistent paths, tests encrypted relay completion,
+duplicate refusal and active cancellation, then cancels its owned command. Actual
+hosted run pending. All workload/native execution stays in disposable CI; no paid
+allocations or protected GC changes. Next qualify this exact bridge before wiring
+public transports, and strengthen per-stream cancellation completion proof.
+
+Verifieda8cc3ef19a63204d038112a7de3bbc4bb4a8eb06 / CI41240300256 all five
+jobs passed; watcher94133 exited0. /tmp/jetski-stream-journal-ci.log and
+/tmp/jetski-stream-journal-ssh.log (job124652626371) confirm
+durableStreamAdmissionAndQuiescence=true on installed SSH/rootless infrastructure,
+plus existing source-deleted recovery.73TS/66Python tests/build/typecheck/lint
+pass. Actual relay exec/byte broker and per-stream active cancellation are not yet
+wired: hosted evidence covers host reservations/tombstones and whole-runtime stop,
+while native relay bytes were independently qualified in the preceding change.
+Next implement the authenticated stream broker that joins these paths; preserve
+at-most-once dispatch, reject stale leases, and do not infer per-stream cleanup
+from transport EOF or exec-removal acknowledgement alone. Then expose forwarding
+and previews, qualify both host providers and complete client/benchmark gates.
+No paid allocations, desktop runtime execution or protected GC changes. Full goal
+active. Source published on main; this verified scratchpad-only update is uncommitted.
+
 Host stream admission candidate: host/streams.py persists reservation and dispatch
 intent before exec creation, with immutable stream/session identities,64active and
 4096history bounds, cancel-before-admission tombstones and no redispatch on replay.
