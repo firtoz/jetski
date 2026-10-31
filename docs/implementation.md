@@ -362,3 +362,8 @@ attempts durable stop, post-release output access and a new assignment on the sa
 host; await CI before claiming this path qualified. Resume, delete, controller
 multi-writer qualification and automatic interrupted-upload recovery remain open,
 along with all earlier full-release gates. No paid host or prior GC state touched.
+
+Host cleanup follow-up: removal now observes container absence before retrying rm,
+so a lost removal acknowledgement can finish its existing receipt without another
+removal effect. Two regression tests cover lost ACK and inspection errors that
+must not authorize release. Thirty-three Python tests and Ruff/Biome pass locally.

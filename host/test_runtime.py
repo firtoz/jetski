@@ -71,6 +71,36 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.fence.read()["runtime"]["phase"], "removed")
         self.assertEqual(self.fence.read()["phase"], "closed")
 
+    def test_lost_removal_ack_observes_absence_without_replaying_rm(self):
+        self.adapter().create(self.lease)
+        self.adapter().quiesce(self.lease)
+        present = True
+        removals = 0
+
+        def lost_ack(args):
+            nonlocal present, removals
+            if args[:2] == ["container", "exists"]:
+                return dict(exitCode=0 if present else 1, stdout="")
+            if args[0] == "rm":
+                present = False
+                removals += 1
+                raise ConnectionError("lost removal acknowledgement")
+            raise AssertionError(args)
+
+        with self.assertRaises(ConnectionError):
+            self.adapter(lost_ack).remove(self.lease)
+        self.assertEqual(self.fence.read()["runtime"]["phase"], "stopped")
+        self.adapter(lost_ack).remove(self.lease)
+        self.assertEqual(removals, 1)
+        self.assertEqual(self.fence.read()["runtime"]["phase"], "removed")
+
+    def test_unknown_runtime_inspection_cannot_authorize_release(self):
+        self.adapter().create(self.lease)
+        self.adapter().quiesce(self.lease)
+        with self.assertRaisesRegex(RuntimeError, "unknown"):
+            self.adapter(lambda args: dict(exitCode=125, stdout="")).remove(self.lease)
+        self.assertEqual(self.fence.read()["runtime"]["phase"], "stopped")
+
     def test_runtime_isolation_configuration_and_image_policy(self):
         self.adapter().create(self.lease)
         argv = self.calls[0]

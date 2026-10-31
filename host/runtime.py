@@ -156,10 +156,14 @@ class PodmanRuntime:
                 raise ValueError("runtime_not_quiesced")
             if runtime["phase"] == "removed":
                 return runtime
-            result = self.run(["rm", runtime["name"]])
-            if result["exitCode"] != 0:
-                raise RuntimeError("runtime_removal_unconfirmed")
+            # A previous rm may have succeeded before its acknowledgement or
+            # receipt was persisted. Observe absence before replaying cleanup.
             result = self.run(["container", "exists", runtime["name"]])
+            if result["exitCode"] == 0:
+                removed = self.run(["rm", runtime["name"]])
+                if removed["exitCode"] != 0:
+                    raise RuntimeError("runtime_removal_unconfirmed")
+                result = self.run(["container", "exists", runtime["name"]])
             if result["exitCode"] != 1:
                 raise RuntimeError("runtime_still_present_or_unknown")
             runtime = {**runtime, "phase": "removed"}
