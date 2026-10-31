@@ -104,7 +104,15 @@ export class CheckpointTransfer {
         throw new Error("Checkpoint operation identity conflict");
       return { root: existing, uploadedBytes: 0, reusedBytes: archive.bytes };
     }
-    await this.registry.admit(fence, id, "writer");
+    const pending = await this.registry.beginFrameSave(
+      fence,
+      id,
+      archive as Json,
+      archive.frames.map((frame) => ({
+        bytes: frame.bytes,
+        sha256: frame.sha256,
+      })),
+    );
     const previous = previousRoot
       ? await this.registry.root(fence, previousRoot)
       : undefined;
@@ -117,8 +125,10 @@ export class CheckpointTransfer {
     const frames: ObjectInfo[] = [];
     let uploadedBytes = 0,
       reusedBytes = 0;
-    for (const frame of archive.frames) {
-      const candidate = reusable.get(`${frame.sha256}/${frame.bytes}`);
+    for (const [index, frame] of archive.frames.entries()) {
+      const candidate =
+        pending[String(index)] ??
+        reusable.get(`${frame.sha256}/${frame.bytes}`);
       const verified = candidate
         ? await this.objects.head(candidate)
         : undefined;
@@ -129,6 +139,7 @@ export class CheckpointTransfer {
         verified.bytes === frame.bytes &&
         verified.sha256 === frame.sha256
       ) {
+        await this.registry.planFrame(fence, id, index, verified);
         frames.push(verified);
         reusedBytes += frame.bytes;
         continue;
@@ -138,6 +149,11 @@ export class CheckpointTransfer {
         sandbox: fence.sandbox,
         id: this.newId(),
       };
+      await this.registry.planFrame(fence, id, index, {
+        ...address,
+        bytes: frame.bytes,
+        sha256: frame.sha256,
+      });
       const chunks = async function* () {
         let remaining = frame.bytes,
           offset = frame.offset;
@@ -155,6 +171,14 @@ export class CheckpointTransfer {
         bytes: frame.bytes,
         sha256: frame.sha256,
       });
+      if (
+        stored.owner !== address.owner ||
+        stored.sandbox !== address.sandbox ||
+        stored.id !== address.id ||
+        stored.bytes !== frame.bytes ||
+        stored.sha256 !== frame.sha256
+      )
+        throw Error("Storage upload receipt mismatch");
       frames.push(stored);
       uploadedBytes += frame.bytes;
     }

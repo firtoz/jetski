@@ -504,3 +504,30 @@ This does not yet clear reader admissions orphaned by abrupt controller process
 loss or recover partial checkpoint uploads. Those, active expiry, unresolved
 placement deletion and all provider/storage/interactive/client/benchmark gates
 remain in scope. No paid host or original GC experiment state was changed.
+
+Verified interrupted-import source: **e469dc4d5abd931b56549345a961783e9c9e0e90**,
+CI **41213437693**, all four jobs successful; watcher 80939 terminal0. Real API
+log confirms lostImportAcknowledgementRecovery=true after injecting failure only
+after the host committed import bytes. Recovery completed on the existing assignment
+and the final checkpoint hash still matched. This is transport-ACK-loss evidence,
+not an abrupt-process-kill or multi-controller lease-recovery qualification.
+All 56 unit tests pass. Next: durable recovery of interrupted checkpoint publication
+and orphan admissions, then unresolved placement cancellation/active expiry; keep
+all storage/provider/interactive/client/benchmark gates. No paid hosts or original
+GC-test state changes; all current disposable CI jobs are terminal and cleaned.
+
+Interrupted-save continuation: checkpoint frame publication now journals the exact
+immutable upload identity before I/O and binds resumptions to the original archive
+manifest/generation. Retrying verifies journaled objects and skips committed frames,
+including when upload succeeded but its acknowledgement was lost. Writer exclusion
+persists across failed attempts; only verified publication clears it and permits
+source release. Upload receipts must match the requested identity/extent/hash.
+Shutdown now retries the same journaled archive publication while preserving source
+quarantine on failure. Tests recover after repeated source-read failures and a lost
+store ACK, prove one upload per frame, reject changed operation input and compare
+all reconstructed bytes. Twenty-four TypeScript and thirty-three Python tests pass
+with build/typecheck/Biome/Ruff. Real API qualification now loses a store ACK after
+an actual committed object, then must recover before continuing source-deleted
+restore, held resume and deletion. CI is pending. Output-retention recovery and
+orphan reader admissions after process death remain incomplete; retain all other
+release gates and operational boundaries. No paid hosts or original GC state touched.

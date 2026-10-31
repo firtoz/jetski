@@ -60,6 +60,7 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     let now = 1,
       retirements = 0;
     let failRetirement = true;
+    let failUpload = failure === "upload";
     let failRelease = failure === "release-ack",
       allocations = 0;
     const provider: HostProvider = {
@@ -115,7 +116,7 @@ for (const failure of ["release-ack", "upload", "none"] as const)
           result = { ...importReceipt! };
         }
         if (request.action === "read-checkpoint") {
-          if (failure === "upload") throw Error("interrupted upload");
+          if (failUpload) throw Error("interrupted upload");
           const input = request.payload as { offset: number; bytes: number };
           result = {
             ...input,
@@ -165,18 +166,14 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       );
     else await manager.reconcile("alice");
     manager = new SandboxManager(state, provider, transport, objects, options);
-    await manager.reconcile("alice");
     if (failure === "upload") {
+      await assert.rejects(manager.reconcile("alice"), /interrupted upload/);
       assert.equal((await manager.get(scope))?.phase, "quarantined");
       assert.equal(actions.includes("remove"), false);
       assert.equal(actions.includes("release"), false);
-      assert.equal(
-        actions.filter((action) => action === "read-checkpoint").length,
-        1,
-        "failed publication is not replayed",
-      );
-      return;
+      failUpload = false;
     }
+    await manager.reconcile("alice");
     assert.equal((await manager.operation(scope, stopId))?.phase, "succeeded");
     assert.equal((await manager.get(scope))?.phase, "stopped");
     if (failure === "none") {

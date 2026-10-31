@@ -127,3 +127,78 @@ test("short source read prevents publication and preserves writer exclusion", as
   wrong.frames[0]!.offset = 1;
   assert.throws(() => parseArchive(wrong), /Invalid archive frame/);
 });
+
+test("upload identity journal recovers a lost store acknowledgement without resending committed frames", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "jetski-save-recovery-"));
+  const state = new SqliteState(join(dir, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const store = new LocalCheckpointStore(join(dir, "objects"));
+  const registry = new CheckpointRegistry(state, store),
+    fence = { owner: "alice", sandbox: "box", generation: 1 };
+  await registry.initialize(fence);
+  const fixture = archive([
+    Buffer.from("committed before acknowledgement"),
+    Buffer.from("remaining frame"),
+  ]);
+  const put = store.put.bind(store);
+  let loseAck = true,
+    puts = 0;
+  store.put = async (...args) => {
+    puts++;
+    const saved = await put(...args);
+    if (loseAck) {
+      loseAck = false;
+      throw Error("store acknowledgement lost");
+    }
+    return saved;
+  };
+  const reads: number[] = [];
+  const source = {
+    read: async (offset: number, count: number) => {
+      reads.push(offset);
+      return fixture.bytes.subarray(offset, offset + count);
+    },
+  };
+  await assert.rejects(
+    new CheckpointTransfer(store, registry).save(
+      fence,
+      "save",
+      fixture.manifest,
+      source,
+    ),
+    /acknowledgement lost/,
+  );
+  assert.equal(await registry.root(fence, "save"), undefined);
+  await assert.rejects(registry.collect(fence, "gc"), /Active/);
+  const conflict = archive([Buffer.from("changed input")]);
+  await assert.rejects(
+    new CheckpointTransfer(store, registry).save(
+      fence,
+      "save",
+      conflict.manifest,
+      source,
+    ),
+    /identity conflict/,
+  );
+  reads.length = 0;
+  const restarted = new CheckpointTransfer(
+    store,
+    new CheckpointRegistry(state, store),
+  );
+  const recovered = await restarted.save(
+    fence,
+    "save",
+    fixture.manifest,
+    source,
+  );
+  assert.deepEqual(reads, [fixture.manifest.frames[1]!.offset]);
+  assert.equal(puts, 2, "exactly one object upload per frame despite lost ACK");
+  assert.equal(recovered.reusedBytes, fixture.manifest.frames[0]!.bytes);
+  const chunks: Uint8Array[] = [];
+  for (const frame of recovered.root.frames)
+    for await (const chunk of store.read(frame)) chunks.push(chunk);
+  assert.deepEqual(Buffer.concat(chunks), fixture.bytes);
+});

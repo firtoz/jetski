@@ -39,6 +39,18 @@ const transport = new SshTransport([
   },
 ]);
 const objects = new LocalCheckpointStore(join(directory, "objects"));
+let loseSaveAck = false,
+  lostSaveAcks = 0;
+const objectPut = objects.put.bind(objects);
+objects.put = async (...args) => {
+  const committed = await objectPut(...args);
+  if (loseSaveAck) {
+    loseSaveAck = false;
+    lostSaveAcks++;
+    throw Error("Injected checkpoint store acknowledgement loss");
+  }
+  return committed;
+};
 let controlUnavailable = false;
 let loseImportAck = true,
   lostImportAcks = 0;
@@ -156,6 +168,7 @@ try {
   );
   assert.equal((JSON.parse(cli.stdout) as Sandbox[])[0]?.id, id);
   controlUnavailable = false;
+  loseSaveAck = true;
   const stopId = randomUUID();
   await client.request(`/v1/sandboxes/${id}/stop`, "POST", {
     operationId: stopId,
@@ -163,10 +176,11 @@ try {
   for (let attempt = 0; attempt < 150; attempt++) {
     const operation = await client.operation(id, stopId);
     if (operation.phase === "succeeded") break;
-    if (operation.phase === "uncertain") throw Error("Stop uncertain");
+    // Publication recovery must reuse the committed frame after lost store ACK.
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal((await client.operation(id, stopId)).phase, "succeeded");
+  assert.equal(lostSaveAcks, 1);
   const stopped = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
   assert.equal(stopped.phase, "stopped");
   assert.equal(stopped.lease, null);
@@ -367,6 +381,7 @@ try {
       deletedSandboxRetainsHistory: true,
       heldCheckpointResume: true,
       lostImportAcknowledgementRecovery: true,
+      lostCheckpointStoreAcknowledgementRecovery: true,
       assignedDeletion: true,
       completeLifecycle: false,
     }),

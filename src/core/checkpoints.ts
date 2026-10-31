@@ -1,5 +1,6 @@
 import {
   type CheckpointStore,
+  canonical,
   DEFAULTS,
   type Fence,
   identifier,
@@ -18,6 +19,12 @@ export type CheckpointRoot = {
   publishedAt: number;
   retiredAt: number | null;
   pins: string[];
+};
+type FrameSave = {
+  generation: number;
+  metadata: Json;
+  expected: Array<{ bytes: number; sha256: string }>;
+  frames: Record<string, ObjectInfo>;
 };
 type Access = {
   id: string;
@@ -158,6 +165,101 @@ export class CheckpointRegistry {
       });
       state.accesses = state.accesses.filter((access) => access.id !== writer);
       tx.put(this.key(fence), state);
+    });
+  }
+  async beginFrameSave(
+    fence: Fence,
+    id: string,
+    metadata: Json,
+    expected: Array<{ bytes: number; sha256: string }>,
+  ): Promise<Record<string, ObjectInfo>> {
+    identifier(id);
+    if (
+      expected.length < 1 ||
+      expected.length > 8192 ||
+      expected.some(
+        (frame) =>
+          !Number.isSafeInteger(frame.bytes) ||
+          frame.bytes < 1 ||
+          frame.bytes > DEFAULTS.maxObjectBytes ||
+          !/^[a-f0-9]{64}$/.test(frame.sha256),
+      )
+    )
+      throw Error("Frame journal bound or integrity descriptor");
+    return this.state.transaction((tx) => {
+      const state = this.load(tx, fence),
+        key = `frame-save/${scopeKey(fence)}/${id}`;
+      const previous = tx.get<FrameSave>(key);
+      if (previous) {
+        if (
+          previous.generation !== fence.generation ||
+          canonical(previous.metadata) !== canonical(metadata) ||
+          canonical(previous.expected) !== canonical(expected)
+        )
+          throw Error("Checkpoint operation identity conflict");
+        if (
+          state.collection ||
+          !state.accesses.some(
+            (access) => access.id === id && access.kind === "writer",
+          )
+        )
+          throw Error("Frame writer no longer admitted");
+        return previous.frames;
+      }
+      const used = `checkpoint-access/${scopeKey(fence)}/${id}`;
+      if (state.collection || tx.get(used) || state.accesses.length >= 64)
+        throw Error("Frame writer cannot be admitted");
+      tx.put(used, true);
+      state.accesses.push({
+        id,
+        kind: "writer",
+        root: null,
+        generation: fence.generation,
+      });
+      tx.put(this.key(fence), state);
+      tx.put(key, {
+        generation: fence.generation,
+        metadata,
+        expected,
+        frames: {},
+      });
+      return {};
+    });
+  }
+  /** Persist immutable upload identity before I/O. A retry first verifies that
+   * identity, recovering a completed upload even when its acknowledgement was lost. */
+  async planFrame(
+    fence: Fence,
+    id: string,
+    index: number,
+    object: ObjectInfo,
+  ): Promise<void> {
+    await this.state.transaction((tx) => {
+      const state = this.load(tx, fence),
+        key = `frame-save/${scopeKey(fence)}/${id}`;
+      const journal = tx.get<FrameSave>(key),
+        expected = journal?.expected[index];
+      if (
+        !journal ||
+        journal.generation !== fence.generation ||
+        !Number.isSafeInteger(index) ||
+        !expected ||
+        state.collection ||
+        !state.accesses.some(
+          (access) => access.id === id && access.kind === "writer",
+        )
+      )
+        throw Error("Frame writer not admitted");
+      if (
+        object.owner !== fence.owner ||
+        object.sandbox !== fence.sandbox ||
+        object.bytes !== expected.bytes ||
+        object.sha256 !== expected.sha256
+      )
+        throw Error("Frame journal integrity conflict");
+      identifier(object.id);
+      journal.frames[String(index)] = object;
+      tx.put(key, journal);
     });
   }
   async pin(
