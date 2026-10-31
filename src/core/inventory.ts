@@ -28,6 +28,7 @@ export function validObservation(
 ): boolean {
   return (
     !!value &&
+    Object.keys(value).sort().join(",") === "firstSeen,object" &&
     !!value.object &&
     sameObject(value.object, object) &&
     Number.isSafeInteger(value.firstSeen) &&

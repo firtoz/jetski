@@ -93,19 +93,25 @@ workload-specific products.
 
 ## Latest continuation status
 
-Current source: **5ff2a89d1a1f68a32fbfd93f72b76c4da772a6d6**, CI **41221063301**.
-Watcher **11645** is live. Unit/build/lint and rootless-runtime jobs passed; SSH/API
-qualification remains running. Poll this exact watcher/run first; do not restart on
-observation timeout. All 43 TypeScript and 42 Python tests pass in CI. The preceding
-source ba42eab9774694fb9442624a055b7e32cc3c864b passed all four jobs in CI41220566212.
-No paid host resources or remote storage requests were used. Live R2 qualification
-still awaits bucket-scoped S3 credentials through a private local configuration.
+Current source: **2e97b8747cfcfc4773529810b1ee90b2d58395d8**, CI **41221469787**.
+Watcher **93674** is live. First poll this exact handle/run on continuation; no
+workflow restart on observation timeout. Local build/typecheck/lint pass, prior45
+TypeScript suite passed plus the added omitted-inventory test passed. CI has46
+TypeScript and42Python tests to complete. Previous source5ff2a89 passed all four
+jobs in CI41221063301; watcher11645 exited0 and disposable resources were cleaned.
 
-Next implementation: complete scoped object inventory and orphan first-observation
-journaling with minimum24hgrace and full retained-root verification before deletion.
-Incomplete listings or ambiguous journals must keep collection excluded and delete
-nothing. Do not conflate this local injected-clock work with the protected real-grace
-experiment. All other provider/interactive/client/benchmark release gates remain.
+Scoped orphan inventory is implemented with64object persistent pages, complete-pass
+receipts, immutable first-seen observations and24hgrace. Restart re-enumerates fully;
+partial listings cannot admit deletion. The66object fixture covers grace, retained
+publication, partiallisting, deleteACKloss/reopen and replay. Live cloud storage and
+real-grace execution remain unqualified. Core holds at most100000inventoryobjects;
+local adapter still reads directory names, and metadata compaction is not implemented.
+No paid hosts, cloud storage writes or protected experiment changes occurred.
+
+Next: observe CI; qualify competing collectors and inventory/candidate corruption,
+then proceed with remaining host adapters and interactive transports. Live R2 still
+awaits private bucket-scoped credentials. Full provider/parity/fresh-host/client/
+benchmark gates remain open. Keep the full acceptance matrix authoritative.
 
 The independent SSH/Podman + SQLite/local-store vertical slice now executes commands,
 streams bounded files through SDK helpers, admits resumable uploads, checkpoints,
@@ -768,3 +774,15 @@ check; finalchecks/CI pending. Core caps inventory at100000objects and retains i
 map in memory; metadata compaction and broader concurrency/live-provider tests remain.
 PreviousCI41221063301 at5ff2a89 passed all4jobs; watcher11645 exited0. No remote
 storage writes, paid hosts, or protected experiment changes.
+
+Collector concurrency continuation: CI41221469787 at2e97b87 passed all four jobs;
+watcher93674 exited0, owned disposable listeners/hosts completed cleanup. New test
+uses two independent SQLite connections/controllers, stalls one inventory, checks
+that competing collection IDs/readers/writers are excluded, resumes the same ID on
+the second controller, and verifies the superseded first attempt cannot delete or
+complete its stale inventory. Another test injects malformed first-seen records and
+cross-owner candidate corruption with zero deletes. Observation records reject
+unknown fields, and each deletion now rechecks generation/operation/cursor before
+dispatch as well as after acknowledgement. These tests do not prove arbitrary
+network partitions or all multi-controller lifecycle paths. Local final checks and
+CI pending; provider/interactive/client/benchmark gates remain open.

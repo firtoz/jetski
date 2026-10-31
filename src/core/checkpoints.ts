@@ -718,6 +718,19 @@ export class CheckpointRegistry {
     for (let index = journal.next; index < journal.candidates.length; index++) {
       // A lost deletion acknowledgement retries this same immutable identity.
       // Stores must make deletion idempotent and must never reuse object IDs.
+      await this.state.transaction((tx) => {
+        const state = this.load(tx, fence);
+        const current = tx.get<CollectionJournal>(journalKey);
+        if (
+          state.collection !== collection ||
+          !current ||
+          current.generation !== fence.generation ||
+          current.done ||
+          current.next !== index ||
+          !sameObject(current.candidates[index]!, journal.candidates[index]!)
+        )
+          throw Error("Collector fenced");
+      });
       await this.objects.delete(journal.candidates[index]!);
       await this.state.transaction((tx) => {
         const state = this.load(tx, fence);
