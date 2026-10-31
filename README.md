@@ -22,3 +22,7 @@ A runnable state-only example is available with
 `npx tsx examples/durable-operation.ts /tmp/jetski-example.sqlite`. Run it twice:
 the second process observes the original running operation and does not redispatch.
 This example does not execute a workload. The full sandbox example remains a release gate.
+
+CI exercises real rootless Podman on a disposable Linux runner, including source
+deletion and exact filesystem recovery into a new container. This does not yet
+qualify replacement hosts, remote checkpoint stores, networking or the server API.

@@ -17,6 +17,8 @@ jobs:
       - run: npm test
       - run: npm run lint
       - run: python3 -m unittest discover -s host -v
+      - run: pipx run --spec ruff==0.17.3 ruff check host
+      - run: pipx run --spec ruff==0.17.3 ruff format --check host
   rootless-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

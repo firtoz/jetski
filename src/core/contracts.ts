@@ -101,9 +101,9 @@ export interface HostProvider {
     owner: string;
     operationId: string;
     expiresAt: number;
-  }): Promise<{ id: string }>;
+  }): Promise<{ id: string; allocationId: string }>;
   inspect(
     id: string,
   ): Promise<{ state: "ready" | "starting" | "absent" | "unknown" }>;
-  retire(id: string): Promise<void>;
+  retire(id: string, allocationId: string): Promise<void>;
 }

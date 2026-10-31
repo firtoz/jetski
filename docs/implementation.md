@@ -150,3 +150,27 @@ The runtime fixture now creates hardlinks within /workspace; independent archive
 tests still prove preservation of pre-existing cross-root hardlinks. Separate bind
 mounts retain normal Linux mount-boundary link semantics. This failure is retained
 in CI; it is not a checkpoint or Podman-start success claim.
+
+
+Current continuation evidence: CI 41206907765 passed on commit
+287a9e4f47f5f31496e2b377c7af1e5940ab9f5f. The real rootless Podman job reports
+filesystemExact=true, sourceDeleted=true, replacementContainer=true and
+replacementHost=false, with cgroup v2 and six independently compared entries.
+Fixture image digest is recorded in the CI output. Both workload containers were
+removed and absence checked; host-wide process/mount cleanup remains a separate
+open qualification gate. The initial failed run remains preserved above.
+
+Added the Node SSH transport and adopted-host provider behind separate exports.
+SSH requires explicit keys and known-hosts, strict host-key checking, no ambient
+agent/config/forwarding, bounded requests/output/time and a fixed host-control
+entry point. Transport failures represent uncertain remote completion. Adoption
+and retirement use durable allocation identities; owner bindings survive release,
+and stale retire calls cannot free a subsequent allocation. Two additional unit
+tests pass (ten TypeScript tests total). These do not qualify a live SSH transport:
+installed host-control dispatch/bootstrap and an encrypted end-to-end test remain
+next, followed by the standalone server/SDK/CLI vertical slice. The provider's
+capabilities describe its intended runtime requirement, not observed host readiness.
+
+Progress classification: this continuation implemented source and generated real
+rootless recovery evidence. No paid provider requests, original client changes,
+GC experiment changes or desktop workload execution occurred.

@@ -12,7 +12,9 @@
     "./core": "./dist/core/index.js",
     "./sdk": "./dist/sdk.js",
     "./storage/local": "./dist/storage/local.js",
-    "./state/sqlite": "./dist/state/sqlite.js"
+    "./state/sqlite": "./dist/state/sqlite.js",
+    "./providers/ssh": "./dist/providers/ssh.js",
+    "./transport/ssh": "./dist/transport/ssh.js"
   },
   "files": [
     "dist",
