@@ -93,6 +93,18 @@ workload-specific products.
 
 ## Latest continuation status
 
+Port permission candidate: portable PortRegistry, shared operation journal,
+manager ownership boundary, HTTP routes/SDK and OpenAPI. Grants/revokes are atomic
+with stable outcomes; grants bind exact assignment/image/generation and running
+state. Revoked or stale grants never become live through replay.64active bound,
+no arbitrary target address. Tests cover SQLite reopen, lost-ACK-style replay,
+replacement/stopping/revocation, conflicting operation IDs, owner denial, invalid
+ports and parallel capacity admission. HTTP tests cover SDK receipts and scope.
+Local73TS/59Python tests, build/typecheck/lint pass.
+This records authority only: host streams, active-stream revocation, TCP gateway,
+previews and network hosted qualification remain open. Next wire the same authority
+to a bounded workload-loopback stream protocol and actual host-side generation fence.
+
 faa917ecb5acea1ba74203fc5afd14efc840b940 / CI41237509396 passed all five
 jobs; watcher49938 exited0. API job124644274733 receipt
 /tmp/jetski-ssh-gateway-api.log confirms sshGatewayOwnerTerminalReconnect=true
@@ -104,7 +116,18 @@ Follow-up hardening uses a bounded TCP listener and public ssh2 injectSocket API
 silent pre-header clients. Earlier library connection callback runs only after
 header receipt; it cannot enforce that deadline by itself. New regression test
 confirms silent socket shutdown.71TS tests/build/typecheck/lint pass locally;
-59Python unchanged pass. Follow-up exact-SHA CI pending.
+59Python unchanged pass. Verified follow-up c011c138871fd4b08210bc55ff9ea69e2c571151 /
+CI41237831816 all five jobs passed. Watcher83606 exited0;
+/tmp/jetski-ssh-bounded-ci.log and /tmp/jetski-ssh-bounded-api.log,
+API job124645227594 confirms real SSH terminal detach/reconnect/geometry/exit
+alongside existing checkpoint and source-deleted recovery checks.71TS/59Python
+checks pass; silent pre-header shutdown regression passes. Gateway remains
+experimental until full interactive/lifecycle/provider acceptance. Next implement
+shared workload-loopback tunnels for sandbox TCP and authenticated HTTP/WebSocket
+previews, with owner/port authorization and generation fencing; do not connect
+untrusted target addresses from the control plane. Physical Boat qualification,
+matched benchmarks and downstream staging integration remain open. Full goal active.
+This verified scratchpad update is uncommitted; executable source is on main.
 
 SSH gateway candidate: isolated server/ssh subpath and opt-in standalone config,
 public-key owner identity, strict existing-terminal attach command with byte cursor,

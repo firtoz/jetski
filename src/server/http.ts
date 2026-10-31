@@ -6,6 +6,7 @@ import {
 } from "node:http";
 import { identifier } from "../core/contracts.js";
 import type { SandboxManager } from "../core/manager.js";
+import { tcpPort } from "../core/ports.js";
 import {
   DEFAULT_TERMINAL_GEOMETRY,
   type TerminalInput,
@@ -143,6 +144,44 @@ export function createHttpServer(
       if (!sandbox) {
         send(response, 404, { error: "not_found" });
         return;
+      }
+      if (parts[3] === "ports") {
+        if (parts.length === 4 && request.method === "POST") {
+          const input = await body(request);
+          fields(input, ["operationId", "port"]);
+          send(
+            response,
+            200,
+            await manager.ports.expose(
+              scope,
+              string(input.operationId),
+              tcpPort(input.port),
+            ),
+          );
+          return;
+        }
+        if (parts.length === 5 && request.method === "GET") {
+          send(
+            response,
+            200,
+            await manager.ports.status(scope, string(parts[4])),
+          );
+          return;
+        }
+        if (parts.length === 5 && request.method === "DELETE") {
+          const input = await body(request);
+          fields(input, ["operationId"]);
+          send(
+            response,
+            200,
+            await manager.ports.revoke(
+              scope,
+              string(parts[4]),
+              string(input.operationId),
+            ),
+          );
+          return;
+        }
       }
       if (parts.length === 3 && request.method === "DELETE") {
         const input = await body(request);

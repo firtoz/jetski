@@ -15,6 +15,7 @@ import {
 import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
 import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
+import { PortRegistry } from "./ports.js";
 import { restoreCheckpoint } from "./restore.js";
 import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
 import {
@@ -78,6 +79,7 @@ export class SandboxManager {
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
   readonly history: CheckpointHistory;
+  readonly ports: PortRegistry;
   readonly uploads: UploadCoordinator;
   private readonly terminalInputs: TerminalInputJournal;
   private readonly shutdown: ShutdownCoordinator;
@@ -98,6 +100,16 @@ export class SandboxManager {
       options.hostsPerOwner ?? 1,
     );
     this.operations = new OperationJournal(state, this.now);
+    this.ports = new PortRegistry(state, this.operations, (tx, scope) => {
+      const sandbox = tx.get<Sandbox>(this.key(scope));
+      if (!sandbox) throw Error("Sandbox unavailable");
+      return {
+        generation: sandbox.generation,
+        lease: sandbox.lease,
+        image: sandbox.image,
+        running: sandbox.phase === "running",
+      };
+    });
     this.checkpoints = new CheckpointRegistry(state, objects, this.now);
     this.outputs = new CommandOutputStore(objects, this.checkpoints);
     this.history = new CheckpointHistory(

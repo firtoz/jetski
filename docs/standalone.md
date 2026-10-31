@@ -279,3 +279,19 @@ allow one session, have a 15-second admission deadline and a one-hour attachment
 limit. Server shutdown waits for active attachment tasks. These bounds do not
 replace an operator's network ingress policy. Container-backed qualification and
 all broader release gates are tracked in the implementation checklist.
+
+## Port permissions (transport work in progress)
+
+`exposePort(sandbox, operationId, port)` records permission for a workload TCP port
+and returns a durable operation receipt. The operation ID is also the exposure ID.
+`portStatus` inspects it; `revokePort` takes a separate stable operation ID. The
+corresponding HTTP routes are documented in `openapi.json`. No arbitrary destination
+hostname or address is accepted. SDK calls do not open a network connection yet.
+
+Permissions are owner-scoped and bound to the current running assignment, image
+and generation. Stopping, replacing or advancing the assignment makes them
+unavailable. Resume requires new permissions; replaying an old grant only returns
+its original outcome. Revocation is permanent for that exposure ID, survives
+controller restart and does not erase history. At most 64 permissions may be
+available per sandbox. Gateway integration, active-stream revocation and host-side
+stream fencing remain required before TCP forwarding or previews are advertised.

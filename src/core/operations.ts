@@ -96,10 +96,11 @@ export class OperationJournal {
     tx.put(key, op);
     return op;
   }
+  getIn(tx: Transaction, scope: Scope, id: string): Operation | undefined {
+    return tx.get<Operation>(this.key(scope, id));
+  }
   async get(scope: Scope, id: string): Promise<Operation | undefined> {
-    return this.state.transaction((tx) =>
-      tx.get<Operation>(this.key(scope, id)),
-    );
+    return this.state.transaction((tx) => this.getIn(tx, scope, id));
   }
   async claim(fence: Fence, id: string): Promise<boolean> {
     return this.state.transaction((tx) => this.claimIn(tx, fence, id));

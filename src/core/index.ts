@@ -5,6 +5,7 @@ export * from "./files.js";
 export * from "./manager.js";
 export * from "./operations.js";
 export type { HostLease } from "./pool.js";
+export * from "./ports.js";
 export type { TerminalGeometry, TerminalInput } from "./terminal-input.js";
 export * from "./transfer.js";
 export * from "./transport.js";

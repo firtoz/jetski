@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { type HostProvider } from "../src/core/contracts.js";
 import { SandboxManager } from "../src/core/manager.js";
 import { type HostTransport } from "../src/core/transport.js";
+import { JetskiClient } from "../src/sdk.js";
 import {
   bearerAuthentication,
   createHttpServer,
@@ -115,6 +116,29 @@ test("server enforces owner scope and progresses without browser polling", async
   });
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(creations, 1);
+  const client = new JetskiClient(base, "a".repeat(32));
+  const foreign = new JetskiClient(base, "b".repeat(32));
+  const exposure = randomUUID();
+  const grant = await client.exposePort(id, exposure, 8080);
+  assert.equal(grant.phase, "succeeded");
+  assert.deepEqual(await client.exposePort(id, exposure, 8080), grant);
+  assert.deepEqual(await client.operation(id, exposure), grant);
+  assert.equal((await client.portStatus(id, exposure)).available, true);
+  await assert.rejects(foreign.portStatus(id, exposure));
+  await assert.rejects(foreign.revokePort(id, exposure, randomUUID()));
+  await assert.rejects(client.exposePort(id, randomUUID(), 65536));
+  await assert.rejects(
+    client.request(`/v1/sandboxes/${id}/ports`, "POST", {
+      operationId: randomUUID(),
+      port: 8080,
+      host: "127.0.0.1",
+    }),
+  );
+  const revokeId = randomUUID();
+  const revoked = await client.revokePort(id, exposure, revokeId);
+  assert.deepEqual(await client.revokePort(id, exposure, revokeId), revoked);
+  assert.equal((await client.portStatus(id, exposure)).revoked, true);
+  assert.equal((await client.portStatus(id, exposure)).available, false);
   const second = randomUUID();
   await fetch(`${base}/v1/sandboxes`, {
     method: "POST",

@@ -48,6 +48,35 @@ export class JetskiClient {
     if (this.base.username || this.base.password)
       throw new Error("URL credentials prohibited");
   }
+  exposePort(
+    sandbox: string,
+    operationId: string,
+    port: number,
+  ): Promise<Operation> {
+    return this.request(`/v1/sandboxes/${identifier(sandbox)}/ports`, "POST", {
+      operationId,
+      port,
+    });
+  }
+  portStatus(
+    sandbox: string,
+    exposureId: string,
+  ): Promise<import("./core/ports.js").PortStatus> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/ports/${identifier(exposureId)}`,
+    );
+  }
+  revokePort(
+    sandbox: string,
+    exposureId: string,
+    operationId: string,
+  ): Promise<Operation> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/ports/${identifier(exposureId)}`,
+      "DELETE",
+      { operationId },
+    );
+  }
   async request<T>(
     path: string,
     method = "GET",
