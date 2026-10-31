@@ -1,9 +1,11 @@
 /** Disposable-runner qualification; environment paths are ephemeral credentials. */
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import {
   CheckpointRegistry,
   CheckpointTransfer,
@@ -449,6 +451,114 @@ try {
     state.close();
     await rm(directory, { recursive: true, force: true });
   }
+  // Destructive worker-loss injection only on this disposable, owned CI host.
+  activePayload = {
+    lease: { ...lease, assignmentId: randomUUID(), generation: 3 },
+    image,
+  };
+  await request("claim", { lease: activePayload.lease });
+  await request("create", activePayload);
+  const lostWorker = randomUUID();
+  const lostSpec = {
+    ...activePayload,
+    commandId: lostWorker,
+    argv: [
+      "/bin/sh",
+      "-ec",
+      "printf x >> /workspace/lost-count; printf WORKER-READY; read value",
+    ],
+  };
+  await request("terminal-start", lostSpec);
+  let workerReady = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const output = (await request("command-output", {
+      ...activePayload,
+      commandId: lostWorker,
+      channel: "stdout",
+      offset: 0,
+      bytes: 1024,
+    })) as { base64: string };
+    if (
+      Buffer.from(output.base64, "base64").toString().includes("WORKER-READY")
+    ) {
+      workerReady = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(workerReady, true);
+  await promisify(execFile)(
+    "sudo",
+    [
+      "python3",
+      "-c",
+      `
+import os, pathlib, signal, sys
+matches = []
+for entry in pathlib.Path("/proc").iterdir():
+    if not entry.name.isdecimal():
+        continue
+    try:
+        args = (entry / "cmdline").read_bytes().split(b"\\0")[:-1]
+        if len(args) == 5 and args[2] == b"/opt/jetski/host/commands.py" and args[3] == sys.argv[1].encode():
+            fd = os.pidfd_open(int(entry.name))
+            if (entry / "cmdline").read_bytes().split(b"\\0")[:-1] != args:
+                os.close(fd)
+                continue
+            matches.append(fd)
+    except (FileNotFoundError, ProcessLookupError):
+        continue
+assert len(matches) == 1, "expected exactly one owned worker"
+signal.pidfd_send_signal(matches[0], signal.SIGKILL)
+os.close(matches[0])
+`,
+      lostWorker,
+    ],
+    { timeout: 10000 },
+  );
+  const lostOutcome = await waitCommand(lostWorker, activePayload);
+  assert.equal(lostOutcome.phase, "uncertain");
+  assert.equal(lostOutcome.reason, "worker_lost");
+  assert.deepEqual(await request("terminal-start", lostSpec), lostOutcome);
+  await assert.rejects(
+    request("command-start", {
+      ...activePayload,
+      commandId: randomUUID(),
+      argv: ["true"],
+    }),
+  );
+  await assert.rejects(
+    request("terminal-input", {
+      ...activePayload,
+      commandId: lostWorker,
+      inputId: randomUUID(),
+      input: {
+        kind: "stdin",
+        base64: Buffer.from("retry\n").toString("base64"),
+      },
+    }),
+  );
+  const lostState = (await request("inspect", activePayload)) as {
+    phase: string;
+  };
+  assert.equal(lostState.phase, "quarantined");
+  await request("quiesce", activePayload);
+  assert.equal(
+    (
+      (await request("command-status", {
+        ...activePayload,
+        commandId: lostWorker,
+      })) as { phase: string }
+    ).phase,
+    "uncertain",
+  );
+  await assert.rejects(
+    request("release", {
+      ...activePayload,
+      publication: { checkpointId: randomUUID(), sha256: "a".repeat(64) },
+    }),
+  );
+  await request("remove", activePayload);
   console.log(
     JSON.stringify({
       replaySafeFileUpload: true,
@@ -464,6 +574,7 @@ try {
       durableHostTerminalInput: true,
       terminalInputAdmissionAckRecovery: true,
       terminalResizeSignalClose: true,
+      killedWorkerQuarantinesWithoutReplay: true,
       assignmentCancellation: true,
       sourceDeletedTransportRecovery: true,
       repeatedCheckpointIdentical: true,

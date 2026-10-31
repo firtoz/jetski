@@ -6,6 +6,8 @@ command descendants were reaped without stopping unrelated commands.
 """
 
 import base64
+import contextlib
+import fcntl
 import json
 import os
 import pathlib
@@ -24,6 +26,51 @@ def command_id(value):
     if not isinstance(value, str) or str(uuid.UUID(value)) != value:
         raise ValueError("invalid_command_id")
     return value
+
+
+@contextlib.contextmanager
+def worker_guard(fence, lease, command, create=False):
+    """Lifetime lock, private to the host and never inherited by child execs."""
+    command_id(command)
+    path = fence.root / (lease["assignmentId"] + "-" + command + ".worker")
+    flags = os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC
+    if create:
+        flags |= os.O_CREAT
+    try:
+        fd = os.open(path, flags, 0o600)
+    except FileNotFoundError:
+        yield True
+        return
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+    finally:
+        os.close(fd)
+
+
+def reconcile_workers_locked(fence, state):
+    """Caller holds fence. An unlocked running worker has lost completion proof."""
+    changed = False
+    for command, receipt in state.get("commands", {}).items():
+        if receipt["phase"] != "running":
+            continue
+        with worker_guard(fence, state["lease"], command) as absent:
+            if absent:
+                state["commands"][command] = {
+                    **receipt,
+                    "phase": "uncertain",
+                    "exitCode": None,
+                    "reason": "worker_lost",
+                }
+                state["phase"] = "quarantined"
+                changed = True
+    if changed:
+        fence.write(state)
+    return state
 
 
 def specification(argv, cwd, timeout):
@@ -74,6 +121,7 @@ class Commands:
         with self.fence.locked():
             state = self.fence.read()
             self.fence.match(state, lease)
+            reconcile_workers_locked(self.fence, state)
             commands = state.get("commands", {})
             previous = commands.get(command)
             if previous:
@@ -106,6 +154,7 @@ class Commands:
         with self.fence.locked():
             state = self.fence.read()
             self.fence.match(state, lease)
+            reconcile_workers_locked(self.fence, state)
             receipt = state.get("commands", {}).get(command)
             if receipt is None:
                 raise ValueError("unknown_command")
@@ -152,6 +201,7 @@ class Commands:
         with self.fence.locked():
             state = self.fence.read()
             self.fence.match(state, lease)
+            reconcile_workers_locked(self.fence, state)
             receipt = state.get("commands", {}).get(command)
             if receipt is None:
                 raise ValueError("unknown_command")
@@ -164,7 +214,19 @@ class Commands:
         return self.status(lease, command)
 
 
-def worker(command):
+def worker(command, expected_lease):
+    from supervisor import CONTROL_ROOT
+
+    expected_lease = identity(expected_lease)
+    command_id(command)
+    fence = Fence(CONTROL_ROOT / "slot")
+    with worker_guard(fence, expected_lease, command, create=True) as acquired:
+        if not acquired:
+            return
+        run_worker(command, expected_lease, fence)
+
+
+def run_worker(command, expected_lease, fence):
     import secrets
     import threading
     from podman_exec import ExecApi, CompletionDecoder
@@ -182,9 +244,9 @@ def worker(command):
     config = configuration()
     account = runtime_account()
     api = ExecApi(account.pw_uid)
-    fence = Fence(CONTROL_ROOT / "slot")
     with fence.locked():
         state = fence.read()
+        fence.match(state, expected_lease)
         receipt = state.get("commands", {}).get(command) if state else None
         if not receipt or receipt["phase"] != "queued":
             return
@@ -353,6 +415,6 @@ def worker(command):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         raise SystemExit("worker_command_id_required")
-    worker(sys.argv[1])
+    worker(sys.argv[1], json.loads(sys.argv[2]))

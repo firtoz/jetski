@@ -3,7 +3,7 @@ import pathlib
 import tempfile
 import unittest
 import uuid
-from commands import Commands, specification
+from commands import Commands, specification, worker_guard
 from fence import Fence
 
 
@@ -29,6 +29,37 @@ class CommandTests(unittest.TestCase):
         self.launched = []
         self.commands = Commands(self.fence, self.base / "outputs", self.launched.append)
         self.command = str(uuid.uuid4())
+
+    def test_lost_running_worker_quarantines_without_replay(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        with worker_guard(self.fence, self.lease, self.command, create=True) as acquired:
+            self.assertTrue(acquired)
+            with self.fence.locked():
+                state = self.fence.read()
+                state["commands"][self.command]["phase"] = "running"
+                self.fence.write(state)
+            self.assertEqual(self.commands.status(self.lease, self.command)["phase"], "running")
+            with worker_guard(self.fence, self.lease, self.command, create=True) as duplicate:
+                self.assertFalse(duplicate)
+        restarted = Commands(Fence(self.fence.root), self.base / "outputs", self.launched.append)
+        outcome = restarted.status(self.lease, self.command)
+        self.assertEqual(outcome["phase"], "uncertain")
+        self.assertEqual(outcome["reason"], "worker_lost")
+        self.assertEqual(self.fence.read()["phase"], "quarantined")
+        self.assertEqual(restarted.start(self.lease, self.command, ["true"]), outcome)
+        self.assertEqual(self.launched, [self.command])
+        with self.assertRaisesRegex(ValueError, "not_running"):
+            restarted.start(self.lease, str(uuid.uuid4()), ["true"])
+        with self.assertRaisesRegex(ValueError, "stale_lease"):
+            restarted.status(dict(self.lease, generation=2), self.command)
+
+    def test_missing_worker_guard_cannot_keep_command_running(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        with self.fence.locked():
+            state = self.fence.read()
+            state["commands"][self.command]["phase"] = "running"
+            self.fence.write(state)
+        self.assertEqual(self.commands.status(self.lease, self.command)["reason"], "worker_lost")
 
     def test_terminal_geometry_is_validated_and_bound_to_identity(self):
         for rows, columns in [(0, 80), (True, 80), (24, 4097), (1.5, 80)]:

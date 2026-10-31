@@ -172,3 +172,14 @@ workload starts and bound to terminal identity. CLI terminal-start accepts
 --rows and --columns. Full interactive attach, worker-loss qualification and gateways
 remain under development. These endpoints are experimental; releaseQualified and
 PTY qualification remain false until the remaining terminal checks pass.
+
+
+Host workers hold private lifetime locks before publishing running receipts.
+A later host request observes a lost worker as an uncertain command and quarantines
+the assignment; it never restarts the workload or claims successful completion.
+Launches carry the exact lease, so delayed workers cannot execute a reused command
+ID in a newer assignment. Quarantine blocks new writes and execution but is not a
+claim that existing workload processes have stopped: explicit quiescence still
+stops the container. Uncertain commands continue to block successful host release,
+and the source is retained. Detection currently requires a host control request;
+autonomous host monitoring and resolution of quarantined execution remain open.

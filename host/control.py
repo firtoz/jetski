@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from archive import capture, sync_dir  # noqa: E402
 from terminal_input import TerminalInputs  # noqa: E402
-from commands import Commands  # noqa: E402
+from commands import Commands, reconcile_workers_locked  # noqa: E402
 from files import Files  # noqa: E402
 from file_upload import FileUpload  # noqa: E402
 from import_checkpoint import CheckpointImport  # noqa: E402
@@ -60,7 +60,11 @@ def dispatch(request, config, account, run, launch=None):
         with fence.locked():
             state = fence.read()
             fence.match(state, lease)
-            return state
+            return reconcile_workers_locked(fence, state)
+    with fence.locked():
+        state = fence.read()
+        if state and state["lease"] == lease:
+            reconcile_workers_locked(fence, state)
     image = payload.get("image")
     runtime = PodmanRuntime(
         fence, run, image, DATA_ROOT, config["images"], "/opt/jetski/command-supervisor"
@@ -277,7 +281,13 @@ def main():
 
     def launch(command):
         subprocess.Popen(
-            [sys.executable, "-I", "/opt/jetski/host/commands.py", command],
+            [
+                sys.executable,
+                "-I",
+                "/opt/jetski/host/commands.py",
+                command,
+                json.dumps(identity(request["payload"]["lease"])),
+            ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

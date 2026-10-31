@@ -93,13 +93,30 @@ workload-specific products.
 
 ## Latest continuation status
 
+Worker-loss continuation: private per-assignment/command lifetime locks now guard
+running receipts; host requests detect absent workers, persist uncertain outcomes
+and quarantine without replay. Locks are close-on-exec and nonblocking under the
+assignment fence. Launches now carry the full lease to reject delayed workers on
+a later assignment. Normal completion persists before lock release. Quarantine
+does not prove process cleanup; explicit quiescence and uncertain-release refusal
+remain mandatory. Detection is request-driven, not autonomous host monitoring.
+57Python/61TypeScript tests plus build/typecheck/lint pass. Installed SSH fixture
+now kills only its exact owned worker using pidfd, checks no replay/new admission,
+then quiesces/removes while refusing successful release. Exact-SHA CI pending.
+No paid hosts, desktop runtime execution or protected experiment changes.
+
 Initial terminal geometry continuation: core/SDK/API/CLI and host/native supervision
 now bind rows/columns to stable terminal identity and apply them before workload
 execution. Defaults24x80, integer bounds1..4096. Invalid dimensions fail before
 host admission; changed dimensions conflict on replay. Native/installed SSH/API
 fixtures assert three nondefault initial sizes from inside the workload, before
 input or resize. Local build/typecheck/lint/C syntax and55Python tests pass;
-TypeScript suite and exact-SHA CI pending. No desktop workload execution, paid
+All61TypeScript tests pass. Publishedd61a8aeed21b4716d521bd406171664e45b1a3e1;
+CI41231481218 passed all five jobs; watcher67811 exited0. Evidence
+/tmp/jetski-geometry-ci.log. Native, installed SSH and API nondefault initial
+geometry assertions passed on disposable Linux. Source is pushed to main; this
+verified scratchpad update follows code. Next worker-loss/backpressure and
+interactive attach/reconnect, then gateways and the remaining full release gates. No desktop workload execution, paid
 resources, protected experiment or storage changes. Full release goal remains open.
 
 Verifiedbecf6656c9dfb9bfd948fc63ca24881ac43c7a72, CI41230894930 all five
