@@ -93,6 +93,20 @@ workload-specific products.
 
 ## Latest continuation status
 
+Terminal following continuation: SDK async iterator now pulls validated binary
+output only on consumer demand, supports saved byte-cursor reconnect, and accepts
+AbortSignal to detach without remote cancellation. Read errors surface instead of
+blind replay. CLI terminal-follow writes binary stdout with local drain handling
+and explicit --offset. Idle follows poll HTTP cursors at250ms; no WebSocket claim.
+Added tests for pull/reconnect/exact binary, corrupt cursor/base64 and abort without
+mutation. Installed API fixture now detaches/reconnects a live terminal follower,
+then verifies CLI offset following with host control disabled after release.
+Local64TypeScript tests/build/typecheck/lint pass; installed follower CI pending.
+Pressure source6b80d7335a30708b9ca5383cb816aa7f43853b07 /CI41233854846 passed
+all five jobs; watcher55087 exited0. API job124633392417 reports23input identities
+and durable uncertain receipt/replay/status with host control disabled after
+release. Evidence /tmp/jetski-api-pressure-qualified.log. No paid/desktop/protected changes.
+
 API pressure continuation: installed standalone fixture now creates a nonreading
 PTY through SDK, submits bounded16KiB inputs with unique durable identities until
 pressure stops admission, and requires failed command/terminal_input_uncertain with

@@ -183,3 +183,14 @@ claim that existing workload processes have stopped: explicit quiescence still
 stops the container. Uncertain commands continue to block successful host release,
 and the source is retained. Detection currently requires a host control request;
 autonomous host monitoring and resolution of quarantined execution remain open.
+
+
+The SDK followTerminal async iterator observes output with pull backpressure and
+validated binary byte cursors. Save each nextOffset after consuming its bytes;
+resume with that offset to avoid replaying already consumed output. An AbortSignal
+detaches observation without closing the remote terminal. Read failures surface
+to the caller; the SDK does not restart commands or resend input. Idle observation
+polls every250ms; this is HTTP cursor polling, not a WebSocket stream.
+CLI terminal-follow SANDBOX TERMINAL --offset BYTES writes binary stdout and waits
+for local output drain. It does not persist a cursor automatically. Interactive
+stdin attachment and public gateways remain separate unfinished features.

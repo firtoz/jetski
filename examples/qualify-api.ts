@@ -301,6 +301,12 @@ try {
     }
     throw Error("API terminal output deadline");
   };
+  const liveFollower = client.followTerminal(id, terminalId);
+  const initialTerminalChunk = (await liveFollower.next()).value!;
+  assert.ok(
+    Buffer.from(initialTerminalChunk.bytes).toString().includes("READY"),
+  );
+  await liveFollower.return(undefined);
   await waitTerminalText("READY");
   const firstInput = {
     kind: "stdin" as const,
@@ -327,6 +333,12 @@ try {
   const terminalText = await waitTerminalText("TERMINAL-DONE");
   assert.equal(terminalText.split("FIRST:first").length, 2);
   await waitPhase(terminalId, "succeeded");
+  const resumedTerminalChunks = [initialTerminalChunk.bytes];
+  for await (const chunk of client.followTerminal(id, terminalId, {
+    offset: initialTerminalChunk.nextOffset,
+  }))
+    resumedTerminalChunks.push(chunk.bytes);
+  assert.equal(Buffer.concat(resumedTerminalChunks).toString(), terminalText);
   const terminalOutcomes: Json[] = [];
   for (const inputId of [terminalFirst, terminalSecond]) {
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -599,6 +611,12 @@ try {
     await client.terminalStatus(id, pressureTerminal),
     pressureStatus,
   );
+  const followedCli = await promisify(execFile)(
+    process.execPath,
+    ["dist/cli.js", "terminal-follow", id, terminalId, "--offset", "3"],
+    { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
+  );
+  assert.equal(followedCli.stdout, terminalText.slice(3));
   const terminalCli = await promisify(execFile)(
     process.execPath,
     [
@@ -976,6 +994,8 @@ try {
     JSON.stringify({
       standaloneApi: true,
       apiTerminalInputReplay: true,
+      terminalFollowDetachReconnect: true,
+      terminalFollowCliWithoutHost: true,
       terminalOutcomesWithoutHost: true,
       apiTerminalPressureUncertaintyRetained: true,
       pressureInputIdentities: pressureIds.length,

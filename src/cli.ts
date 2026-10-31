@@ -20,6 +20,7 @@ const { values, positionals } = parseArgs({
     cwd: { type: "string" },
     rows: { type: "string" },
     columns: { type: "string" },
+    offset: { type: "string" },
     checkpoint: { type: "string" },
   },
 });
@@ -199,6 +200,17 @@ if (command === "serve") {
               : Number(values.columns),
         },
       );
+      break;
+    case "terminal-follow":
+      binaryOutput = true;
+      for await (const chunk of client.followTerminal(
+        required(positionals[1], "sandbox ID"),
+        required(positionals[2], "terminal ID"),
+        { offset: values.offset === undefined ? 0 : Number(values.offset) },
+      )) {
+        if (chunk.bytes.length && !process.stdout.write(chunk.bytes))
+          await once(process.stdout, "drain");
+      }
       break;
     case "terminal-status":
       result = await client.terminalStatus(

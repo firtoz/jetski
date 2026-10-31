@@ -2,7 +2,12 @@ import type {
   CheckpointPage,
   CheckpointSummary,
 } from "./core/checkpoint-history.js";
-import { encodeBase64 } from "./core/command-output.js";
+import {
+  decodeBase64,
+  encodeBase64,
+  OUTPUT_CHUNK,
+  OUTPUT_LIMIT,
+} from "./core/command-output.js";
 import { identifier, type Json, type Operation } from "./core/contracts.js";
 import {
   FILE_CHUNK_BYTES,
@@ -35,7 +40,13 @@ export class JetskiClient {
     if (this.base.username || this.base.password)
       throw new Error("URL credentials prohibited");
   }
-  async request<T>(path: string, method = "GET", body?: Json): Promise<T> {
+  async request<T>(
+    path: string,
+    method = "GET",
+    body?: Json,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    signal?.throwIfAborted();
     if (
       !path.startsWith("/v1/") ||
       path.split("?")[0]!.includes("..") ||
@@ -47,6 +58,7 @@ export class JetskiClient {
       "content-type": "application/json",
     };
     const options: RequestInit = { method, headers, redirect: "error" };
+    if (signal) options.signal = signal;
     if (body !== undefined) options.body = JSON.stringify(body);
     const response = await this.transport(new URL(path, this.base), options);
     if (!response.ok)
@@ -98,10 +110,80 @@ export class JetskiClient {
     terminal: string,
     offset = 0,
     bytes = 65536,
+    signal?: AbortSignal,
   ): Promise<{ base64: string; nextOffset: number; terminal: boolean }> {
     return this.request(
       `/v1/sandboxes/${identifier(sandbox)}/terminals/${identifier(terminal)}/output?offset=${offset}&bytes=${bytes}`,
+      "GET",
+      undefined,
+      signal,
     );
+  }
+  /** Pull-based output observation. Persist nextOffset after consuming a chunk
+   * and pass it back on reconnect. Detaching never cancels remote execution. */
+  async *followTerminal(
+    sandbox: string,
+    terminal: string,
+    options: { offset?: number; signal?: AbortSignal } = {},
+  ): AsyncGenerator<{
+    bytes: Uint8Array;
+    offset: number;
+    nextOffset: number;
+    terminal: boolean;
+  }> {
+    let offset = options.offset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > OUTPUT_LIMIT)
+      throw Error("Invalid terminal output cursor");
+    while (true) {
+      options.signal?.throwIfAborted();
+      const segment = await this.terminalOutput(
+        sandbox,
+        terminal,
+        offset,
+        OUTPUT_CHUNK,
+        options.signal,
+      );
+      if (
+        !segment ||
+        typeof segment.base64 !== "string" ||
+        typeof segment.terminal !== "boolean" ||
+        !Number.isSafeInteger(segment.nextOffset)
+      )
+        throw Error("Invalid terminal output segment");
+      const bytes = decodeBase64(segment.base64);
+      if (
+        segment.nextOffset !== offset + bytes.length ||
+        segment.nextOffset > OUTPUT_LIMIT
+      )
+        throw Error("Terminal output cursor mismatch");
+      if (bytes.length || segment.terminal) {
+        yield {
+          bytes,
+          offset,
+          nextOffset: segment.nextOffset,
+          terminal: segment.terminal,
+        };
+        offset = segment.nextOffset;
+      }
+      if (segment.terminal) return;
+      if (!bytes.length)
+        await new Promise<void>((resolve, reject) => {
+          const signal = options.signal;
+          const abort = () => {
+            clearTimeout(timer);
+            reject(signal?.reason);
+          };
+          const timer = setTimeout(() => {
+            signal?.removeEventListener("abort", abort);
+            resolve();
+          }, 250);
+          signal?.addEventListener("abort", abort, { once: true });
+          if (signal?.aborted) {
+            signal.removeEventListener("abort", abort);
+            abort();
+          }
+        });
+    }
   }
   closeTerminal(sandbox: string, terminal: string): Promise<Json> {
     return this.request(
