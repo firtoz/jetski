@@ -146,6 +146,7 @@ export function createSshGateway(
           const abort = new AbortController();
           let channel: ServerChannel | undefined,
             connection: HostConnection | undefined;
+          let directionsDrained = false;
           const close = () => {
             abort.abort();
             connection?.abort();
@@ -153,7 +154,10 @@ export function createSshGateway(
           };
           const lifetime = setTimeout(close, 3600000);
           const admission = setTimeout(close, 30000);
-          client.once("close", close);
+          const disconnected = () => {
+            if (!directionsDrained) close();
+          };
+          client.once("close", disconnected);
           const task = (async () => {
             if (!(await backend.get(authorized)))
               throw Error("Sandbox unavailable");
@@ -172,8 +176,10 @@ export function createSshGateway(
             clearTimeout(deadline);
             clearTimeout(admission);
             channel.on("error", close);
-            channel.once("close", close);
-            await pumpTcp(connection, channel, abort.signal);
+            channel.once("close", disconnected);
+            await pumpTcp(connection, channel, abort.signal, () => {
+              directionsDrained = true;
+            });
           })()
             .catch(() => {
               if (!channel) reject();
@@ -182,7 +188,7 @@ export function createSshGateway(
             .finally(() => {
               clearTimeout(admission);
               clearTimeout(lifetime);
-              client.removeListener("close", close);
+              client.removeListener("close", disconnected);
               close();
               forwards--;
               clientForwards--;
@@ -459,7 +465,21 @@ async function pumpTcp(
   connection: HostConnection,
   channel: ServerChannel,
   signal: AbortSignal,
+  drained: () => void,
 ) {
+  let inputEnded = false,
+    outputEnded = false,
+    pumpFinished = false;
+  let finalDeadline: ReturnType<typeof setTimeout> | undefined;
+  const finishDirection = () => {
+    if (!pumpFinished && inputEnded && outputEnded) {
+      drained();
+      finalDeadline = setTimeout(() => {
+        connection.abort();
+        channel.close();
+      }, 30000);
+    }
+  };
   const input = async () => {
     for await (const chunk of channel) {
       const bytes = Buffer.from(chunk);
@@ -470,6 +490,8 @@ async function pumpTcp(
         await connection.send(bytes.subarray(at, at + 16384));
       }
     }
+    inputEnded = true;
+    finishDirection();
     await connection.end();
   };
   const output = async () => {
@@ -493,6 +515,8 @@ async function pumpTcp(
     }
     // ServerChannel.end() closes both directions in ssh2. Send only SSH EOF so
     // the client can finish uploading after the workload has stopped sending.
+    outputEnded = true;
+    finishDirection();
     channel.eof();
   };
   const fail = (error: unknown) => {
@@ -500,9 +524,14 @@ async function pumpTcp(
     channel.close();
     throw error;
   };
-  await Promise.all([
-    input().catch(fail),
-    output().catch(fail),
-    connection.completed.catch(fail),
-  ]);
+  try {
+    await Promise.all([
+      input().catch(fail),
+      output().catch(fail),
+      connection.completed.catch(fail),
+    ]);
+  } finally {
+    pumpFinished = true;
+    clearTimeout(finalDeadline);
+  }
 }

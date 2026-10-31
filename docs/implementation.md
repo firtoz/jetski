@@ -93,6 +93,30 @@ workload-specific products.
 
 ## Latest continuation status
 
+CI41245312831 at1874e50 SSH job124667405633 failed: response bytes arrived,
+but forwarding receipt was uncertain at qualify-forward.ts:97. Preserve
+/tmp/jetski-gateway-forward-failed.log. Orderly SSH channel close after both EOFs
+was aborting upstream before host completion publication. Candidate fix tracks
+both drained directions, tolerates orderly disconnect then, and waits at most
+30seconds for completion; errors/premature close still interrupt. Hosted assertion
+now waits for the durable receipt while requiring every interim state to be open,
+never accepting uncertainty as success. Final checks/follow-upCI pending.
+
+
+Published1874e50d26a3890d28ebc16969cd22295762ccbb; CI41245312831,
+watcher36647 /tmp/jetski-gateway-forward-ci.log. Local93TS/70Python tests and
+build/typecheck/lint/Ruff pass; final bounded-output gateway focus3tests passed.
+An earlier intermediate focus run (16KiB output-chunk assumption) failed and later
+exited1; all its owned processes are gone. Final implementation accepts bounded
+2MiB chunks and serializes16KiB writes; no execution was left running locally.
+Hosted gateway/core/host/container checks for both TCP half-close orders pending.
+Observe this exact run to terminal, preserving failures; no observation-timeout
+restart. Next add thin CLI forwarding, capability discovery and real gateway
+revocation/stop/replacement checks, then authenticated HTTP/WS previews and Boat
+streaming/live-provider qualification. Public SSH forwarding remains experimental.
+No paid hosts, desktop native workloads or protected experiment changes.
+
+
 SSH forwarding candidate: optional gateway direct-tcpip channels require an exact
 owner/sandbox exposure, matching port and explicit immutable stream UUID encoded
 as EXPOSURE_ID.STREAM_UUID.jetski. No DNS/outer-host destination is opened. Shared

@@ -318,7 +318,8 @@ It does not mix terminal sessions and forwarding channels on one SSH connection.
 Input follows the SSH receive window (at most2MiB chunks), split into awaited16KiB
 host writes. Output writes have a5second backpressure deadline; admission is
 bounded to30seconds and connections to1hour. Both TCP half-closes are supported:
-output EOF does not prevent further input. `HostConnection.completed`, not output
+output EOF does not prevent further input. After both directions drain, an orderly
+SSH close allows up to30seconds for the final host receipt. `HostConnection.completed`, not output
 EOF alone, reports full verified host completion. Network delivery is not a promise
 that an application processed the bytes.
 

@@ -239,6 +239,7 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
   const identities = new Set<string>(),
     uploads: Buffer[] = [];
   const aborters = new Map<string, () => void>();
+  const outcomes = new Map<string, Promise<void>>();
   const backend: SshGatewayBackend = {
     get: async (scope) =>
       scope.owner === "alice" && scope.sandbox === "box"
@@ -291,14 +292,17 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
         const output = new PassThrough();
         let resolve!: () => void,
           reject!: (error: Error) => void,
-          ended = false;
+          ended = false,
+          settled = false;
         const completed = new Promise<void>((yes, no) => {
           resolve = yes;
           reject = no;
         });
+        outcomes.set(id, completed);
         void completed.catch(() => {});
         const abort = () => {
-          if (!ended) {
+          if (!settled) {
+            settled = true;
             ended = true;
             output.destroy();
             reject(Error("interrupted"));
@@ -320,6 +324,9 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
             if (ended) throw Error("already ended");
             ended = true;
             if (exposure === "echo") output.end();
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            if (settled) throw Error("Interrupted before final receipt");
+            settled = true;
             resolve();
           },
         };
@@ -390,6 +397,7 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
   const closed = once(echo, "close");
   echo.end(bytes);
   await closed;
+  await outcomes.get(id);
   assert.deepEqual(Buffer.concat(chunks), bytes);
   await assert.rejects(forward(a, "echo", id));
   const half = await forward(a, "half", randomUUID());

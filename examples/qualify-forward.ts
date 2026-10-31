@@ -94,6 +94,16 @@ export async function qualifyForward(
     channel.end("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n");
     await closed;
     assert.ok(Buffer.concat(chunks).toString().endsWith("relay-container"));
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const status = await streams.status(scope, id);
+      if (status.phase === "closed") break;
+      assert.equal(
+        status.phase,
+        "open",
+        `Unexpected forwarding outcome (half=${half})`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
     assert.equal((await streams.status(scope, id)).phase, "closed");
     await assert.rejects(open());
   } finally {
