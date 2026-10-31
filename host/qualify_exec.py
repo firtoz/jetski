@@ -6,6 +6,7 @@ import hashlib
 import os
 import pathlib
 import secrets
+import re
 import struct
 import time
 import subprocess
@@ -216,7 +217,15 @@ def main():
                         session, timeout=40, initial_input=nonces[session], input_ready=input_ready
                     ):
                         if channel == "stderr":
-                            assert decoder.feed(chunk) == b"", "Private control data leaked"
+                            diagnostic = decoder.feed(chunk)
+                            if diagnostic:
+                                safe = diagnostic.replace(nonces[session], b"<private>").replace(
+                                    nonces[session].hex().encode(), b"<private>"
+                                )
+                                safe = re.sub(rb"[a-f0-9]{16,}", b"<identity>", safe)
+                                raise AssertionError(
+                                    "Unexpected terminal stderr: " + repr(safe[:512])
+                                )
                         else:
                             observed.extend(chunk)
                     return decoder.finish()

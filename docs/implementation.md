@@ -102,7 +102,13 @@ descendant cleanup. Review found cancellation could write buffered input into a
 closed slave before publishing cleanup proof; native pump now discards pending
 input once cancelling while still draining output and reaping descendants.
 58Python tests/build/typecheck/lint pass. Real native pressure/cleanup result and
-final TypeScript checks/CI pending. No desktop runtime, paid host or protected
+All61TypeScript tests pass. Published5acbca150f11e313e29045790021f7a73266fa03;
+CI41232258513 native job124628719031 failed in the blocked-input cancellation:
+CompletionDecoder returned unexpected stderr before finish. Multi-frame hash
+assertion had passed. Private receipt /tmp/jetski-pressure-failed-native.log.
+Preserve failure; bounded redacted diagnostics added for next run to determine
+provider error vs protocol failure, without printing nonce or weakening proof.
+Other jobs still observed via watcher97186, /tmp/jetski-pressure-ci.log. No desktop runtime, paid host or protected
 experiment changes. Full interactive attachment/gateways and remaining release
 gates remain open.
 
