@@ -19,6 +19,17 @@ creation and survive controller restart, stop/resume and replacement. Configurat
 changes apply to new sandboxes, including copies. Records predating this setting
 retain their original default limits. API clients cannot override operator policy.
 
+Set top-level `automaticCollection: true` to opt into durable checkpoint maintenance
+(embedded callers use the same manager option). The worker invokes `maintain(owner)`
+after reconciliation; embedded schedulers must invoke both methods. Collection is
+restricted to stopped or deleted sandboxes without an assigned host or pending
+resume. The first pass waits 24 hours; subsequent successful passes are daily.
+Failures retain their collection identity and retry after five minutes, including
+after restart. A generation mismatch fails closed for operator reconciliation.
+The collector independently enforces object grace, complete reachability and all
+reader/writer fences. Maintenance does not expire acknowledged checkpoint history.
+The option defaults to false until release qualification is complete.
+
 Install Node from `.nvmrc`, then `npm ci && npm run build`. Prepare a dedicated
 Linux x86-64 host with rootless Podman prerequisites and GNU coreutils `timeout`.
 As an operator on that host,

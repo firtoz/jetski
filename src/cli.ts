@@ -42,6 +42,7 @@ if (command === "serve") {
     poolId: string;
     approvedImages: string[];
     workloadResources?: import("./core/resources.js").WorkloadResources;
+    automaticCollection?: boolean;
     port?: number;
     hostsPerOwner?: number;
     sshGateway?: {
@@ -97,6 +98,9 @@ if (command === "serve") {
         ? { workloadResources: config.workloadResources }
         : {}),
       hostsPerOwner: config.hostsPerOwner ?? 1,
+      ...(config.automaticCollection !== undefined
+        ? { automaticCollection: config.automaticCollection }
+        : {}),
     },
   );
   const authenticate = bearerAuthentication(

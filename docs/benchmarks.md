@@ -39,3 +39,29 @@ publication checks therefore reread unchanged frame bodies. Any optimization mus
 preserve verified publication, corruption detection, immutable object identities
 and safe collection. Equal-resource repetition and failure/recovery tests remain
 required; these results do not establish a Jetski speedup.
+
+## Equal workload limits and conditional reads
+
+A second twenty-trial run used two CPUs and 2 GiB per container on both arms,
+with live cgroup limits checked before priming. The same small host class,
+digest-pinned image, frozen fixture and alternating workload order were used.
+All twenty independent recovery checks passed; two hosts were retired and a
+subsequent provider inventory showed zero active hosts. The candidate was
+`0080663`, including conditional object verification.
+
+| Median per warm trial               | Reference |   Jetski |
+| ----------------------------------- | --------: | -------: |
+| Work, save, resume and verification |  17.243 s | 30.892 s |
+| Durable save and release            |   7.659 s | 26.966 s |
+| Resume readiness                    |   4.738 s |  2.325 s |
+| Payload uploaded                    |  1.032 MB | 4.178 MB |
+| Payload downloaded                  |  0.005 MB | 4.178 MB |
+| Storage requests                    |        18 |       63 |
+| Provider API requests               |        16 |       44 |
+
+Conditional verification removed most repeated object-body downloads compared
+with the first run, but did not establish competitive save latency. Different
+frame sizes and transport round trips remain measured limitations. The reference
+was slower than in the first run, so comparisons across runs cannot isolate the
+optimization's latency effect. Cold setup and initial priming remain outside these
+warm timings. This implementation does not promise universal speedups.

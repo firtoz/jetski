@@ -17,6 +17,7 @@ import {
 } from "./contracts.js";
 import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
 import type { HostStreamTransport } from "./host-stream.js";
+import { CheckpointMaintenance } from "./maintenance.js";
 import { observeLifecycle } from "./observability.js";
 import { OperationJournal } from "./operations.js";
 import {
@@ -94,6 +95,8 @@ export type ManagerOptions = {
   approvedImages: string[];
   /** Operator policy for new sandboxes; existing records retain their limits. */
   workloadResources?: WorkloadResources;
+  /** Explicit opt-in while automatic collection is awaiting release qualification. */
+  automaticCollection?: boolean;
   hostsPerOwner?: number;
   now?: () => number;
   events?: EventSink;
@@ -110,6 +113,7 @@ export class SandboxManager {
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
   private readonly resources: WorkloadResources;
+  private readonly maintenance: CheckpointMaintenance | undefined;
   readonly history: CheckpointHistory;
   readonly ports: PortRegistry;
   readonly previewSessions: PreviewSessions;
@@ -128,6 +132,11 @@ export class SandboxManager {
     private readonly objects: CheckpointStore,
     options: ManagerOptions,
   ) {
+    if (
+      options.automaticCollection !== undefined &&
+      typeof options.automaticCollection !== "boolean"
+    )
+      throw Error("Invalid automatic collection policy");
     this.resources = workloadResources(
       options.workloadResources === undefined
         ? DEFAULT_WORKLOAD_RESOURCES
@@ -145,6 +154,24 @@ export class SandboxManager {
       options.hostsPerOwner ?? 1,
     );
     this.operations = new OperationJournal(state, this.now);
+    this.maintenance = options.automaticCollection
+      ? new CheckpointMaintenance(
+          state,
+          (tx, scope) => {
+            const sandbox = this.getIn(tx, scope);
+            if (
+              !sandbox ||
+              sandbox.lease ||
+              sandbox.pendingResume ||
+              !["stopped", "deleted"].includes(sandbox.phase)
+            )
+              return;
+            return { ...scope, generation: sandbox.generation };
+          },
+          (fence, id) => this.checkpoints.collect(fence, id),
+          this.now,
+        )
+      : undefined;
     this.ports = new PortRegistry(state, this.operations, (tx, scope) => {
       const sandbox = tx.get<Sandbox>(this.key(scope));
       if (!sandbox) throw Error("Sandbox unavailable");
@@ -427,6 +454,18 @@ export class SandboxManager {
     return this.state.transaction((tx) => [
       ...new Set(tx.scan<Sandbox>("sandbox/").map((row) => row.value.owner)),
     ]);
+  }
+  /** Called by a server worker or an embedded platform scheduler, never a browser. */
+  async maintain(owner: string): Promise<void> {
+    if (!this.maintenance) return;
+    for (const sandbox of await this.list(owner)) {
+      const scope = { owner, sandbox: sandbox.id };
+      if (await this.checkpoints.inspect(scope))
+        await this.maintenance.run(scope);
+    }
+  }
+  async maintenanceStatus(scope: Scope) {
+    return this.maintenance?.status(scope);
   }
   private async request(
     lease: HostLease,

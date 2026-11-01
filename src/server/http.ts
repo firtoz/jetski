@@ -698,6 +698,7 @@ export function startWorker(
       for (const owner of await manager.owners()) {
         try {
           await manager.reconcile(owner);
+          await manager.maintain(owner);
         } catch (error) {
           onError(error);
         }

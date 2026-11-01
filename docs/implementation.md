@@ -79,21 +79,31 @@ Real-grace collection, matched benchmarks, final provenance/isolation audits,
 main CI and owned-resource reconciliation remain release gates. Preserve the
 separate recovery experiment and budget while completing them.
 
+## Execution order
+
+The finite [implementation closure checklist](implementation-checklist.md) tracks
+source audit and concrete code gaps separately from release verification.
+
+Finish implementation before broad release qualification. First audit the approved
+v1 contracts against current source and keep a finite list of missing behavior;
+implement those gaps with targeted checks. Do not add optional performance work or
+expand the acceptance matrix without a concrete missing requirement or observed
+failure. Then freeze the candidate artifact and execute one consolidated acceptance
+pass, reusing valid existing evidence. Fix failures and repeat only affected checks.
+The already-running hosted comparison may finish and must clean its owned hosts.
+
 ## Next steps
 
-1. Conditional reads now avoid repeat body downloads for process-local, previously
-   hash-verified objects; wire fault tests and live R2 conformance pass. Repeat the hosted
-   comparison with equal workload resource limits and frozen workload/oracles.
-   Operator CPU/memory settings are now persisted per new sandbox; controller
-   restart and prior-record default tests pass. Hosted equal-limit checks remain open.
-   The [default-configuration comparison](benchmarks.md) remains the recorded baseline;
-   no end-to-end improvement is established yet.
-2. Finish active browser terminal/preview checks and the restart, rollback,
-   isolation, cleanup and host-lifetime audits. The sleeping workspace UI is verified.
-3. Complete real-grace collection and retained-checkpoint recovery without changing
-   either experiment's clock or consuming the protected recovery reservation.
-4. Reconcile charges and owned resources; verify the final artifact, main CI and
-   complete acceptance matrix before marking the goal achieved.
+1. Finish the finite implementation audit and missing contracts in
+   [implementation closure](implementation-checklist.md). Durable opt-in standalone
+   collection is implemented; restart/fencing and real-collector tests pass.
+2. Finish API/SDK parity, embedded scheduling, runtime/policy and client rollback
+   source audits, then update the pinned staging artifact and freeze a candidate.
+3. Execute the consolidated release gates: active browser interaction, recovery,
+   lifecycle/isolation, real-grace collection, artifact provenance and final CI.
+4. The equal-resource twenty-trial benchmark is complete; all recovery checks passed
+   and owned hosts are retired. Preserve the [measured limits](benchmarks.md), finish
+   cost accounting and cleanup reconciliation, then close the acceptance matrix.
 
 ## Keeping this plan useful
 
