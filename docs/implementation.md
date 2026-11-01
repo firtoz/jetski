@@ -36,16 +36,16 @@ Inspect the worktree and exact-SHA CI before trusting a recorded result.
 Evidence scope matters: disposable SSH/Podman tests do not prove live Boat,
 physical-host replacement, remote-store parity or downstream staging behavior.
 
-| Gate                             | Current evidence                                                                             | Remaining acceptance                                                                 |
-| -------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Independent repository           | Public MIT source, separate exports, standalone examples and CI                              | Final provenance/package independence audit                                          |
-| Core lifecycle and pooling       | Replay/fencing tests; real API stop/resume, warm reuse, held/historical restore, idle expiry | Full restart/placement matrix and matched hosted runs                                |
-| Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Remaining interactive lifecycle/provider audit                                       |
-| Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                         |
-| Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                           |
-| Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                       |
-| Client integration               | Pinned artifact and downstream lifecycle adapters; live admission remains disabled           | Implement client adapters, pinned dependency, real workflow and replacement recovery |
-| Benchmarks and release           | Per-fixture measurements and preserved failures                                              | Matched comparison, owned-resource cleanup, documented limits and green final CI     |
+| Gate                             | Current evidence                                                                             | Remaining acceptance                                                             |
+| -------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Independent repository           | Public MIT source, separate exports, standalone examples and CI                              | Final provenance/package independence audit                                      |
+| Core lifecycle and pooling       | Replay/fencing tests; real API stop/resume, warm reuse, held/historical restore, idle expiry | Full restart/placement matrix and matched hosted runs                            |
+| Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Remaining interactive lifecycle/provider audit                                   |
+| Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                     |
+| Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                       |
+| Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                   |
+| Client integration               | Pinned artifact and downstream lifecycle adapters; scoped live qualification begun           | Complete client workflow and replacement recovery through the pinned dependency  |
+| Benchmarks and release           | Per-fixture measurements and preserved failures                                              | Matched comparison, owned-resource cleanup, documented limits and green final CI |
 
 ## Current work
 
@@ -61,7 +61,9 @@ Explicit operator-selected outbound networking passed all five CI jobs, includin
 real outbound access and host-loopback denial on a disposable rootless host.
 Networking stays disabled by default; broader destination filtering is external.
 Embedding support and built-package consumption passed CI, and initial
-client-side state/storage and lifecycle adapters pass local contracts; live admission remains disabled. The separate paid-host
+client-side state/storage and lifecycle adapters pass local contracts. Scoped live
+admission exposed native edge fetch incompatibilities; the corrected built artifact
+passes a native Workers-runtime fixture and awaits hosted requalification. The separate paid-host
 allowance is approved. Optional post-commit lifecycle observations now expose redacted phase events and
 operation timings without making telemetry part of execution success. Remaining gates include real-grace collection, matched
 hosted measurements and staging integration. See [qualification evidence](qualification.md).
