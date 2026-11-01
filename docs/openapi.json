@@ -2027,6 +2027,50 @@
         },
         "description": "Requires acknowledgement that unpublished changes are unavailable. Fences the lost assignment and preserves the failed save. Does not resume or replay commands. Stable operation identity supports lost-response recovery."
       }
+    },
+    "/v1/sandboxes/{sandboxId}/operations": {
+      "get": {
+        "summary": "List pending or uncertain operations, including automatic lifetime saves",
+        "parameters": [
+          {
+            "name": "sandboxId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation page with operations and next cursor; concurrent changes may alter later pages"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sandbox unavailable in principal scope"
+          }
+        }
+      }
     }
   },
   "components": {

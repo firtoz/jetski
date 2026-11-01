@@ -540,6 +540,16 @@ export class JetskiClient {
       },
     );
   }
+  pendingOperations(
+    sandbox: string,
+    after = "",
+    limit = 100,
+  ): Promise<{ operations: Operation[]; next: string | null }> {
+    const query = new URLSearchParams({ after, limit: String(limit) });
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/operations?${query}`,
+    );
+  }
   checkpoints(
     sandbox: string,
     after = "",

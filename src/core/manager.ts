@@ -380,6 +380,22 @@ export class SandboxManager {
   async operation(scope: Scope, id: string) {
     return this.operations.get(scope, id);
   }
+  async pendingOperations(scope: Scope, after = "", limit = 100) {
+    if (after) identifier(after);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
+      throw Error("Invalid operation page size");
+    const pending = (await this.operations.pending(scope))
+      .filter((item) => item.id > after)
+      .sort((a, b) => {
+        if (a.id < b.id) return -1;
+        return a.id > b.id ? 1 : 0;
+      });
+    const operations = pending.slice(0, limit);
+    return {
+      operations,
+      next: pending.length > limit ? operations.at(-1)!.id : null,
+    };
+  }
   async owners(): Promise<string[]> {
     return this.state.transaction((tx) => [
       ...new Set(tx.scan<Sandbox>("sandbox/").map((row) => row.value.owner)),

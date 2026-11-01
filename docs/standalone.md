@@ -64,7 +64,9 @@ select an older retained filesystem checkpoint with `recover-missing-source ID
 --operation UUID --config recovery.json`. The JSON contains `generation`, the exact
 `lease` from sandbox inspection, `shutdownId`, `checkpointId`, and
 `acknowledgement: "unpublished-changes-unavailable"`. The SDK exposes the same
-operation. Recovery requires positive provider absence and refuses other active
+operation. `pending-operations ID` lists pending/uncertain operations, including
+lifetime-triggered saves; follow the returned cursor with the SDK when needed.
+Recovery requires positive provider absence and refuses other active
 storage actors, stale authority or invalid retained objects. It leaves the sandbox
 stopped at the selected checkpoint; use a separate resume operation afterwards.
 The incomplete save stays uncertain and recorded. Unpublished changes are not

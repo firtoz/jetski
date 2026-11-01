@@ -255,6 +255,16 @@ for (const stage of ["remove", "release", "purge-source", "read-checkpoint"])
           assert.ok(address && typeof address === "object");
           const url = `http://127.0.0.1:${address.port}`;
           const client = new JetskiClient(url, "a".repeat(32));
+          const pending = await client.pendingOperations(scope.sandbox);
+          assert.equal(
+            pending.operations.find((item) => item.id === stop)?.phase,
+            "uncertain",
+          );
+          assert.equal(
+            pending.operations.find((item) => item.id === stop)?.generation,
+            input.generation,
+          );
+          assert.equal(pending.next, null);
           await assert.rejects(
             client.recoverMissingSource(scope.sandbox, recoveryId, {
               ...input,

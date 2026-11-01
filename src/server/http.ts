@@ -321,6 +321,22 @@ export function createHttpServer(
         return;
       }
       if (
+        parts.length === 4 &&
+        parts[3] === "operations" &&
+        request.method === "GET"
+      ) {
+        send(
+          response,
+          200,
+          await manager.pendingOperations(
+            scope,
+            url.searchParams.get("after") ?? "",
+            Number(url.searchParams.get("limit") ?? "100"),
+          ),
+        );
+        return;
+      }
+      if (
         parts.length === 5 &&
         parts[3] === "operations" &&
         request.method === "GET"

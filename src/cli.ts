@@ -426,6 +426,11 @@ if (command === "serve") {
         { operationId: required(values.operation, "--operation") },
       );
       break;
+    case "pending-operations":
+      result = await client.pendingOperations(
+        required(positionals[1], "sandbox ID"),
+      );
+      break;
     case "recover-missing-source":
       result = await client.recoverMissingSource(
         required(positionals[1], "sandbox ID"),
