@@ -161,6 +161,7 @@ export class ShutdownCoordinator {
           record.id,
           record.archive,
           {
+            readConcurrency: 4,
             read: async (offset, bytes) => {
               const value = await request(record.lease, "read-checkpoint", {
                 ...payload,

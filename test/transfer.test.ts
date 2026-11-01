@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -201,4 +201,70 @@ test("upload identity journal recovers a lost store acknowledgement without rese
   for (const frame of recovered.root.frames)
     for await (const chunk of store.read(frame)) chunks.push(chunk);
   assert.deepEqual(Buffer.concat(chunks), fixture.bytes);
+});
+
+test("opt-in parallel ranges are bounded, ordered and drained before failure", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "jetski-parallel-transfer-"));
+  const state = new SqliteState(join(dir, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const store = new LocalCheckpointStore(join(dir, "objects"));
+  const registry = new CheckpointRegistry(state, store);
+  const fence = { owner: "alice", sandbox: "box", generation: 1 };
+  await registry.initialize(fence);
+  const fixture = archive([randomBytes(1024 * 1024 + 64)]);
+  const transfer = new CheckpointTransfer(store, registry);
+  let active = 0,
+    maximum = 0,
+    finished = 0;
+  const pending: (() => void)[] = [];
+  const source = (fail: boolean) => ({
+    readConcurrency: 4,
+    read(offset: number, count: number): Promise<Uint8Array> {
+      active++;
+      maximum = Math.max(maximum, active);
+      return new Promise((resolve, reject) => {
+        pending.push(() => {
+          active--;
+          finished++;
+          if (fail && offset === 0) reject(Error("range failed"));
+          else resolve(fixture.bytes.subarray(offset, offset + count));
+        });
+        // Complete the bounded batch in reverse order without timing assumptions.
+        if (pending.length === 4 || offset + count === fixture.bytes.length) {
+          for (const done of pending.splice(0).reverse()) done();
+        }
+      });
+    },
+  });
+  const saved = await transfer.save(
+    fence,
+    "parallel",
+    fixture.manifest,
+    source(false),
+  );
+  assert.equal(maximum, 4);
+  assert.equal(active, 0);
+  const restored: Uint8Array[] = [];
+  for (const frame of saved.root.frames)
+    for await (const bytes of store.read(frame)) restored.push(bytes);
+  assert.deepEqual(Buffer.concat(restored), fixture.bytes);
+  finished = 0;
+  await assert.rejects(
+    transfer.save(fence, "failed-parallel", fixture.manifest, source(true)),
+    /range failed/,
+  );
+  assert.equal(active, 0);
+  assert.equal(finished, 4);
+  assert.equal(await registry.root(fence, "failed-parallel"), undefined);
+  await assert.rejects(registry.collect(fence, "gc"), /Active/);
+  await assert.rejects(
+    transfer.save(fence, "invalid", fixture.manifest, {
+      ...source(false),
+      readConcurrency: 5,
+    }),
+    /concurrency/,
+  );
 });

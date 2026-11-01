@@ -23,7 +23,12 @@ export type CapturedArchive = {
   entries: number;
   frames: ArchiveFrame[];
 };
+const READ_BYTES = 256 * 1024;
+const MAX_READ_CONCURRENCY = 4;
+
 export interface ArchiveSource {
+  /** Opt in only when independent immutable range reads may overlap. */
+  readConcurrency?: number;
   read(offset: number, bytes: number): Promise<Uint8Array>;
 }
 const digest = (value: unknown): value is string =>
@@ -98,6 +103,13 @@ export class CheckpointTransfer {
     reusedBytes: number;
   }> {
     const archive = parseArchive(input);
+    const readConcurrency = source.readConcurrency ?? 1;
+    if (
+      !Number.isSafeInteger(readConcurrency) ||
+      readConcurrency < 1 ||
+      readConcurrency > MAX_READ_CONCURRENCY
+    )
+      throw Error("Invalid checkpoint read concurrency");
     const existing = await this.registry.root(fence, id);
     if (existing) {
       if (canonical(existing.metadata) !== canonical(archive))
@@ -158,13 +170,30 @@ export class CheckpointTransfer {
         let remaining = frame.bytes,
           offset = frame.offset;
         while (remaining) {
-          const count = Math.min(256 * 1024, remaining);
-          const bytes = await source.read(offset, count);
-          if (!(bytes instanceof Uint8Array) || bytes.length !== count)
-            throw new Error("Short checkpoint transfer");
-          yield bytes;
-          offset += count;
-          remaining -= count;
+          const reads: Promise<Uint8Array>[] = [];
+          const counts: number[] = [];
+          for (let index = 0; index < readConcurrency && remaining; index++) {
+            const count = Math.min(READ_BYTES, remaining);
+            const position = offset;
+            reads.push(
+              Promise.resolve().then(() => source.read(position, count)),
+            );
+            counts.push(count);
+            offset += count;
+            remaining -= count;
+          }
+          // Drain the bounded batch even on failure. Preserve archive order and
+          // never let reads outlive a failed upload or its source quarantine.
+          const settled = await Promise.allSettled(reads);
+          for (const [index, result] of settled.entries()) {
+            if (result.status === "rejected") throw result.reason;
+            if (
+              !(result.value instanceof Uint8Array) ||
+              result.value.length !== counts[index]
+            )
+              throw new Error("Short checkpoint transfer");
+            yield result.value;
+          }
         }
       };
       const stored = await this.objects.put(address, chunks(), {
