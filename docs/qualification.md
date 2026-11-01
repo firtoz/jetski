@@ -296,4 +296,6 @@ inventory reported zero active hosts. This does not qualify browser UI interacti
 The host audit found residual container monitors after workload removal; these
 exited without intervention before host retirement. No assignment mounts or
 fixture server remained, but this run does not establish an instantaneous clean
-process slate for warm reuse. End-to-end matched benchmarks remain outstanding.
+process slate for warm reuse. A [default-configuration hosted comparison](benchmarks.md)
+completed twenty exact-recovery trials and exposed excessive R2 rereads.
+Equal-resource performance qualification remains outstanding.

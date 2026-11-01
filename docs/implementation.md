@@ -81,13 +81,15 @@ separate recovery experiment and budget while completing them.
 
 ## Next steps
 
-1. Finish the remaining remote/provider recovery gates; idle-host disappearance now passes a live oracle.
-2. Audit remaining lifecycle/replacement requirements against existing tests;
-   add checks only for uncovered requirements or concrete defects.
-3. Finish provider/storage qualification and prepare the downstream staging adapter.
-   Stay within the separately approved paid-host allowance.
-4. Run matched hosted benchmarks, staging workflow and replacement recovery;
-   complete the acceptance audit before marking the goal achieved.
+1. Reduce the verified R2 read amplification found in the
+   [default-configuration comparison](benchmarks.md), then repeat the hosted
+   comparison with equal workload resource limits and frozen workload/oracles.
+2. Finish active browser terminal/preview checks and the restart, rollback,
+   isolation, cleanup and host-lifetime audits. The sleeping workspace UI is verified.
+3. Complete real-grace collection and retained-checkpoint recovery without changing
+   either experiment's clock or consuming the protected recovery reservation.
+4. Reconcile charges and owned resources; verify the final artifact, main CI and
+   complete acceptance matrix before marking the goal achieved.
 
 ## Keeping this plan useful
 
