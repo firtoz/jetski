@@ -1,328 +1,119 @@
 # Qualification evidence
 
-This document records evidence and its limits, not a release certification.
-The live acceptance checklist is in [implementation.md](implementation.md).
+The implementation candidate is complete; release acceptance remains open for the
+real-grace collection gate and final publication. The live checklist is
+[implementation.md](implementation.md); design and exclusions are in [design.md](design.md).
 
-## Verified baseline
+## Candidate and independent checks
 
-[CI 41254369411](https://github.com/firtoz/jetski/actions/runs/41254369411)
-passed all five jobs at `1776ecb`: TypeScript/Python checks, rootless runtime,
-SSH control, standalone API and the Boat-adapter fixture. The Boat job emulates
-provider APIs on disposable Linux; it is not live Boat qualification.
+Runtime `7240e47`, distributed as experimental qualification artifact 19, passes
+build, typecheck, lint and all 187 local tests.
+[Exact-runtime CI](https://github.com/firtoz/jetski/actions/runs/41332633249)
+passes all seven jobs: TypeScript/Python, rootless runtime, standalone API, and
+SSH/Boat control fixtures with default and FUSE-overlay storage. Boat fixture jobs
+emulate provider APIs on disposable Linux; live Boat evidence is separate below.
 
-| Area                   | Evidence                                                                                                                                         | Boundary                                                                                                      |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| Core and storage       | Tests under test/ and host/; local/S3 fault contracts                                                                                            | Fault fixtures do not establish every remote provider's consistency                                           |
-| API lifecycle          | examples/qualify-api.ts: stop, warm reuse, source-deleted restore, held/historical checkpoints, expiry, lost output/import/save acknowledgements | Same-host fixture; live physical replacement is qualified separately below                                    |
-| Host execution         | examples/qualify-ssh.ts and host qualification programs: real isolated execution, cancellation, worker loss and filesystem restoration           | Disposable adopted SSH host                                                                                   |
-| Interactive transports | PTY/SSH/TCP tests plus examples/qualify-browser-container.ts                                                                                     | Chrome 156, real rootless container and encrypted host control                                                |
-| Browser previews       | HTTPS page/assets, exact binary HTTP/WSS, durable closed stream receipts and revoked admission                                                   | Fresh test profile pins a one-day fixture certificate key; not public CA or operator deployment qualification |
-| Remote storage         | Isolated R2 functional qualification recorded in prior evidence                                                                                  | Not a complete live-provider/storage/replacement matrix                                                       |
+All 156 packaged files match source/build and both installed downstream consumers.
+Host assets are unchanged from the previous candidate. Portable import tests reject
+unwanted host/database dependencies. The MIT source has one independent history
+root; source, examples and commit messages pass the generic-content audit. See
+[NOTICE](../NOTICE) for provenance and dependency-license boundaries.
 
-`test/boat-stream.test.ts` exercises the explicit stream crypto suite against a
-local authenticated SSH peer: exact binary transfer succeeds, while a peer offering
-only an unselected cipher is rejected before command execution. Separate local
-embedded-runtime probes verify binary transfer, host-key rejection and abort cleanup.
-These do not qualify downstream UI wiring or hosted interactive lifecycle behavior.
+| Contract                          | Evidence                                                                                                                             | Scope                                                                                 |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Lifecycle, operations and pooling | SQLite replay/restart, lost acknowledgements, stale fences, queued cancellation; live warm reuse and idle expiry                     | Uncertain outcomes remain explicit; no blind replay                                   |
+| Host/runtime isolation            | Rootless Podman and SSH/API qualification, namespace/cgroup checks, owner/image/resource policy tests                                | Linux x86-64; one assignment per host, no cross-owner reuse                           |
+| Filesystem integrity              | Host archive/fencing tests; exact live independent oracles and source-deleted replacement                                            | Bytes, modes, symlinks and within-mount hardlinks; no RAM/kernel snapshot             |
+| Storage adapters                  | Shared local/S3 consistency and failure contracts; isolated R2 conformance and live filesystem recovery                              | Other S3-shaped services require their own qualification                              |
+| Incremental publication and cache | Changed-frame saves, corrupt/cache-miss recovery, lost publication ACK, conditional-read failure tests and live cache receipt        | Cache reuse follows verified durable publication; fresh clients hash complete objects |
+| Retention and collection          | Pin/history tests; writer/reader/publication races, corrupt/incomplete listing and failed-delete cases                               | Actual 24-hour fixture remains pending below                                          |
+| Interactive transports            | Real PTY/SSH/TCP qualification, Chrome HTTPS/WSS fixture, portable Workers gateway probes and live downstream browser check          | Authenticated scope, bounded bytes, input identities and output cursors               |
+| Embedded state/scheduling         | Actual SQLite-backed platform restart/alarm/rollback tests; live deployment preserves checkpoint, generation and closed-access state | Client supplies transactional state and authoritative scheduling                      |
+| Adoption and recovery             | Real read/edit/publication, source-loss and interrupted-placement recovery, physical replacement and resumed work                    | New staging workspaces; persisted backend identity rejects competing/native targets   |
 
-Creation admission commits its operation, sandbox and placement ticket atomically.
-`test/creation-admission.test.ts` uses real SQLite rollback/reopen to verify queue-write
-failure, lost commit acknowledgements, deletion before allocation and stable replay.
-Its provider is a fixture; it does not add live-provider evidence.
+The source and tests for creation admission, terminal attachment, checkpoint
+history and preview sessions are under `test/`. Runnable qualification programs
+include `examples/qualify-api.ts`, `qualify-checkpoint-storage.ts`,
+`qualify-filesystem-storage.ts` and `qualify-filesystem-gc.ts`. Mock and local checks
+are not promoted to live-provider evidence.
 
-Idle-host reuse now checks provider readiness before assignment. Confirmed absence
-quarantines the exact idle slot and retires its owned allocation before admitting
-replacement capacity. Unknown/starting observations keep capacity reserved and do
-not dispatch a workload. SQLite/object-store regressions cover exact-byte restore
-after disappearance, lost retirement acknowledgements, controller restart and a
-concurrent assignment invalidating the absence observation. This adds a provider
-readiness check to warm placement; its hosted latency remains to be measured.
-It does not recover unsaved changes from an absent active host.
+## Final live Boat/R2 and browser pass
 
-The live Boat/R2 pilot at `268b7fc` passed confirmed source deletion before idle
-expiry, fresh-host restoration and exact byte/mode/link oracle comparison. Warm
-resume took 3,436 ms; physical replacement took 69,217 ms. Initial/changed/final
-saves took 22,737/17,396/15,697 ms. Two hosts were allocated and retired; a final
-provider inventory showed zero active hosts and a scoped storage listing showed
-zero checkpoint objects. Immutable identity reservations remain intentionally.
-These are single-pilot timings, not a matched comparison or a speedup claim.
+A deleted-source replacement restored **167 entries and 322,866,475 bytes** with an
+independent byte/mode/link oracle identical to the source. This particular tree had
+no hardlink groups; earlier filesystem fixtures exercise hardlinks. The broader
+read/edit/publication workflow also passed physical replacement and resumed work,
+retaining its original session and clean published revision.
 
-`CheckpointCopy` has local SQLite/object-store coverage for same-owner copies,
-interrupted streams, lost upload/publication acknowledgements, cancellation races
-and independent target bytes after source collection. Copies use separate immutable
-object identities and protect source readers and target writers until publication
-or cancellation. Sandbox placement and live-provider qualification for this copy
-path remain open.
+The actual browser terminal accepted input. Applied resizing changed its geometry
+from 22 rows / 102 columns to 22 rows / 88 columns. The authenticated embedded
+preview displayed exact six-byte HTTP and WebSocket echo results. A page reload
+restored terminal history and accepted a new command on the same access identity;
+the fixture command was not replayed.
 
-Browser tests also verify bootstrap fragment removal, Secure/HttpOnly/Strict cookie
-acceptance, script execution and active revocation. Application cookies, iframe
-embedding, service workers and other browsers are not qualified. No universal
-speedup, zero-loss guarantee or production-readiness claim follows from these tests.
+Explicit close published an unchanged archive: **154,551,473 compressed bytes**,
+SHA-256 `5509dd62277f98f528c7ed534184f03a8b48d25a806d53f2e4378d4f605cbaf7`.
+Access and its business reservation were released. Final inspection found no
+workload/monitor processes, assignment mounts, assignment data directory or upload
+file. Both the prior source and final replacement were retired with provider
+absence confirmed; final provider inventory reported zero active hosts.
 
-## Active-stream stop regression
+The installed command watchdog also passed on that Boat host: after killing its
+control process, its independent deadline terminated the child and TERM-resistant
+descendant. Existing bounded-output and nonzero-exit assertions passed too. The
+provider reported a bounded 3,599-second host lifetime.
 
-The new API case holds a listener and admitted stream open through stop, then
-checks terminal stream evidence, old-listener absence and stale exposure/session
-rejection after resume. Existing publication fault injections remain enabled.
+Earlier live embedded checks cover same-input replay with one execution,
+authenticated binary HTTP/WebSocket traffic and server-owned expiry. An established
+stream closed 121 ms after its deadline; the expired cookie received 403. Historical
+uncertain outcomes, including cancelled stream delivery, remain preserved after
+cleanup and host retirement. They are not silently reclassified as successful work.
 
-| Run / source                                                                        | Result                                                                    | Consequence                                                                                |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [41252756358](https://github.com/firtoz/jetski/actions/runs/41252756358), `72c35ae` | Listener readiness failed; cleanup also reported uncertain host control   | Added IPv4/IPv6 readiness and bounded fixture diagnostics; no stop success claimed         |
-| [41253025787](https://github.com/firtoz/jetski/actions/runs/41253025787), `499c7cc` | Readiness passed; stop remained uncertain with unresolved command outcome | Found container stop preceding supervisor completion                                       |
-| [41253387238](https://github.com/firtoz/jetski/actions/runs/41253387238), `a09b0e8` | API regression passed; SSH intentional worker-loss cleanup failed         | Keep cancellation drain, but permit physical termination with unchanged uncertain receipts |
+## Real-grace collection: pending
 
-The cleanup correction passed all five jobs in CI 41253785969, including the
-active API stream stop/resume and intentional SSH worker-loss tests. It does not promote uncertain commands to successful
-completion: publication/release still require resolved outcomes. Cancellation drain
-releases the fence lock while waiting and has a bounded timeout.
+An independent R2 fixture has a retired filesystem version, a pinned retained
+version, deleted source archives and an independent recovery oracle. Early
+collection deleted zero objects and the resume helper refused early collection.
+The actual minimum grace ends **November 1, 2026, 23:51:52 UTC**.
 
-## Boat encrypted stream adapter
+Required after that deadline: delete only the eligible retired objects, restore
+and compare the retained filesystem exactly, repeat collection safely, then clean
+owned fixture resources. Do not alter its clock, references or generation. No VM
+is held. This is separate from the protected pre-existing recovery experiment;
+automatic collection remains opt-in while this release gate is open.
 
-The Boat fixture in [CI 41254717679](https://github.com/firtoz/jetski/actions/runs/41254717679)
-passed on `72a489a`: actual non-root SSH registration, pinned host key, fixed sudo
-control entry point, bounded TCP streams and the shared HTTP/WebSocket/browser
-preview suite. Unit tests cover persistent key reuse after lost registration,
-changed-key rejection and owner/expiry/retirement denial. This uses an emulated
-Boat API around a disposable Linux host, not a live Boat allocation. Other jobs
-in that exact run were still pending when this result was recorded.
+Backend rollback protection is qualified through persisted identity/admission
+checks and rejection of competing native targets, plus live state preservation
+across deployment. No production downgrade or legacy workspace migration was performed.
 
-## Initial live Boat findings
+## Measured limitations
 
-The first live pilot exposed two differences from the emulated API: upload receipts
-use paths relative to `/home/user`, and the stock `/opt` directory belongs to the
-guest user. The transport now resolves the receipt to the exact requested path
-before its existing byte/hash checks; bootstrap secures the parent only before a
-first installation on an owned machine. The first fixture then failed because it attempted a hardlink across separate
-persistent mounts. Its failed state was durably preserved before retiring the VM;
-the corrected fixture keeps that link within one mount.
+- Both twenty-trial hosted comparisons completed with exact recovery and owned
+  hosts retired. The equal-resource comparison found slower saves and faster
+  resumes for its fixture. Full numbers and measurement boundaries are in
+  [benchmarks.md](benchmarks.md); there is no universal speedup claim.
+- The large downstream archive took roughly 8–13 minutes to reach cold access
+  readiness in two observed runs. These were not matched cold-start trials.
+- Podman monitor processes remained for several minutes after workload removal;
+  final retirement waited for observed drain. Immediate monitor cleanup is not
+  established by these results.
+- FUSE-overlay bootstrap passes disposable-host fixtures; live cloud qualification
+  uses the default storage selection. FUSE remains experimental.
+- Local checkpoint storage cannot recover from loss of its control-plane disk.
+  Remote storage is required for that durability boundary.
+- No production cutover, other provider support, universal zero-loss guarantee or
+  public hosted-compute readiness follows from this qualification.
 
-The corrected live Boat/R2 pilot passed on `b4d9be2`: source execution, durable save,
-same-host warm restore, changed save, real ten-minute idle retirement, restoration
-on a different physical host, exact filesystem oracle and final retirement/cleanup.
-The oracle covers bytes, modes, symlinks and hardlinks. Warm restore took 15,182 ms;
-replacement restore took 53,234 ms. Initial/changed saves took 23,842/18,988 ms.
-These are one-pilot observations, not a matched comparison. This baseline downloads
-remote checkpoint data; live cache and interactive transport remain separate gates.
+## Consequential failures and history
 
-## Verified cache and embedding qualification
+Observed failures led to bounded process-group watchdogs, explicit missing-source
+and interrupted-placement recovery, native-fetch portability fixes, portable
+preview transports and precise terminal-input absence handling. A late maintenance
+regression now rotates an older attempt only after an authoritative forward
+fence advance; regression and race checks pass. Initial live fixture and harness
+failures remain excluded from successful performance trials.
 
-The cache-enabled live Boat/R2 pilot passed exact warm and physical replacement
-recovery, terminal input/resizing/signals, 512-byte binary TCP forwarding and
-confirmed stream closure. Both VMs were retired after their real idle periods;
-scoped test objects were cleaned up. Warm restore returned a verified full-length
-cache receipt without import chunks (4,577 ms). Replacement restore transferred
-remote chunks and matched the changed filesystem oracle (51,633 ms).
-
-These remain single-pilot observations: changed save took 36,269 ms, compared with
-18,988 ms in the baseline. A matched workload comparison is still required.
-
-[CI 41258484368](https://github.com/firtoz/jetski/actions/runs/41258484368) passed all
-five jobs on `259402d`; the first API attempt timed out fetching Ubuntu packages,
-then passed on an isolated rerun. The built package installs with Bun without
-lifecycle scripts. Injected bootstrap assets preserve the exact Node-loader source
-identity, and the packed artifact verifies every bundled host-source byte. The
-[v0.0.0-qualification.1 artifact](https://github.com/firtoz/jetski/releases/tag/v0.0.0-qualification.1)
-is an experimental integration prerelease, not completion of the full goal.
-
-## Real filesystem storage recovery
-
-`examples/qualify-filesystem-storage.ts` and `host/qualify_archive_store.py` capture
-real framed archives, delete the source tree and local archives, reopen SQLite and
-the storage client, then restore both historical versions. An independent oracle
-checks bytes, modes, empty files, Unicode, symlinks, hardlinks, rename/delete and
-opaque `.git` files. Local storage and the isolated R2 bucket passed on October 31.
-Only owned fixture objects were removed; immutable reservation markers remain.
-
-| R2 fixture save | Archive bytes | Uploaded bytes | Reused bytes | Save time |
-| --------------- | ------------: | -------------: | -----------: | --------: |
-| Initial         |     5,245,389 |      5,245,389 |            0 |  1,757 ms |
-| Changed tree    |     5,245,353 |      1,053,031 |    4,192,322 |    791 ms |
-
-These are one-fixture observations, not matched host benchmarks or universal
-speedups. This test allocates no execution host and does not prove physical VM
-replacement or real-grace garbage collection. CI runs the local storage path;
-private receipts retain the live R2 evidence.
-
-## Conditional object verification
-
-The S3 adapter keeps a bounded process-local cache of SHA-256-verified object
-receipts. Repeated observations use conditional GET with a strong ETag; only a
-304 for a still-valid receipt avoids downloading the body. ETags are provider
-validators, not integrity hashes. New upload readback, restores, changed objects
-and the first observation after restart still download and hash the complete object.
-Missing or weak validators fall back to complete reads. Set `verifiedCacheEntries`
-to zero to disable this optimization for providers without qualified validators.
-
-November 1 wire tests cover corrupt data, ignored conditions, eviction, restart,
-weak validators, unsolicited 304 responses and deletion during an observation.
-Live R2 returned body-free 304 responses for repeated checks of a verified 1 MiB
-object, and exact restore, fresh-client verification and the functional storage
-conformance suite passed. Fixture object cleanup passed; identity reservations
-remain intentionally retained. This does not yet establish end-to-end save latency
-or qualify other providers' conditional-read consistency.
-
-## Real-grace R2 collection
-
-An independent fixture was prepared with real wall-clock retirement and an intact,
-pinned second filesystem version. Early collection deleted zero objects; the resume
-helper also refused early collection. Eligible after **November 1, 2026, 23:51:52 UTC**.
-Deletion, replay and exact retained-root recovery remain pending. The helper is
-`examples/qualify-filesystem-gc.ts`; private state identifies the owned objects.
-This does not alter the separate protected 12:20 UTC experiment, and no VM is held.
-
-## Other consequential failures retained
-
-- [41252044899](https://github.com/firtoz/jetski/actions/runs/41252044899): combined
-  browser/container traffic passed, but a test executable left in `/workspace`
-  changed the checkpoint oracle. Moving it to `/tmp` fixed the test isolation;
-  the archive assertion stayed unchanged. Run 41252297444 verified the fix.
-- [41255375198](https://github.com/firtoz/jetski/actions/runs/41255375198): independent
-  pinned-Git consumer installation passed; the isolated Chrome startup later timed
-  out at Browser.getVersion. No browser evidence is claimed from that job.
-- [41250945239](https://github.com/firtoz/jetski/actions/runs/41250945239): one Boat
-  fixture runner reached its 15-minute host-setup bound without diagnostic output.
-  Cleanup ran. The precise setup stall remains unknown; subsequent runs passed.
-
-## Historical detail
-
-Earlier per-increment notes remain in
-[the previous implementation log](https://github.com/firtoz/jetski/blob/a09b0e832c3bbccd1639210bb14c0c4ec54e878d/docs/implementation.md).
-That is historical evidence, not current instructions or acceptance status. A
-private local copy preserves the last uncommitted handoff details. Do not append
-routine CI polling or temporary process handles to this document; update a result
-row only when it changes a qualification conclusion.
-
-## Opt-in outbound networking
-
-Commit `dcb4e64` passed [all five CI jobs](https://github.com/firtoz/jetski/actions/runs/41261217878). The rootless runtime fixture verified public HTTP access, rejected the host-loopback route, and removed its container. Default networking remains disabled. This is disposable CI evidence, not a live provider or general destination-filtering claim.
-
-Checkpoint-backed sandbox admission is covered by SQLite restart, authenticated
-HTTP/SDK, owner denial, bounded copy, queued cancellation and source-object-deleted
-restore tests. Copying does not allocate a host; explicit resume uses the ordinary
-restore path. The disposable API qualification also exercises real container
-restoration and complete archive re-publication equality. Its current-commit CI
-result is required before counting that added hosted check as passed.
-
-A subsequent [API/CLI run](https://github.com/firtoz/jetski/actions/runs/41265330389)
-completed the functional assertions but failed to exit before the job's 15-minute
-limit. This is preserved as a failed cleanup qualification, not a successful run.
-Cleanup-stage and remaining-resource diagnostics are being added to locate the
-hang; the previously qualified artifact is unchanged.
-
-Queued resumes can now stop without compute allocation while retaining their prior
-checkpoint. SQLite tests cover lost stop acknowledgements, restart, stale stop/resume
-replays, and rejection when pool assignment already won. Pool assignment, operation
-claim and sandbox ownership commit atomically; injected rollback and lost-ACK tests
-recover the same lease with one workload creation. This is local fault-injection
-evidence; disposable-host CI and downstream pinned-artifact adoption remain required.
-
-## Edge fetch portability
-
-The first live embedded edge-controller preparation remained queued before any
-physical allocation: native `fetch` rejected the adapter instance as its receiver.
-A native Workers-runtime fixture reproduced that failure and also exposed unsupported
-`redirect: "error"` handling. The provider API and SDK now invoke fetch without a
-class receiver, use manual redirects and reject redirect responses without following
-the destination. Rejected response bodies are released. Unit tests cover both
-receiver-sensitive implementations and redirect refusal; the native runtime fixture
-passes with external networking blocked. A subsequent hosted preparation executed,
-published an 897,443,388-byte checkpoint matching an independently hashed source
-archive, and released its host. This verifies archive identity and publication;
-full filesystem replacement and the downstream workflow remain open.
-
-## Bounded parallel checkpoint reads
-
-Commit `3f9db3f` passed [all five CI jobs](https://github.com/firtoz/jetski/actions/runs/41278043369).
-Checkpoint transfer can overlap four immutable 256 KiB reads, retaining ordered
-output, a 1 MiB batch bound and failure draining. Custom archive sources stay serial
-unless explicitly opted in. Existing integrity and publication checks remain.
-
-A live Boat probe alternated ten serial/four-way pairs over the same 1 MiB archive
-range. All twenty reads had identical hashes. Median read time was 1,012 ms serial
-and 407 ms parallel; the median paired time ratio was 0.400. Each arm made forty
-provider requests, with no new host starts. A background checkpoint save was active.
-This is a transport latency result, not a complete save, restore or session benchmark.
-Private receipts preserve failed probe setup attempts separately from the completed
-matrix. Full matched end-to-end qualification is still required.
-
-## Host loss after publication
-
-Local SQLite restart tests cover host disappearance during removal, release and
-source cleanup. A fully verified publication can finish release after positive
-provider absence, without further workload commands. Unknown provider state,
-interrupted upload and corrupt or missing retained objects remain quarantined.
-These fault-injection checks do not qualify live expiration recovery; that gate
-remains open.
-
-Explicit missing-source recovery has local SQLite and HTTP/SDK coverage: a caller
-selects a retained checkpoint and acknowledges unavailable unpublished changes.
-The transaction fences the lost assignment, preserves the failed save, and leaves
-the sandbox stopped. Restart and lost-response replay preserve the same outcome;
-subsequent resume restores the selected archive on one replacement host. Unknown
-or still-ready provider state, corrupt storage, stale lease/generation, concurrent
-readers and cross-owner requests are rejected. Registry tests also cover unrelated
-writers, unidentified writers, retired roots and transaction rollback. This does
-not establish that unpublished source bytes survived a real provider expiry.
-
-## Control-process loss
-
-A local fault experiment killed the control process while a host command was
-running. The original parent-only timeout left its child alive beyond the deadline.
-Host commands now run under an independent process-group deadline watchdog. Tests
-kill the controller and verify both the child and a descendant that ignores TERM
-are gone, while preserving normal exit/output and output-size bounds. This does
-not prove the outcome of a container operation or terminate detached workloads;
-creation uncertainty still requires reconciliation. Hosted qualification of the
-watchdog remains open.
-
-## Interrupted placement recovery
-
-An interrupted restore/container creation has no shutdown journal, so save-recovery
-alone cannot release it after host loss. The explicit placement-recovery path
-validates the exact lease, generation, uncertain resume and selected checkpoint,
-requires positive provider absence, and atomically fences the old placement. It
-refuses active storage actors and preserves the original uncertain outcome. SQLite
-restart/replay, HTTP/SDK owner denial, corrupt storage, stale authority and a
-separate replacement restore are covered locally. Hosted adoption remains open.
-
-## Portable embedded preview gateway
-
-The Fetch gateway passes SQLite-backed grant redemption, isolated-origin checks,
-duplicate-cookie denial, bounded bodies and revocation during response streaming.
-A local Workers probe composes the real session registry, gateway, HTTP/WebSocket
-transports and platform socket adapter with a simulated host connection. It
-verifies exact binary HTTP and WebSocket traffic, zero stream opens before
-authentication, denied cross-origin redemption, absent workload credentials,
-and socket closure after revocation. This is not live-provider qualification.
-
-The probe exposed the runtime's default Blob binary messages; explicitly selecting
-ArrayBuffer mode corrected the empty-payload failure. The platform adapter now
-rejects unexpected message types and enforces cumulative output bounds even when
-`bufferedAmount` is unavailable. Node's HTTP custom-connection option remains
-unsupported in the tested Workers runtime; the optional portable exports avoid it.
-See [runtime contracts and limits](runtime.md#embedded-preview-compatibility).
-
-Live embedded Boat/R2 qualification on November 1 passed terminal input/output,
-same-input replay with one observed execution, authenticated binary HTTP and
-WebSocket echo, and server-owned expiry. An established stream closed with code
-1011 at 121 ms after its access deadline; the expired cookie subsequently received
-403. The server completed durable stop and released the business reservation.
-The resulting archive matched the pre-test SHA-256, 154,551,473 compressed bytes
-and 167 entries. The owned host was then deleted, confirmed absent, and provider
-inventory reported zero active hosts. This does not qualify browser UI interaction.
-
-The host audit found residual container monitors after workload removal; these
-exited without intervention before host retirement. No assignment mounts or
-fixture server remained, but this run does not establish an instantaneous clean
-process slate for warm reuse. A [default-configuration hosted comparison](benchmarks.md)
-completed twenty exact-recovery trials and exposed excessive R2 rereads.
-The [equal-resource comparison](benchmarks.md) is complete; all twenty recovery
-trials passed, with slower saves and faster resumes for this fixture.
-
-The final browser check restored 167 entries and 322,866,475 bytes on a fresh
-host, but terminal input failed before admission: the embedded adapter propagated
-the typed missing-input exception instead of representing absence. The core now
-exports that error for precise adapter handling. Standalone HTTP behavior is
-unchanged. Browser requalification remains required; safe close published the
-unchanged archive, released access, and left no observed workload processes or
-assignment mounts at the final cleanup check.
+[The earlier detailed qualification log](https://github.com/firtoz/jetski/blob/a36444a703069add3cb28deeea66629ed138a4a5/docs/qualification.md)
+preserves individual failures, CI links and historical evidence boundaries. It is
+not the current acceptance checklist. Routine receipts, private configuration and
+process handles remain outside the public repository.
