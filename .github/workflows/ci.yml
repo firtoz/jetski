@@ -102,7 +102,12 @@ jobs:
           stat -c '%u %a %n' / /etc /var /var/lib /opt
           # This disposable runner may grant its user ownership of /opt.
           # Production bootstrap must continue rejecting writable ancestors.
-          sudo chown root:root /opt
+          if [ "${{ matrix.suite }}" = "boat" ]; then
+            # Match the provider stock image; the owned-host adapter must secure it.
+            sudo chown "$(id -u):$(id -g)" /opt
+          else
+            sudo chown root:root /opt
+          fi
           sudo chmod 755 /opt
           if [ "${{ matrix.suite }}" != "boat" ]; then sudo python3 host/bootstrap.py --config /tmp/jetski-host.json; fi
           mkdir -m 700 "$RUNNER_TEMP/jetski-ssh"

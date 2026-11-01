@@ -113,6 +113,26 @@ export class BoatBootstrap {
       "-I",
       "-c",
     ];
+    // Boat's stock /opt belongs to its trusted guest account. Secure that
+    // install parent only before our first installation on this owned machine.
+    // Adopted SSH hosts still require operator preparation; never repair assigned
+    // or already-installed hosts by changing their filesystem permissions.
+    const secureParent = `import os,stat
+root=os.stat("/",follow_symlinks=False)
+assert stat.S_ISDIR(root.st_mode) and root.st_uid==0 and not root.st_mode & 0o022
+fd=os.open("/opt",os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+try:
+ meta=os.fstat(fd)
+ if meta.st_uid!=0 or meta.st_mode & 0o022:
+  assert not any(os.path.lexists(p) for p in ("/opt/jetski","/etc/jetski/host.json","/var/lib/jetski/control/slot/state.json")), "existing_install_requires_reconciliation"
+  os.fchown(fd,0,0)
+  os.fchmod(fd,stat.S_IMODE(meta.st_mode) & ~0o022)
+finally:
+ os.close(fd)`;
+    await this.channel.run(host, Buffer.alloc(0), [
+      ...rootProgram,
+      secureParent,
+    ]);
     await this.channel.run(host, Buffer.alloc(0), [...rootProgram, prepare]);
     const program = `exec(bytes.fromhex("${installer.toString("hex")}"))`;
     const output = await this.channel.run(host, bundle, [

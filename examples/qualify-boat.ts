@@ -163,6 +163,7 @@ try {
   await new BoatBootstrap(state, api, "ci", [
     process.env.JETSKI_TEST_IMAGE!,
   ]).ensure("bx_ci");
+  assert.equal((await run(["stat", "-c", "%u", "/opt"])).stdout.trim(), "0");
   const callsAfterBootstrap = commandCalls;
   await bootstrap.ensure("bx_ci");
   assert.equal(

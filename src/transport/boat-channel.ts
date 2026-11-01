@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { posix } from "node:path";
 import { identifier, type StateStore } from "../core/contracts.js";
 import { HostTransportError } from "../core/transport.js";
 import type { BoatAllocation, BoatApi } from "../providers/boat.js";
@@ -106,7 +107,9 @@ export class BoatControlChannel {
         if (
           uploaded.status !== 200 ||
           uploaded.value.success !== true ||
-          uploaded.value.path !== path ||
+          typeof uploaded.value.path !== "string" ||
+          uploaded.value.path.includes("\0") ||
+          posix.resolve("/home/user", uploaded.value.path) !== path ||
           uploaded.value.size !== input.length
         )
           throw Error("Invalid control upload receipt");

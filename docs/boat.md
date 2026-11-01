@@ -98,8 +98,11 @@ credential comes from that explicitly named controller environment variable.
 Creating demand may allocate a billable VM. Do not enable it without an allowance.
 `standaloneHosts` constructs adapters without allocating anything on its own.
 
-Bootstrap uploads the package's ordinary Python source modules through the bounded
-private file channel. The installer runs with passwordless sudo on the owned VM,
+Bootstrap secures the stock image’s guest-owned `/opt` parent before the first
+installation on an owned Boat machine. It refuses symlinks and refuses this repair
+if a Jetski installation/configuration/assignment already exists; adopted SSH hosts
+remain operator-prepared. It then uploads ordinary Python source modules through
+the bounded private file channel. The installer runs with passwordless sudo on the owned VM,
 never on the controller. Missing Podman/uidmap/network/filesystem/user-session
 prerequisites are installed from the host's configured apt repositories; unrelated
 packages are not upgraded. The installation still checks supported architecture,

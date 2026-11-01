@@ -138,7 +138,8 @@ test("large Boat control inputs use private file transfer and verified short com
     uploadedBytes = Buffer.alloc(0),
     cleanup = false,
     dispatch = false,
-    badReceipt = false;
+    badReceipt = false,
+    wrongPath = false;
   const api = new BoatApi("fixture", async (url, init) => {
     const body = JSON.parse(init?.body as string);
     if (String(url).endsWith("/files")) {
@@ -152,7 +153,9 @@ test("large Boat control inputs use private file transfer and verified short com
       assert.deepEqual(JSON.parse(uploadedBytes.toString()), input);
       return Response.json({
         success: true,
-        path: uploadedPath,
+        path: wrongPath
+          ? "../../tmp/foreign/request.json"
+          : `../..${uploadedPath}`,
         size: badReceipt ? 0 : uploadedBytes.length,
       });
     }
@@ -183,6 +186,14 @@ test("large Boat control inputs use private file transfer and verified short com
   assert.equal((await transport.request("bx_owned", input)).result, true);
   assert.equal(dispatch, true);
   assert.equal(cleanup, true);
+  wrongPath = true;
+  dispatch = false;
+  await assert.rejects(
+    transport.request("bx_owned", input),
+    HostTransportError,
+  );
+  assert.equal(dispatch, false);
+  wrongPath = false;
   badReceipt = true;
   dispatch = false;
   cleanup = false;

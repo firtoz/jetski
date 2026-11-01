@@ -51,6 +51,15 @@ changed-key rejection and owner/expiry/retirement denial. This uses an emulated
 Boat API around a disposable Linux host, not a live Boat allocation. Other jobs
 in that exact run were still pending when this result was recorded.
 
+## Initial live Boat findings
+
+The first live pilot exposed two differences from the emulated API: upload receipts
+use paths relative to `/home/user`, and the stock `/opt` directory belongs to the
+guest user. The transport now resolves the receipt to the exact requested path
+before its existing byte/hash checks; bootstrap secures the parent only before a
+first installation on an owned machine. The same pilot VM/journal is retained for
+recovery qualification; these fixes alone do not establish live-provider parity.
+
 ## Real filesystem storage recovery
 
 `examples/qualify-filesystem-storage.ts` and `host/qualify_archive_store.py` capture
@@ -85,6 +94,9 @@ This does not alter the separate protected 12:20 UTC experiment, and no VM is he
   browser/container traffic passed, but a test executable left in `/workspace`
   changed the checkpoint oracle. Moving it to `/tmp` fixed the test isolation;
   the archive assertion stayed unchanged. Run 41252297444 verified the fix.
+- [41255375198](https://github.com/firtoz/jetski/actions/runs/41255375198): independent
+  pinned-Git consumer installation passed; the isolated Chrome startup later timed
+  out at Browser.getVersion. No browser evidence is claimed from that job.
 - [41250945239](https://github.com/firtoz/jetski/actions/runs/41250945239): one Boat
   fixture runner reached its 15-minute host-setup bound without diagnostic output.
   Cleanup ran. The precise setup stall remains unknown; subsequent runs passed.
