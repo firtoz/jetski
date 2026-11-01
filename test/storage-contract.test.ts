@@ -18,7 +18,7 @@ test("local store passes shared adapter contract through fresh instances", async
     return { store: new LocalCheckpointStore(root), close: () => {} };
   });
   assert.equal(instances, 2);
-  assert.equal(report.checks.length, 12);
+  assert.equal(report.checks.length, 13);
   assert.equal(report.cleanup.complete, true);
 });
 
@@ -82,4 +82,25 @@ test("cleanup failure fails qualification but still attempts every fixture delet
     },
   );
   assert.equal(deletes, 8);
+});
+
+test("conformance rejects an adapter that claims slice verification using only a whole-object hash", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "jetski-false-range-proof-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await assert.rejects(
+    qualifyStorage(async () => {
+      const store = new LocalCheckpointStore(root);
+      return {
+        store: Object.assign(store, { verifyRanges: store.head.bind(store) }),
+        close: () => {},
+      };
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof StorageConformanceError);
+      assert.equal(error.report.phase, "bytes-and-isolation");
+      assert.equal(error.report.passed, false);
+      assert.equal(error.report.cleanup.complete, true);
+      return true;
+    },
+  );
 });

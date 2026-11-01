@@ -14,8 +14,11 @@ import {
   identifier,
   type ObjectAddress,
   type ObjectInfo,
+  type ObjectRange,
   type Scope,
 } from "../core/contracts.js";
+
+import { objectRanges } from "../core/object-ranges.js";
 
 export type S3StoreOptions = {
   bucket: string;
@@ -26,7 +29,12 @@ export type S3StoreOptions = {
   /** Bounded, process-local receipts; zero disables conditional verification. */
   verifiedCacheEntries?: number;
 };
-type VerifiedObject = { info: ObjectInfo; etag: string };
+type VerifiedObject = {
+  info: ObjectInfo;
+  etag: string;
+  ranges?: ReadonlyMap<string, string>;
+};
+const MAX_CACHED_OBJECT_RANGES = 128;
 
 /** Dedicated namespace; credentials belong only to the controller. Reservations
  * are permanent and must never be removed by bucket lifecycle rules or collection.
@@ -156,7 +164,10 @@ export class S3CheckpointStore implements CheckpointStore {
   private async fetch(
     address: ObjectAddress,
     prior?: VerifiedObject,
-  ): Promise<{ info: ObjectInfo; bytes?: Buffer } | undefined> {
+  ): Promise<
+    | { info: ObjectInfo; bytes?: Buffer; receipt: VerifiedObject | undefined }
+    | undefined
+  > {
     const key = this.key(address);
     let response;
     try {
@@ -180,7 +191,7 @@ export class S3CheckpointStore implements CheckpointStore {
           if (this.verified.get(key) !== prior)
             throw Error("Verification invalidated during observation");
           this.remember(key, prior);
-          return { info: { ...prior.info } };
+          return { info: { ...prior.info }, receipt: prior };
         }
       }
       this.verified.delete(key);
@@ -233,12 +244,16 @@ export class S3CheckpointStore implements CheckpointStore {
       this.verified.delete(key);
       // Only strong, bounded entity tags from a fully hashed response qualify.
       // ETags are validators, never substitutes for the SHA-256 integrity check.
+      let receipt: VerifiedObject | undefined;
       if (
         typeof response.ETag === "string" &&
         /^"[\x21\x23-\x7e]{1,256}"$/.test(response.ETag)
-      )
-        this.remember(key, { info: { ...info }, etag: response.ETag });
-      return { info, bytes: Buffer.concat(chunks) };
+      ) {
+        receipt = { info: { ...info }, etag: response.ETag };
+        this.remember(key, receipt);
+        if (this.verified.get(key) !== receipt) receipt = undefined;
+      }
+      return { info, bytes: Buffer.concat(chunks), receipt };
     } catch (error) {
       this.verified.delete(key);
       throw error;
@@ -259,6 +274,47 @@ export class S3CheckpointStore implements CheckpointStore {
   async head(address: ObjectAddress): Promise<ObjectInfo | undefined> {
     return (await this.fetch(address, this.verified.get(this.key(address))))
       ?.info;
+  }
+  async verifyRanges(
+    address: ObjectAddress,
+    input: readonly ObjectRange[],
+  ): Promise<ObjectInfo | undefined> {
+    const ranges = objectRanges(input, this.maxBytes);
+    const key = this.key(address),
+      prior = this.verified.get(key);
+    const reusable =
+      prior &&
+      ranges.every(
+        (range) =>
+          prior.ranges?.get(`${range.start}/${range.endExclusive}`) ===
+          range.sha256,
+      );
+    const object = await this.fetch(address, reusable ? prior : undefined);
+    if (!object) return undefined;
+    objectRanges(ranges, object.info.bytes);
+    if (object.bytes) {
+      for (const range of ranges) {
+        const digest = createHash("sha256")
+          .update(object.bytes.subarray(range.start, range.endExclusive))
+          .digest("hex");
+        if (digest !== range.sha256)
+          throw Error("Object slice integrity failure");
+      }
+      if (object.receipt && ranges.length <= MAX_CACHED_OBJECT_RANGES) {
+        if (this.verified.get(key) !== object.receipt)
+          throw Error("Verification invalidated during observation");
+        this.remember(key, {
+          ...object.receipt,
+          ranges: new Map(
+            ranges.map((range) => [
+              `${range.start}/${range.endExclusive}`,
+              range.sha256,
+            ]),
+          ),
+        });
+      }
+    }
+    return { ...object.info };
   }
   async *read(
     address: ObjectAddress,

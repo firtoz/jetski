@@ -198,3 +198,21 @@ Verified frame tails are coalesced in one bounded chunk buffer. Lost-journal
 replay compares already written bytes before advancing. This reduces
 control calls and sync points without acknowledging buffered data. Direct bulk
 transport and hosted cold-restore performance remain under evaluation.
+
+
+## Verified object ranges
+
+Storage adapters can optionally implement `verifyRanges(address, ranges)`. Each
+range includes byte offsets and an expected SHA-256. The method proves both the
+complete object and each requested slice; a whole-object hash alone is insufficient.
+Core callers use bounded full readback when the capability is absent. The shared
+adapter contract rejects a deliberately false slice digest, including after reopen.
+
+The S3 adapter derives slice hashes from fully verified response bytes. It reuses
+those proofs only after conditional verification of the same object. New ranges,
+changed validators, process restart and disabled caching require fresh bytes;
+invalidated in-flight receipts fail closed. Derived hashes are bounded to 128 per
+cached object, without retaining payload bodies. Local storage uses the portable
+fallback. Both paths pass the thirteen-check contract, including live R2 and scoped
+fixture cleanup. This is a prerequisite for physical packing; packed checkpoint
+save and restore are not yet implemented.

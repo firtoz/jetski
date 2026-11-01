@@ -248,7 +248,7 @@ test("S3 wire contract: immutable reservation, loss, ranges, pagination and corr
   });
   assert.equal(qualification.passed, true);
   assert.equal(qualification.cleanup.complete, true);
-  assert.equal(qualification.checks.length, 12);
+  assert.equal(qualification.checks.length, 13);
 
   await t.test(
     "checkpoint publication survives lost wire ACK and SQLite reopen",

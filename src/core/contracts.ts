@@ -61,9 +61,14 @@ export function canonical(value: Json): string {
 }
 export type ObjectAddress = Scope & { id: string };
 export type ObjectInfo = ObjectAddress & { bytes: number; sha256: string };
+export type ObjectRange = {
+  start: number;
+  endExclusive: number;
+  sha256: string;
+};
 export type ByteStream = AsyncIterable<Uint8Array>;
 export interface CheckpointStore {
-  /** Opt-in bound for overlapping independent head calls (1..4). Omission is serial. */
+  /** Opt-in bound for overlapping independent object verification calls (1..4). Omission is serial. */
   readonly verificationConcurrency?: number;
   /** Opt into independent frame uploads, bounded to two; omitted means serial. */
   readonly transferConcurrency?: number;
@@ -74,6 +79,12 @@ export interface CheckpointStore {
     expected: { bytes: number; sha256: string },
   ): Promise<ObjectInfo>;
   head(address: ObjectAddress): Promise<ObjectInfo | undefined>;
+  /** Optional whole-object plus slice-hash proof. Missing support uses bounded
+   * core readback; implementations must not trust unverified range metadata. */
+  verifyRanges?(
+    address: ObjectAddress,
+    ranges: readonly ObjectRange[],
+  ): Promise<ObjectInfo | undefined>;
   read(
     address: ObjectAddress,
     range?: { start: number; endExclusive: number },

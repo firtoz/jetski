@@ -6,6 +6,7 @@ import type {
   ObjectInfo,
   Scope,
 } from "../core/contracts.js";
+import { verifyObjectRanges } from "../core/object-ranges.js";
 
 export type StoreSession = {
   store: CheckpointStore;
@@ -153,6 +154,29 @@ export async function qualifyStorage(
     report.phase = "bytes-and-isolation";
     require((await put(primary, bytes)).sha256 ===
       sha(bytes), "Publication mismatch");
+    const expectedPrimary = {
+      ...primary,
+      bytes: bytes.length,
+      sha256: sha(bytes),
+    };
+    const slices = [
+      {
+        start: 3,
+        endExclusive: bytes.length - 3,
+        sha256: sha(bytes.subarray(3, -3)),
+      },
+    ];
+    const verifySlices = async () => {
+      count(session!.store.verifyRanges ? "verifyRanges" : "read");
+      await verifyObjectRanges(session!.store, expectedPrimary, slices);
+      count(session!.store.verifyRanges ? "verifyRanges" : "read");
+      await rejects(() =>
+        verifyObjectRanges(session!.store, expectedPrimary, [
+          { ...slices[0]!, sha256: "0".repeat(64) },
+        ]),
+      );
+    };
+    await verifySlices();
     await put(other, Buffer.from("foreign bytes"));
     await put(empty, Buffer.alloc(0));
     require((await read(primary)).equals(bytes), "Full read mismatch");
@@ -216,7 +240,12 @@ export async function qualifyStorage(
     const inventory = (await list(scope)).map((entry) => entry.id).sort();
     require(JSON.stringify(inventory) ===
       JSON.stringify(["empty", "primary", "race"]), "Incomplete inventory");
-    report.checks.push("fresh-client-recovery", "complete-inventory");
+    await verifySlices();
+    report.checks.push(
+      "fresh-client-recovery",
+      "complete-inventory",
+      "verified-slices-and-reopen",
+    );
     report.phase = "delete-and-tombstone";
     await remove(primary);
     await remove(primary);
