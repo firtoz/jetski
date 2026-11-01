@@ -44,7 +44,7 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 | Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                         |
 | Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                           |
 | Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                       |
-| Client integration               | Agreed staging-only adoption design                                                          | Implement client adapters, pinned dependency, real workflow and replacement recovery |
+| Client integration               | Pinned artifact and downstream lifecycle adapters; live admission remains disabled                                                          | Implement client adapters, pinned dependency, real workflow and replacement recovery |
 | Benchmarks and release           | Per-fixture measurements and preserved failures                                              | Matched comparison, owned-resource cleanup, documented limits and green final CI     |
 
 ## Current work
@@ -60,13 +60,13 @@ Explicit operator-selected outbound networking passed all five CI jobs, includin
 real outbound access and host-loopback denial on a disposable rootless host.
 Networking stays disabled by default; broader destination filtering is external.
 Embedding support and built-package consumption passed CI, and initial
-client-side state/storage adapters pass unit contracts without deployed routing. The separate paid-host
+client-side state/storage and lifecycle adapters pass local contracts; live admission remains disabled. The separate paid-host
 allowance is approved. Remaining gates include real-grace collection, matched
 hosted measurements and staging integration. See [qualification evidence](qualification.md).
 
 ## Next steps
 
-1. Finish filesystem-storage CI and the remaining remote/provider recovery gates.
+1. Qualify idle-host disappearance and remaining remote/provider recovery gates.
 2. Audit remaining lifecycle/replacement requirements against existing tests;
    add checks only for uncovered requirements or concrete defects.
 3. Finish provider/storage qualification and prepare the downstream staging adapter.

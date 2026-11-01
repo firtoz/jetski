@@ -19,7 +19,12 @@ import { LocalCheckpointStore } from "../src/storage/local.js";
 const image = "example/linux@sha256:" + "a".repeat(64);
 const sha = (value: Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
-for (const failure of ["release-ack", "upload", "none"] as const)
+for (const failure of [
+  "release-ack",
+  "upload",
+  "none",
+  "missing-idle",
+] as const)
   test(`shutdown publication and restart: ${failure}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "jetski-stop-"));
     const state = new SqliteState(join(directory, "state.sqlite"));
@@ -61,6 +66,7 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     let now = 1,
       retirements = 0;
     let failRetirement = true;
+    let oldHostState: "ready" | "unknown" | "absent" = "ready";
     let failUpload = failure === "upload";
     let failRelease = failure === "release-ack",
       allocations = 0;
@@ -72,9 +78,17 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       }),
       allocate: async (input) => {
         allocations++;
-        return { id: "host", allocationId: input.operationId };
+        return {
+          id:
+            failure === "missing-idle" && allocations > 1
+              ? "replacement"
+              : "host",
+          allocationId: input.operationId,
+        };
       },
-      inspect: async () => ({ state: "ready" }),
+      inspect: async (id) => ({
+        state: id === "host" ? oldHostState : "ready",
+      }),
       retire: async () => {
         retirements++;
         if (failRetirement) {
@@ -85,6 +99,8 @@ for (const failure of ["release-ack", "upload", "none"] as const)
     };
     const transport: HostTransport = {
       request: async (_host, request) => {
+        if (_host === "host" && oldHostState !== "ready")
+          throw Error("Unavailable host received workload effects");
         actions.push(request.action);
         let result: Json = null;
         if (request.action === "quiesce") quiesced = true;
@@ -183,7 +199,7 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       manager.startCommand(scope, randomUUID(), ["true"]),
       /not running/,
     );
-    if (failure !== "none")
+    if (failure === "release-ack" || failure === "upload")
       await assert.rejects(
         manager.reconcile("alice"),
         failure === "upload" ? /interrupted upload/ : /release ACK lost/,
@@ -284,6 +300,53 @@ for (const failure of ["release-ack", "upload", "none"] as const)
       registry.admit(oldFence, "stale-writer", "writer"),
       /generation mismatch/,
     );
+    if (failure === "missing-idle") {
+      const root = (await manager.get(scope))!.checkpoint!;
+      const before = actions.length;
+      oldHostState = "unknown";
+      await manager.reconcile("alice");
+      assert.equal((await manager.get(scope))?.phase, "queued");
+      assert.equal((await manager.get(scope))?.lease, null);
+      assert.equal(allocations, 1, "ambiguity cannot allocate a replacement");
+      assert.equal(retirements, 0);
+      assert.equal(actions.length, before);
+      oldHostState = "absent";
+      await assert.rejects(manager.reconcile("alice"), /retirement ACK lost/);
+      assert.equal(
+        allocations,
+        1,
+        "uncertain retirement keeps capacity reserved",
+      );
+      assert.equal((await manager.get(scope))?.checkpoint, root);
+      manager = new SandboxManager(
+        state,
+        provider,
+        transport,
+        objects,
+        options,
+      );
+      await manager.reconcile("alice");
+      const restored = await manager.get(scope);
+      assert.equal(restored?.phase, "running");
+      assert.equal(restored?.lease?.machineId, "replacement");
+      assert.equal(restored?.generation, oldGeneration + 1);
+      assert.equal(restored?.checkpoint, root);
+      assert.equal(
+        (await manager.operation(scope, resumeId))?.phase,
+        "succeeded",
+      );
+      assert.equal(allocations, 2);
+      assert.equal(retirements, 2);
+      assert.deepEqual(
+        Buffer.concat(imported),
+        archive,
+        "replacement imports exact durable bytes",
+      );
+      await manager.resume(scope, resumeId);
+      await manager.reconcile("alice");
+      assert.equal(allocations, 2, "resume replay cannot allocate again");
+      return;
+    }
     manager = new SandboxManager(state, provider, transport, objects, options);
     await manager.reconcile("alice");
     assert.equal((await manager.get(scope))?.phase, "running");

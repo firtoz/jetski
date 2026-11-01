@@ -573,6 +573,31 @@ export class SandboxManager {
             { image: sandbox.image },
           );
         }
+      const readySlots = new Set<string>();
+      const queued = (await this.list(owner)).some(
+        (sandbox) => sandbox.phase === "queued",
+      );
+      if (queued) {
+        for (const slot of await this.pool.inspect(owner)) {
+          if (
+            slot.phase !== "idle" ||
+            slot.lease ||
+            !slot.machineId ||
+            slot.expiresAt <= this.now() + DEFAULTS.hostDrainMs
+          )
+            continue;
+          const observed = await this.provider.inspect(slot.machineId);
+          if (observed.state === "ready") readySlots.add(slot.id);
+          else if (observed.state === "absent") {
+            await this.pool.retireMissingIdle(slot);
+            // Persist quarantine before retirement. A lost ACK keeps capacity
+            // reserved; a restart reconciles the same owned allocation.
+            await this.provider.retire(slot.machineId, slot.allocationId);
+            await this.pool.retired(slot.id);
+          }
+          // Unknown/starting hosts keep their capacity and receive no assignment.
+        }
+      }
       const pendingAllocation = (await this.pool.inspect(owner)).find(
         (slot) => slot.phase === "allocating",
       );
@@ -594,22 +619,27 @@ export class SandboxManager {
           allocated.id,
           allocated.allocationId,
         );
+        readySlots.add(reservation.id);
       }
-      const assignment = await this.pool.assign(owner, (tx, ticket, lease) => {
-        const scope = { owner, sandbox: ticket.sandboxId };
-        const sandbox = tx.get<Sandbox>(this.key(scope));
-        if (
-          !sandbox ||
-          sandbox.phase !== "queued" ||
-          sandbox.lease ||
-          sandbox.placementOperation !== ticket.id
-        )
-          throw Error("Placement sandbox authority changed");
-        const fence = this.operations.generationIn(tx, scope);
-        if (!this.operations.claimIn(tx, fence, ticket.id))
-          throw Error("Placement operation already dispatched");
-        tx.put(this.key(scope), { ...sandbox, phase: "starting", lease });
-      });
+      const assignment = await this.pool.assign(
+        owner,
+        (tx, ticket, lease) => {
+          const scope = { owner, sandbox: ticket.sandboxId };
+          const sandbox = tx.get<Sandbox>(this.key(scope));
+          if (
+            !sandbox ||
+            sandbox.phase !== "queued" ||
+            sandbox.lease ||
+            sandbox.placementOperation !== ticket.id
+          )
+            throw Error("Placement sandbox authority changed");
+          const fence = this.operations.generationIn(tx, scope);
+          if (!this.operations.claimIn(tx, fence, ticket.id))
+            throw Error("Placement operation already dispatched");
+          tx.put(this.key(scope), { ...sandbox, phase: "starting", lease });
+        },
+        readySlots,
+      );
       if (!assignment) return;
       const { lease, ticket } = assignment;
       const scope = { owner, sandbox: ticket.sandboxId };

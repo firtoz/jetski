@@ -267,6 +267,7 @@ export class PoolJournal {
   async assign(
     owner: string,
     prepare?: (tx: Transaction, ticket: Ticket, lease: HostLease) => void,
+    readySlots?: ReadonlySet<string>,
   ): Promise<{ ticket: Ticket; slot: PoolSlot; lease: HostLease } | undefined> {
     identifier(owner);
     return this.state.transaction((tx) => {
@@ -278,6 +279,7 @@ export class PoolJournal {
       const slot = this.slots(tx, owner).find(
         (slot) =>
           slot.phase === "idle" &&
+          (readySlots === undefined || readySlots.has(slot.id)) &&
           slot.expiresAt > this.now() + DEFAULTS.hostDrainMs,
       );
       if (!ticket || !slot || !slot.machineId) return undefined;
@@ -370,6 +372,24 @@ export class PoolJournal {
         lease: null,
         idleSince: this.now(),
       });
+    });
+  }
+  /** The coordinator must positively observe provider absence first. A stale
+   * observation cannot retire a host assigned while that request was in flight. */
+  async retireMissingIdle(observed: PoolSlot): Promise<PoolSlot> {
+    return this.state.transaction((tx) => {
+      const slot = tx.get<PoolSlot>(this.slotKey(observed.id));
+      if (
+        !slot ||
+        slot.phase !== "idle" ||
+        slot.lease ||
+        !slot.machineId ||
+        canonical(slot) !== canonical(observed)
+      )
+        throw Error("Missing-host observation is stale");
+      const next: PoolSlot = { ...slot, phase: "quarantined" };
+      tx.put(this.slotKey(slot.id), next);
+      return next;
     });
   }
   async retireIdle(id: string): Promise<PoolSlot> {

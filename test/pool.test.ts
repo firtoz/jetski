@@ -107,3 +107,32 @@ test("quarantine consumes capacity and expired hosts cannot receive work", async
   assert.equal(await pool.reserve("alice"), undefined);
   await assert.rejects(pool.release(assignment.lease), /quiescence/);
 });
+
+test("absence observations cannot retire an intervening assignment", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const pool = new PoolJournal(state, "pool");
+  await pool.enqueue("alice", randomUUID(), "one", null);
+  const reserved = (await pool.reserve("alice"))!;
+  const idle = await pool.provisioned(
+    reserved.id,
+    "alice",
+    "host",
+    reserved.allocationId,
+  );
+  assert.equal(await pool.assign("alice", undefined, new Set()), undefined);
+  const assigned = await pool.assign("alice", undefined, new Set([idle.id]));
+  assert.ok(assigned);
+  await assert.rejects(pool.retireMissingIdle(idle), /stale/);
+  assert.equal((await pool.inspect("alice"))[0]?.phase, "assigned");
+  await pool.transition(assigned.lease, "active");
+  await pool.transition(assigned.lease, "quiescing");
+  await pool.release(assigned.lease);
+  const current = (await pool.inspect("alice"))[0]!;
+  await assert.rejects(
+    pool.retireMissingIdle({ ...current, owner: "bob" }),
+    /stale/,
+  );
+  await pool.retireMissingIdle(current);
+  assert.equal((await pool.inspect("alice"))[0]?.phase, "quarantined");
+});

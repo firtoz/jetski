@@ -24,6 +24,15 @@ Creation admission commits its operation, sandbox and placement ticket atomicall
 failure, lost commit acknowledgements, deletion before allocation and stable replay.
 Its provider is a fixture; it does not add live-provider evidence.
 
+Idle-host reuse now checks provider readiness before assignment. Confirmed absence
+quarantines the exact idle slot and retires its owned allocation before admitting
+replacement capacity. Unknown/starting observations keep capacity reserved and do
+not dispatch a workload. SQLite/object-store regressions cover exact-byte restore
+after disappearance, lost retirement acknowledgements, controller restart and a
+concurrent assignment invalidating the absence observation. This adds a provider
+readiness check to warm placement; its hosted latency remains to be measured.
+It does not recover unsaved changes from an absent active host.
+
 `CheckpointCopy` has local SQLite/object-store coverage for same-owner copies,
 interrupted streams, lost upload/publication acknowledgements, cancellation races
 and independent target bytes after source collection. Copies use separate immutable
