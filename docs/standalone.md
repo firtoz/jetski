@@ -515,3 +515,20 @@ The thin CLI exposes the same admission with
 `jetski copy SOURCE --checkpoint ROOT --id DESTINATION --operation UUID --image DIGEST`.
 Replaying the same arguments observes the existing copy; use a separate stable
 operation ID for `jetski resume DESTINATION --operation UUID`.
+
+### Optional lifecycle observations
+
+Pass `events: { emit(event) { /* enqueue in your telemetry adapter */ } }` in
+`SandboxManager` options. Embedded integrations can also wrap a `StateStore` with
+`observeLifecycle(state, sink)` from `jetski/core`. Do not wrap the same store twice.
+The sink receives committed sandbox and operation phase changes with owner/sandbox
+scope, timestamp, generation and operation identity. Operation events include
+`elapsedMs` from durable admission to that phase; aggregate by operation kind and
+outcome for counts and latency metrics. Command arguments, input, output, error
+text, credentials and filesystem contents are excluded.
+
+Events are best effort, not a durable audit log. Rollback and uncertain commit
+acknowledgements emit nothing, and a controller crash can lose an observation.
+Use persisted operation status for recovery or billing. Sink exceptions/rejections
+are ignored; use a nonblocking queue and report exporter failures in your adapter.
+No telemetry service or network export is enabled by default.

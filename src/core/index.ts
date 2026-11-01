@@ -6,6 +6,7 @@ export * from "./contracts.js";
 export * from "./files.js";
 export * from "./host-stream.js";
 export * from "./manager.js";
+export * from "./observability.js";
 export * from "./operations.js";
 export type { HostLease } from "./pool.js";
 export * from "./ports.js";

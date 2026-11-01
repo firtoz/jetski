@@ -62,7 +62,8 @@ real outbound access and host-loopback denial on a disposable rootless host.
 Networking stays disabled by default; broader destination filtering is external.
 Embedding support and built-package consumption passed CI, and initial
 client-side state/storage and lifecycle adapters pass local contracts; live admission remains disabled. The separate paid-host
-allowance is approved. Remaining gates include real-grace collection, matched
+allowance is approved. Optional post-commit lifecycle observations now expose redacted phase events and
+operation timings without making telemetry part of execution success. Remaining gates include real-grace collection, matched
 hosted measurements and staging integration. See [qualification evidence](qualification.md).
 
 ## Next steps

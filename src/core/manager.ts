@@ -6,6 +6,7 @@ import {
   type CheckpointStore,
   canonical,
   DEFAULTS,
+  type EventSink,
   type HostProvider,
   identifier,
   type Json,
@@ -15,6 +16,7 @@ import {
 } from "./contracts.js";
 import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
 import type { HostStreamTransport } from "./host-stream.js";
+import { observeLifecycle } from "./observability.js";
 import { OperationJournal } from "./operations.js";
 import { type HostLease, PoolJournal } from "./pool.js";
 import { PortRegistry } from "./ports.js";
@@ -73,6 +75,7 @@ export type ManagerOptions = {
   approvedImages: string[];
   hostsPerOwner?: number;
   now?: () => number;
+  events?: EventSink;
 };
 
 /** Portable lifecycle coordinator; all principal scope is supplied by the caller's
@@ -104,6 +107,9 @@ export class SandboxManager {
     options: ManagerOptions,
   ) {
     this.now = options.now ?? Date.now;
+    if (options.events)
+      state = observeLifecycle(state, options.events, this.now);
+    this.state = state;
     this.pool = new PoolJournal(
       state,
       options.poolId,
