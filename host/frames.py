@@ -6,14 +6,51 @@ import hashlib
 MAX_FRAME_BYTES = 4 * 1024 * 1024
 FRAME_BYTES = 1024 * 1024
 FRAMES_PER_LEVEL = 1024
+COMPRESSION_SAMPLE_BYTES = 8192
+COMPRESSION_SAMPLE_WINDOWS = 5
+COMPRESSION_MIN_SAVINGS_PERCENT = 1
+
+
+def compress_frame(raw, compression_level=None):
+    """Content-deterministic gzip, including stored blocks for high entropy data.
+
+    Sampling is only a compression choice. The complete original member still
+    receives gzip CRC and both compressed/expanded SHA-256 verification.
+    An explicit level lets host integrations select another encoding policy.
+    """
+    if compression_level is not None and (
+        type(compression_level) is not int or not 0 <= compression_level <= 9
+    ):
+        raise ValueError("invalid_compression_level")
+    level = compression_level
+    if level is None:
+        level = 1
+        width = COMPRESSION_SAMPLE_BYTES
+        if len(raw) > width * COMPRESSION_SAMPLE_WINDOWS:
+            sample = b"".join(
+                raw[position : position + width]
+                for position in (
+                    (len(raw) - width) * index // (COMPRESSION_SAMPLE_WINDOWS - 1)
+                    for index in range(COMPRESSION_SAMPLE_WINDOWS)
+                )
+            )
+            encoded = gzip.compress(sample, compresslevel=1, mtime=0)
+            if len(encoded) * 100 >= len(sample) * (100 - COMPRESSION_MIN_SAVINGS_PERCENT):
+                level = 0
+    return gzip.compress(raw, compresslevel=level, mtime=0)
 
 
 class FrameWriter:
-    def __init__(self, output, frame_bytes=FRAME_BYTES, adaptive=False):
+    def __init__(self, output, frame_bytes=FRAME_BYTES, adaptive=False, compression_level=None):
         if type(frame_bytes) is not int or not 1024 <= frame_bytes <= MAX_FRAME_BYTES:
             raise ValueError("invalid_frame_bound")
         if type(adaptive) is not bool:
             raise ValueError("invalid_frame_policy")
+        if compression_level is not None and (
+            type(compression_level) is not int or not 0 <= compression_level <= 9
+        ):
+            raise ValueError("invalid_compression_level")
+        self.compression_level = compression_level
         self.adaptive = adaptive
         self.output = output
         self.frame_bytes = frame_bytes
@@ -43,7 +80,7 @@ class FrameWriter:
         if not self.pending:
             return
         raw = bytes(self.pending)
-        compressed = gzip.compress(raw, compresslevel=6, mtime=0)
+        compressed = compress_frame(raw, self.compression_level)
         self.output.write(compressed)
         self.frames.append(
             dict(

@@ -1,9 +1,10 @@
 import gzip
 import hashlib
 import io
+import random
 import unittest
 from unittest.mock import patch
-from frames import FrameWriter, FRAME_BYTES, MAX_FRAME_BYTES
+from frames import FrameWriter, FRAME_BYTES, MAX_FRAME_BYTES, compress_frame
 
 
 class FrameTests(unittest.TestCase):
@@ -55,6 +56,38 @@ class FrameTests(unittest.TestCase):
             self.assertEqual(gzip.decompress(output.getvalue()), value)
             encoded.append((output.getvalue(), writer.frames))
         self.assertEqual(encoded[0], encoded[1])
+
+    def test_adaptive_gzip_handles_binary_source_and_mixed_members(self):
+        binary = random.Random(4129).randbytes(1024 * 1024)
+        text = (b"function fixture(value) { return value + 1; }\n" * 24000)[: 1024 * 1024]
+        for raw in (binary, text, text[:500000] + binary[:500000], b"", b"short"):
+            for level in (None, 0, 1, 6):
+                encoded = compress_frame(raw, level)
+                self.assertEqual(gzip.decompress(encoded), raw)
+        self.assertLessEqual(
+            len(compress_frame(binary)), len(gzip.compress(binary, compresslevel=6, mtime=0))
+        )
+        self.assertLess(len(compress_frame(text)), len(text) // 10)
+        raw = binary + text + binary
+        outputs = []
+        for stride in (137, len(raw)):
+            output = io.BytesIO()
+            with FrameWriter(output) as writer:
+                for offset in range(0, len(raw), stride):
+                    writer.write(raw[offset : offset + stride])
+            outputs.append((output.getvalue(), writer.frames))
+            self.assertEqual(gzip.decompress(output.getvalue()), raw)
+            for frame in writer.frames:
+                member = output.getvalue()[frame["offset"] : frame["offset"] + frame["bytes"]]
+                expanded = gzip.decompress(member)
+                self.assertEqual(hashlib.sha256(member).hexdigest(), frame["sha256"])
+                self.assertEqual(hashlib.sha256(expanded).hexdigest(), frame["expandedSha256"])
+        self.assertEqual(outputs[0], outputs[1])
+        for level in (-1, 10, True, "fast"):
+            with self.assertRaisesRegex(ValueError, "invalid_compression_level"):
+                compress_frame(binary, level)
+            with self.assertRaisesRegex(ValueError, "invalid_compression_level"):
+                FrameWriter(io.BytesIO(), compression_level=level)
 
     def test_capture_default_and_old_frame_bound(self):
         self.assertEqual(FRAME_BYTES, 1024 * 1024)

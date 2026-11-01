@@ -67,60 +67,41 @@ optimization's latency effect. Cold setup and initial priming remain outside the
 warm timings. This implementation does not promise universal speedups.
 
 
-## Follow-on checkpoint pipeline screen
+## Follow-on checkpoint optimization screens
 
-Candidate `98fe0ad` used 1 MiB capture frames, bounded two-frame uploads and
-four-way publication verification. Five alternating trials per arm completed on
-one independent host pair, with the same 64 MiB fixture, image, two CPUs, 2 GiB
-and verified durability boundary as the equal-resource reference. Every completed
-trial passed its independent recovery oracle.
+Each row below is a separate five-trial-per-arm screen on a fresh host pair,
+using the same frozen reference, 64 MiB fixture, approved image, two CPUs, 2 GiB
+and durable-save/fresh-assignment recovery boundary. All completed trials passed
+independent filesystem checks. **None is a replicated ten-versus-ten result, and
+none meets the speed target.** Do not pool different candidates or controllers.
 
-| Median per completed trial | Reference | Candidate |
-| -------------------------- | --------: | --------: |
-| Durable save and release   |   5.704 s |  29.405 s |
-| Resume readiness           |   2.546 s |   1.503 s |
-| Complete cycle             |   9.469 s |  32.254 s |
-| Payload uploaded           |  1.042 MB |  1.042 MB |
-| Storage requests           |        18 |       207 |
-| Provider API requests      |        16 |        32 |
+| Candidate and composition                    | Save: reference / candidate | Complete cycle: reference / candidate | Storage calls: reference / candidate |
+| -------------------------------------------- | --------------------------: | ------------------------------------: | -----------------------------------: |
+| `98fe0ad`, Node/S3, individual 1 MiB objects |            5.704 / 29.405 s |                      9.469 / 32.254 s |                             18 / 207 |
+| `45b27a5`, Node/S3, physical packs           |            4.389 / 17.517 s |                      6.510 / 21.184 s |                              18 / 40 |
+| `083daad`, Node/S3, signal-aware idle        |             3.379 / 5.936 s |                       5.208 / 8.501 s |                              18 / 40 |
+| `083daad`, embedded native R2 adapter        |             4.151 / 5.166 s |                       6.917 / 8.276 s |                              18 / 40 |
 
-This screen **fails the performance target**. Smaller frames reached reference
-upload volume but increased immutable-object checks. Release-time verification
-was still serial; subsequent development batches reuse, release and recovery
-checks without removing their proofs. Physical packing remains under evaluation.
-The maximum observed save was 12.098 s for the reference and 32.368 s for the
-candidate; five observations per arm do not establish stable tail estimates.
+The reference uses Node orchestration with a Cloudflare native-R2 retention
+worker. The embedded candidate runs core coordination and its adapter in a
+Cloudflare Durable Object. These are different control-plane compositions;
+changes between screens do not isolate transport costs. The native candidate's
+median readiness was 1.607 s versus 1.793 s; maximum saves were 5.413 s versus
+5.213 s. Five observations per arm cannot establish stable tail estimates.
+All screens uploaded approximately 1.04 MB per warm trial.
 
-A second host pair failed during candidate workload creation before any timed
-trial. Its request reached the five-minute deadline, leaving a quarantined
-`creating` receipt. Bootstrap had completed, but the workload outcome was not
-confirmed; no workload commands were admitted. The failure is preserved and this
-is **not a completed replicated ten-versus-ten comparison**. All four owned hosts
-were retired, provider inventory returned zero active hosts, and checkpoint data
-and failure receipts were retained. A new frozen candidate still needs the full
-matched comparison, large restore and downstream qualification.
+A second host pair for `98fe0ad` failed at the five-minute candidate creation
+deadline before timed work, leaving a quarantined `creating` receipt. No workload
+commands were admitted. Its evidence and checkpoints are preserved. All ten
+hosts across the screens and failed setup were retired; subsequent inventory
+reported zero active hosts. Embedded controller state was backed up before
+removing its temporary controller. These counts are physical starts, not logical
+sessions, and do not establish invoice attribution.
 
-## Physical-pack and lifecycle attribution screen
-
-Candidate `45b27a5` completed five alternating trials per arm on a fresh host
-pair with the same fixture, image and equal workload limits. All ten filesystem
-oracles passed. Both hosts were retired; provider inventory returned zero active
-hosts. This remains a screening batch, not the required replicated comparison.
-
-| Median per completed trial | Reference | Candidate |
-| -------------------------- | --------: | --------: |
-| Durable save and release   |   4.389 s |  17.517 s |
-| Resume readiness           |   1.103 s |   1.797 s |
-| Complete cycle             |   6.510 s |  21.184 s |
-| Payload uploaded           |  1.042 MB |  1.042 MB |
-| Storage requests           |        18 |        40 |
-| Provider API requests      |        16 |        32 |
-
-Physical packing removes most of the smaller-frame request amplification, but
-this candidate still **fails the speed target**. Passive observation of persisted
-lifecycle transitions found two full quiesce intervals of 10.350 and 10.364 s.
-The idle process was an unhandled PID 1 sleep, consistent with waiting out the
-configured ten-second stop grace. Subsequent code adds a signal-handling idle
-process while retaining that grace and observed stopped-state checks, and batches
-independent command-output retention with fully drained failures. Those changes
-need a fresh hosted measurement; subtracting ten seconds is not a benchmark.
+Passive persisted-phase observations isolated two quiesce intervals of 10.350
+and 10.364 s in the packed screen. An idle PID 1 sleep consumed the stop grace.
+The signal-aware candidate retains that grace, command settlement and observed
+stopped-state checks; it also batches independent output retention and drains
+failed siblings before allowing cleanup. Capture and control round trips remain
+optimization targets. Later candidates still require the complete replicated
+comparison, large cold/replacement recovery and downstream qualification.

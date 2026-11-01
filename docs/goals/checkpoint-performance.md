@@ -49,36 +49,42 @@ as a substitute for a contemporaneous comparison.
 
 ## Finite implementation and acceptance checklist
 
-| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                                                                                                                                        |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Store and provider counts measured; packed screen isolates two 10.35 s quiesce intervals and output-retention overhead                                                                                                                        |
-| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | Local geometry screen selects 1 MiB capture; old 4 MiB source-deleted filesystem restore passes; Opt-in physical packs with verified logical slices implemented; old/new source-deleted local and R2 restore pass                             |
-| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Opt-in bounded upload, reuse/publication/release/recovery verification implemented; physical packing reduced hosted storage requests to40 but missed target; signal-aware idle and bounded output retention implemented, hosted check pending |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated 4 MiB durable chunks through existing adapters; legacy 256/512 KiB receipts and cross-frame lost-ACK/journal replay pass; hosted large restore pending                                                                             |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 216 TypeScript and 97 Python tests pass; packed journal restart, lost ACK, writer revocation, retained slice GC and live R2 exact recovery pass; hosted paths pending                                                                         |
-| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Five/arm completed; second pair failed before trials; all four hosts retired. Final replicated comparison pending                                                                                                                             |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending                                                                                                                                                                                                                                       |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Pending                                                                                                                                                                                                                                       |
+| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                           |
+| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.             |
+| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; embedded save 5.166 s vs4.151 s reference; parity open.                |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.           |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 216 TypeScript/98 Python tests and live R2 recovery pass; new hosted replacement open.                         |
+| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Four separate five-per-arm screens, one pretrial failure preserved, ten hosts retired; final replication open. |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                       |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.              |
 
 ## Current local screen
 
 For a deterministic 16 MiB binary with a 4 KiB same-length edit, 256 KiB,
 1 MiB and 4 MiB frames uploaded 0.258, 1.045 and 4.192 MB respectively, with
 64, 16 and 4 objects. The candidate selects 1 MiB for hosted evaluation. This
-geometry screen does not establish end-to-end speed; packing and bulk transport
-remain alternatives if the measured request/restore costs still miss the target.
+geometry screen does not establish end-to-end speed. Packing and larger import
+chunks are implemented; final hosted trials must measure their combined cost.
 Local and live R2 checkpoint recovery pass all eleven runner checks, including
 acknowledgement loss, reopen, retained reconstruction and scoped cleanup. Their
 synthetic-clock collection checks do not replace the protected real-grace test.
 
-The [first hosted screen](../benchmarks.md#follow-on-checkpoint-pipeline-screen)
-missed the speed target despite reducing upload volume. Its second host pair
-failed before timed trials; all four hosts are retired and evidence is preserved.
-It does not close the replicated comparison gate or justify downstream adoption.
-The subsequent packed screen also missed parity (17.517 s save versus 4.389 s).
-Persisted phase observations isolated a ten-second idle-process stop timeout;
-a signal-handling idle process and bounded, fully drained output retention now
-address that concrete delay. Their fresh hosted comparison remains pending.
+The [hosted screens](../benchmarks.md#follow-on-checkpoint-optimization-screens)
+remain below target. The latest embedded native-store composition measured
+5.166 s save versus 4.151 s reference, and 8.276 s whole cycle versus 6.917 s.
+All completed oracles pass; the uncertain earlier setup remains preserved, and
+all ten test hosts are retired. Different controller compositions are reported
+separately. None closes the replicated comparison gate.
+
+Adaptive standard-gzip sampling now selects stored members for incompressible
+frames and level-one compression for compressible members. In the local screen,
+16 MiB binary encoding fell from307 to24 ms, while a mixed source-like fixture
+fell from180 to164 ms with0.36% more encoded bytes. These are capture-only local
+measurements, not hosted speed evidence. Every full member retains CRC and both
+compressed/expanded SHA-256 verification. Source-deleted filesystem tests pass;
+existing gzip checkpoints remain readable.
 
 ## Execution order
 

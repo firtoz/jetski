@@ -654,3 +654,10 @@ are accepted only for checkpoint import; ordinary requests remain limited to
 1 MiB. Previously begun imports retain their recorded 256/512 KiB limits. The
 host still hashes each chunk, synchronizes data and progress before replying,
 and verifies the complete archive before making the restored workload available.
+
+Capture uses deterministic samples to choose standard gzip stored blocks for
+incompressible members and level-one compression for other members. This avoids
+spending compression CPU on already compressed binaries. Sampling never skips
+content verification: complete member hashes and extraction checks still apply.
+Readers accept earlier gzip members unchanged. A changed capture policy can
+require a full upload on its first save before incremental reuse stabilizes.
