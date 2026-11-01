@@ -39,3 +39,23 @@ prepare hook builds the exported JavaScript and declarations. Import `jetski/cor
 or `jetski/sdk` without loading provider SDKs, SSH servers or SQLite. CI verifies
 installation from its exact commit into an independent consumer. Use sibling-path
 links only for development; retain the pinned version in the client's lockfile.
+
+### Embedded bootstrap assets
+
+`jetski/providers/boat-bootstrap-embedded` exports `EmbeddedBoatBootstrap` and
+`BOAT_BOOTSTRAP_MODULES`. Supply a loader returning `{ files, installer }`, where
+`files` maps every listed filename to its original `Uint8Array` source and
+`installer` contains `host/install_bundle.py`. The `loadBoatBootstrapAssets` function from `jetski/host-assets` supplies the
+release's bundled source bytes without filesystem access; pass it directly to the
+constructor. Alternatively bundle those assets from the same pinned package at
+build time. Do not download unpinned executable source. This
+entrypoint avoids controller filesystem access and database/provider-SDK loading;
+it still requires Node-compatible crypto, path and Buffer support. The normal
+`BoatBootstrap` remains the Node filesystem-backed default. Both paths validate
+the complete module set, size limits and identical persisted bootstrap identity.
+Changing installed code or policy requires explicit host replacement.
+
+For Bun, consume a built release `.tgz` artifact pinned by URL and lockfile digest.
+Bun does not install a Git dependency's development tools before `prepare`; a Git
+source install is therefore not qualified for Bun. CI verifies artifact installation
+with lifecycle scripts disabled, including core, SDK and bundled host assets.

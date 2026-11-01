@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { BoatApi } from "../src/providers/boat.js";
 import { BoatBootstrap } from "../src/providers/boat-bootstrap.js";
+import {
+  BOAT_BOOTSTRAP_MODULES,
+  EmbeddedBoatBootstrap,
+} from "../src/providers/boat-bootstrap-embedded.js";
 import { standaloneHosts } from "../src/server/hosts.js";
 import { SqliteState } from "../src/state/sqlite.js";
 
@@ -30,7 +35,7 @@ test("Boat bootstrap journals code and policy, resumes uncertainty and rejects c
         poolId: "pool",
         images: [image],
       });
-      assert.equal(Object.keys(bundle.files).length, 19);
+      assert.equal(Object.keys(bundle.files).length, 20);
       assert.ok(Object.hasOwn(bundle.files, "streams.py"));
       assert.equal(
         Object.keys(bundle).sort().join(","),
@@ -79,6 +84,35 @@ test("Boat bootstrap journals code and policy, resumes uncertainty and rejects c
   await new BoatBootstrap(state, api, "pool", [image]).ensure("bx_boot");
   const completedCalls = calls;
   await new BoatBootstrap(state, api, "pool", [image]).ensure("bx_boot");
+  assert.equal(calls, completedCalls);
+  const files: Record<string, Uint8Array> = {};
+  for (const name of BOAT_BOOTSTRAP_MODULES) {
+    files[name] = await readFile(
+      new URL(
+        `../host/${name.endsWith(".c") ? "native/" : ""}${name}`,
+        import.meta.url,
+      ),
+    );
+  }
+  const installer = await readFile(
+    new URL("../host/install_bundle.py", import.meta.url),
+  );
+  const embedded = new EmbeddedBoatBootstrap(
+    state,
+    api,
+    "pool",
+    [image],
+    async () => ({ files, installer }),
+  );
+  // Identical build-time assets preserve the exact installed identity.
+  await embedded.ensure("bx_boot");
+  assert.equal(calls, completedCalls);
+  files["control.py"] = Buffer.from("changed source");
+  await assert.rejects(embedded.ensure("bx_boot"), /identity changed/);
+  delete files["control.py"];
+  await assert.rejects(embedded.ensure("bx_boot"), /module set mismatch/);
+  files["unexpected.py"] = Buffer.from("unexpected source");
+  await assert.rejects(embedded.ensure("bx_boot"), /module set mismatch/);
   assert.equal(calls, completedCalls);
   await assert.rejects(
     new BoatBootstrap(state, api, "different", [image]).ensure("bx_boot"),

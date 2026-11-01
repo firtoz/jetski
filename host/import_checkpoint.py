@@ -10,6 +10,7 @@ import stat
 import uuid
 from archive import digest, restore, sync_dir
 from fence import identity
+from local_checkpoint import LocalCheckpoint
 
 
 class CheckpointImport:
@@ -49,14 +50,26 @@ class CheckpointImport:
             if previous:
                 if any(previous[key] != value for key, value in expected.items()):
                     raise ValueError("import_identity_conflict")
+                if previous["phase"] == "receiving" and previous["offset"] == 0:
+                    return self.cached(lease, state, previous)
                 return previous
             if os.path.lexists(self.data / lease["assignmentId"]) or os.path.lexists(
                 self.path(lease)
             ):
                 raise ValueError("import_destination_exists")
             receipt = {**expected, "offset": 0, "phase": "receiving"}
+            state = {**state, "import": receipt}
+            self.fence.write(state)
+            return self.cached(lease, state, receipt)
+
+    def cached(self, lease, state, receipt):
+        expected = {key: receipt[key] for key in ("id", "sha256", "bytes")}
+        if LocalCheckpoint(self.fence, self.archives).seed_locked(
+            lease, state, expected, self.path(lease)
+        ):
+            receipt = {**receipt, "offset": receipt["bytes"], "phase": "extracting"}
             self.fence.write({**state, "import": receipt})
-            return receipt
+        return receipt
 
     def chunk(self, raw, offset, encoded, sha256):
         lease = identity(raw)

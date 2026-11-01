@@ -13,8 +13,10 @@ import {
   standaloneStorage,
 } from "../src/server/storage.js";
 import { SqliteState } from "../src/state/sqlite.js";
+import { qualifyLiveInteractive } from "./qualify-live-interactive.js";
 
 type Config = {
+  interactive?: boolean;
   image: string;
   hosts: Extract<HostConfig, { kind: "boat" }>;
   storage: StorageConfig;
@@ -91,7 +93,29 @@ if (mode === "prepare") {
   const manager = new SandboxManager(
     state,
     provider,
-    hosts.transport,
+    {
+      request: async (host, request, signal) => {
+        const response = await hosts.transport.request(host, request, signal);
+        if (
+          request.action === "import-begin" ||
+          request.action === "import-chunk"
+        ) {
+          const result = response.result;
+          if (result && typeof result === "object" && !Array.isArray(result)) {
+            console.log(
+              JSON.stringify({
+                observation: "restore-transfer",
+                host,
+                action: request.action,
+                phase: result.phase,
+                offset: result.offset,
+              }),
+            );
+          }
+        }
+        return response;
+      },
+    },
     storage.store,
     {
       poolId: plan.pool,
@@ -227,6 +251,10 @@ if (mode === "prepare") {
         "cd /workspace; dd if=/dev/urandom of=binary bs=1048576 count=5 2>/dev/null; chmod 640 binary; ln binary hard; printf home > /home/sandbox/identity; ln -s binary link; ln -s missing dangling; mkdir directory .git; chmod 751 directory; printf '#!/bin/sh\\nexit 0\\n' > run.sh; chmod 755 run.sh; : > empty; printf '[core]\\n bare = false\\n' > .git/config",
       ),
     );
+    if (plan.config.interactive)
+      await step("live-interactive", () =>
+        qualifyLiveInteractive(manager, state, scope),
+      );
     const before = await step("oracle-initial", (id) => command(id, oracle));
     await step("save-initial", stopped);
     const warm = await step("resume-warm", resumed);

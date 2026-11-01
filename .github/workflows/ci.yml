@@ -18,6 +18,23 @@ jobs:
           mkdir -p "$RUNNER_TEMP/jetski-consumer"
           npm install --prefix "$RUNNER_TEMP/jetski-consumer" "git+https://github.com/firtoz/jetski.git#${{ github.sha }}"
           node --input-type=module -e 'import {createRequire} from "node:module";import {pathToFileURL} from "node:url";const require=createRequire(process.argv[1]+"/package.json");for(const name of ["jetski/core","jetski/sdk"]){const m=await import(pathToFileURL(require.resolve(name)).href);if(!Object.keys(m).length)throw Error("Missing entrypoint");}' "$RUNNER_TEMP/jetski-consumer"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Build and install release artifact with Bun without lifecycle scripts
+        run: |
+          mkdir -p "$RUNNER_TEMP/jetski-package" "$RUNNER_TEMP/jetski-bun-consumer"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/jetski-package"
+          cd "$RUNNER_TEMP/jetski-bun-consumer"
+          printf '%s' '{"name":"artifact-consumer","private":true,"type":"module"}' > package.json
+          bun add --ignore-scripts "$RUNNER_TEMP/jetski-package/jetski-0.0.0.tgz"
+          bun install --frozen-lockfile --ignore-scripts
+          bun --eval 'import {SandboxManager} from "jetski/core";import {JetskiClient} from "jetski/sdk";import {loadBoatBootstrapAssets} from "jetski/host-assets";if(!SandboxManager||!JetskiClient||!(await loadBoatBootstrapAssets()).installer.length)throw Error("Artifact import failed")'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jetski-package
+          path: ${{ runner.temp }}/jetski-package/*.tgz
+          if-no-files-found: error
       - run: npm run typecheck
       - run: npm test
       - name: Qualify isolated browser preview sessions

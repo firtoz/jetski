@@ -50,7 +50,26 @@ test("packed artifact excludes local/test files and independently imports portab
     const sdk = await import(root + 'dist/sdk.js');
     assert.equal(typeof core.SandboxManager, 'function');
     assert.equal(typeof sdk.JetskiClient, 'function');
+    const assets = await import(root + 'dist/host-assets.js');
+    const firstAssets = await assets.loadBoatBootstrapAssets();
+    assert.ok(firstAssets.installer.length > 0);
+    firstAssets.installer.fill(0);
+    assert.notDeepEqual(firstAssets.installer, (await assets.loadBoatBootstrapAssets()).installer);
     hook.deregister();
+    const embeddedHook = registerHooks({resolve(specifier, context, next) {
+      if (specifier.includes('fs') || specifier.includes('sqlite') || specifier.includes('ssh2') || specifier.includes('@aws-sdk')) throw Error('Embedded bootstrap loaded forbidden dependency: ' + specifier);
+      return next(specifier, context);
+    }});
+    const embedded = await import(root + 'dist/providers/boat-bootstrap-embedded.js');
+    assert.equal(typeof embedded.EmbeddedBoatBootstrap, 'function');
+    embeddedHook.deregister();
+    const { readFile } = await import('node:fs/promises');
+    const bundled = await assets.loadBoatBootstrapAssets();
+    for (const [name, bytes] of Object.entries(bundled.files)) {
+      const path = name.endsWith('.c') ? 'native/' + name : name;
+      assert.deepEqual(Buffer.from(bytes), await readFile(new URL(root + 'host/' + path)));
+    }
+    assert.deepEqual(Buffer.from(bundled.installer), await readFile(new URL(root + 'host/install_bundle.py')));
     const { BoatBootstrap } = await import(root + 'dist/providers/boat-bootstrap.js');
     let calls = 0;
     const tx = {get(key) {

@@ -23,11 +23,13 @@ import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 import { SshTransport } from "../src/transport/ssh.js";
 import { qualifyGateway } from "./qualify-gateway.js";
+import { qualifyLiveInteractive } from "./qualify-live-interactive.js";
 
 const key = process.env.JETSKI_TEST_SSH_KEY,
   knownHosts = process.env.JETSKI_TEST_KNOWN_HOSTS,
   image = process.env.JETSKI_TEST_IMAGE;
-if (!key || !knownHosts || !image) throw new Error("Missing CI configuration");
+if (process.env.GITHUB_ACTIONS !== "true" || !key || !knownHosts || !image)
+  throw new Error("Missing CI configuration");
 const directory = await mkdtemp(join(tmpdir(), "jetski-api-ci-"));
 const state = new SqliteState(join(directory, "state.sqlite"));
 let clientJournal = new SqliteState(join(directory, "client-terminal.sqlite"));
@@ -77,7 +79,8 @@ let controlUnavailable = false;
 let loseWriteAck = true;
 let lostWriteAcks = 0;
 let loseImportAck = true,
-  lostImportAcks = 0;
+  lostImportAcks = 0,
+  cacheHits = 0;
 let clockOffset = 0;
 const manager = new SandboxManager(
   state,
@@ -85,7 +88,25 @@ const manager = new SandboxManager(
   {
     request: async (host, request) => {
       if (controlUnavailable) throw Error("Control transport unavailable");
+      if (request.action === "import-begin" && loseImportAck) {
+        // Only this disposable owned CI host: force a corrupt-cache miss so the
+        // existing remote-import lost-acknowledgement regression still executes.
+        await promisify(execFile)("sudo", [
+          "truncate",
+          "-s",
+          "0",
+          "/var/lib/jetski/archives/cache/archive.tgz",
+        ]);
+      }
       const response = await transport.request(host, request);
+      if (
+        request.action === "import-begin" &&
+        response.result &&
+        typeof response.result === "object" &&
+        !Array.isArray(response.result) &&
+        response.result.phase === "extracting"
+      )
+        cacheHits++;
       if (request.action === "terminal-input" && loseTerminalInputAck) {
         loseTerminalInputAck = false;
         lostTerminalInputAcks++;
@@ -636,6 +657,7 @@ try {
   // Keep an admitted workload connection alive across the real stop operation.
   // No persistent fixture files are introduced into the checkpoint oracle.
   const streamScope = { owner: "qualification", sandbox: id };
+  await qualifyLiveInteractive(manager, state, streamScope);
   const listenerCommand = randomUUID(),
     listenerReady = randomUUID();
   await client.request(`/v1/sandboxes/${id}/commands`, "POST", {
@@ -1020,6 +1042,7 @@ try {
   );
   const held = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
   assert.ok(held.lease);
+  const hitsBeforeHeld = cacheHits;
   const heldResume = randomUUID();
   await client.request(`/v1/sandboxes/${id}/resume`, "POST", {
     operationId: heldResume,
@@ -1032,6 +1055,11 @@ try {
   assert.equal((await client.operation(id, heldResume)).phase, "succeeded");
   const resumedHeld = await client.request<Sandbox>(`/v1/sandboxes/${id}`);
   assert.equal(resumedHeld.phase, "running");
+  assert.equal(
+    cacheHits,
+    hitsBeforeHeld + 1,
+    "identical durably published archive must reuse verified local bytes",
+  );
   assert.equal(resumedHeld.generation, 3);
   assert.notEqual(resumedHeld.lease?.assignmentId, held.lease.assignmentId);
   assert.equal(resumedHeld.lease?.machineId, held.lease.machineId);
