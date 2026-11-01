@@ -58,6 +58,9 @@ export type Sandbox = {
   lease: HostLease | null;
   checkpoint: string | null;
   generation: number;
+  /** Last explicit loss acknowledgement; verify its operation before using it
+   * to settle a client's old-generation business ownership. */
+  sourceRecovery?: { operationId: string; fromGeneration: number };
 };
 type ResumeRecord = {
   generation: number;

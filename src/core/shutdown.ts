@@ -210,6 +210,7 @@ export class ShutdownCoordinator {
         phase: "stopped",
         lease: null,
         checkpoint: input.checkpointId,
+        sourceRecovery: { operationId: id, fromGeneration: input.generation },
       });
       return result;
     });
