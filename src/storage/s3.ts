@@ -32,6 +32,7 @@ type VerifiedObject = { info: ObjectInfo; etag: string };
  * are permanent and must never be removed by bucket lifecycle rules or collection.
  * Reads verify complete bounded objects before returning even a requested range. */
 export class S3CheckpointStore implements CheckpointStore {
+  readonly verificationConcurrency = DEFAULTS.verificationConcurrency;
   private maxBytes: number;
   private timeoutMs: number;
   private listPageSize: number;

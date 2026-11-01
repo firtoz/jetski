@@ -18,6 +18,7 @@ import {
   sameObject,
   validObservation,
 } from "./inventory.js";
+import { verifyCheckpointObjects } from "./object-verification.js";
 import { validateRootPayload } from "./root-payload.js";
 
 export type CheckpointRoot = {
@@ -331,17 +332,7 @@ export class CheckpointRegistry {
       )
         throw new Error("Writer not admitted");
     });
-    for (const frame of frozen) {
-      if (frame.owner !== fence.owner || frame.sandbox !== fence.sandbox)
-        throw new Error("Cross-owner frame");
-      const verified = await this.objects.head(frame);
-      if (
-        !verified ||
-        verified.sha256 !== frame.sha256 ||
-        verified.bytes !== frame.bytes
-      )
-        throw new Error("Publication integrity failure");
-    }
+    await verifyCheckpointObjects(this.objects, fence, frozen);
     await this.state.transaction((tx) => {
       const state = this.load(tx, fence);
       if (

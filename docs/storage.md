@@ -160,3 +160,14 @@ The collector uses a synthetic clock in this disposable scope; this is **not** a
 elapsed 24-hour cloud-GC test. The fixture tests frame bytes and publication, not
 filesystem extraction, execution-host replacement or a full API workflow. Live
 S3-backed host recovery and matched end-to-end performance remain acceptance gates.
+
+## Bounded publication verification
+
+Adapters may declare `verificationConcurrency` from 1 to 4 for overlapping
+independent `head` checks. Omission remains serial for custom adapters; the local
+and S3 adapters opt into four. Publication checks each distinct immutable identity
+once, preserves manifest order, and rejects conflicting duplicate metadata. Failed
+batches drain before rejection and later batches do not start. The final
+transaction rechecks the writer and generation before publishing. This capability
+does not relax the adapter's byte/hash verification contract or the S3 upload
+readback requirement. It does not enable parallel uploads or source reads.

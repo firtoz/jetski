@@ -27,6 +27,7 @@ function missing(error: unknown): boolean {
  * reservation prevents reusing an object identity after deletion or failed put.
  * An interrupted upload can leak a reservation, but cannot replace acknowledged bytes. */
 export class LocalCheckpointStore implements CheckpointStore {
+  readonly verificationConcurrency = DEFAULTS.verificationConcurrency;
   private readonly root: string;
   constructor(
     root: string,
