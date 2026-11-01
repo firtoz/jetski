@@ -94,6 +94,10 @@ The already-running hosted comparison may finish and must clean its owned hosts.
 
 ## Next steps
 
+The separately authorized [checkpoint performance goal](goals/checkpoint-performance.md)
+may proceed while this release's timed fixture is preserved. It supersedes the
+earlier restriction on optional tuning only for that explicitly scoped work.
+
 1. After November 1, 2026, 23:51:52 UTC, complete the independent real-grace R2
    deletion, exact retained-root restore, replay and fixture cleanup. No VM is
    needed; do not alter its clock, generation or retained references.
