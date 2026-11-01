@@ -44,7 +44,7 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 | Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                         |
 | Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                           |
 | Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                       |
-| Client integration               | Pinned artifact and downstream lifecycle adapters; live admission remains disabled                                                          | Implement client adapters, pinned dependency, real workflow and replacement recovery |
+| Client integration               | Pinned artifact and downstream lifecycle adapters; live admission remains disabled           | Implement client adapters, pinned dependency, real workflow and replacement recovery |
 | Benchmarks and release           | Per-fixture measurements and preserved failures                                              | Matched comparison, owned-resource cleanup, documented limits and green final CI     |
 
 ## Current work
