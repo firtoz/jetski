@@ -49,16 +49,13 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 
 ## Current work
 
-The active-stream stop/recovery fix now passes all five CI jobs, including
-intentional worker-loss cleanup without promoting uncertain command outcomes.
-Real filesystem archives also pass exact source-deleted recovery through local
-storage and the isolated R2 bucket, including historical versions and links.
-The Boat SSH stream adapter passed disposable encrypted transport and preview
-qualification. A separately funded two-host live recovery run is underway. Warm byte/mode/link
-recovery passed, but currently downloads from remote storage; the retained cache
-marker is not yet wired into restore. Complete this unchanged baseline before
-implementing and qualifying verified cache reuse. Remaining gates include live-provider replacement, real-grace
-collection, matched hosted measurements and staging integration. See [qualification evidence](qualification.md).
+Live Boat/R2 qualification now passes same-host restore and physical replacement
+with an exact filesystem oracle, followed by both host retirements and scoped
+object cleanup. This baseline downloads checkpoints from remote storage.
+Verified local-cache reuse passes all five disposable CI jobs on its development
+branch; live cache and interactive qualification are next. The separate paid-host
+allowance is approved. Remaining gates include real-grace collection, matched
+hosted measurements and staging integration. See [qualification evidence](qualification.md).
 
 ## Next steps
 
@@ -66,7 +63,7 @@ collection, matched hosted measurements and staging integration. See [qualificat
 2. Audit remaining lifecycle/replacement requirements against existing tests;
    add checks only for uncovered requirements or concrete defects.
 3. Finish provider/storage qualification and prepare the downstream staging adapter.
-   Obtain a separate allowance before paid-host experiments.
+   Stay within the separately approved paid-host allowance.
 4. Run matched hosted benchmarks, staging workflow and replacement recovery;
    complete the acceptance audit before marking the goal achieved.
 

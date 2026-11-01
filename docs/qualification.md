@@ -57,8 +57,17 @@ The first live pilot exposed two differences from the emulated API: upload recei
 use paths relative to `/home/user`, and the stock `/opt` directory belongs to the
 guest user. The transport now resolves the receipt to the exact requested path
 before its existing byte/hash checks; bootstrap secures the parent only before a
-first installation on an owned machine. The same pilot VM/journal is retained for
-recovery qualification; these fixes alone do not establish live-provider parity.
+first installation on an owned machine. The first fixture then failed because it attempted a hardlink across separate
+persistent mounts. Its failed state was durably preserved before retiring the VM;
+the corrected fixture keeps that link within one mount.
+
+The corrected live Boat/R2 pilot passed on `b4d9be2`: source execution, durable save,
+same-host warm restore, changed save, real ten-minute idle retirement, restoration
+on a different physical host, exact filesystem oracle and final retirement/cleanup.
+The oracle covers bytes, modes, symlinks and hardlinks. Warm restore took 15,182 ms;
+replacement restore took 53,234 ms. Initial/changed saves took 23,842/18,988 ms.
+These are one-pilot observations, not a matched comparison. This baseline downloads
+remote checkpoint data; live cache and interactive transport remain separate gates.
 
 ## Real filesystem storage recovery
 
