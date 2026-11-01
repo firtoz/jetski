@@ -7,6 +7,7 @@ import test from "node:test";
 import { CheckpointRegistry } from "../src/core/checkpoints.js";
 import { DEFAULTS } from "../src/core/contracts.js";
 import { CheckpointMaintenance } from "../src/core/maintenance.js";
+import { SandboxManager } from "../src/core/manager.js";
 import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 
@@ -124,4 +125,64 @@ test("scheduled real collection removes only retired bytes and preserves retaine
     tx.put("checkpoint-maintenance/owner/sandbox", { dueAt: 0 }),
   );
   await assert.rejects(maintenance.run(fence), /Ambiguous/);
+});
+
+test("manager returns a durable idle deadline for embedded alarms", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "jetski-maintenance-deadline-"));
+  const state = new SqliteState(join(dir, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const now = 1000,
+    image = `example/linux@sha256:${"a".repeat(64)}`;
+  const objects = new LocalCheckpointStore(join(dir, "objects"));
+  const manager = new SandboxManager(
+    state,
+    {
+      capabilities: () => ({
+        kind: "machine-host",
+        architecture: "x86_64",
+        rootlessPodman: true,
+      }),
+      allocate: async () => {
+        throw Error("No host allocation expected");
+      },
+      inspect: async () => ({ state: "absent" }),
+      retire: async () => {},
+    },
+    {
+      request: async () => {
+        throw Error("No host execution expected");
+      },
+    },
+    objects,
+    {
+      poolId: "pool",
+      approvedImages: [image],
+      automaticCollection: true,
+      now: () => now,
+    },
+  );
+  const id = crypto.randomUUID();
+  await manager.create("owner", id, image, crypto.randomUUID());
+  const registry = new CheckpointRegistry(state, objects, () => now);
+  await registry.initialize({ owner: "owner", sandbox: id, generation: 1 });
+  assert.equal(
+    await manager.maintain("owner"),
+    null,
+    "Queued work has no idle maintenance deadline",
+  );
+  await state.transaction((tx) => {
+    const key = `sandbox/owner/${id}`;
+    const record = manager.getIn(tx, { owner: "owner", sandbox: id })!;
+    tx.put(key, { ...record, phase: "stopped" });
+  });
+  assert.equal(await manager.maintain("owner"), now + DEFAULTS.gcGraceMs);
+  assert.equal(
+    await manager.maintain("owner"),
+    now + DEFAULTS.gcGraceMs,
+    "Repeated alarms preserve dueAt",
+  );
+  assert.equal(await manager.maintain("foreign"), null);
 });

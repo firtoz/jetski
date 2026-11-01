@@ -456,13 +456,25 @@ export class SandboxManager {
     ]);
   }
   /** Called by a server worker or an embedded platform scheduler, never a browser. */
-  async maintain(owner: string): Promise<void> {
-    if (!this.maintenance) return;
+  async maintain(owner: string): Promise<number | null> {
+    if (!this.maintenance) return null;
+    let nextAt: number | null = null;
     for (const sandbox of await this.list(owner)) {
+      if (
+        sandbox.lease ||
+        sandbox.pendingResume ||
+        !["stopped", "deleted"].includes(sandbox.phase)
+      )
+        continue;
       const scope = { owner, sandbox: sandbox.id };
-      if (await this.checkpoints.inspect(scope))
+      if (await this.checkpoints.inspect(scope)) {
         await this.maintenance.run(scope);
+        const status = await this.maintenance.status(scope);
+        if (status && (nextAt === null || status.dueAt < nextAt))
+          nextAt = status.dueAt;
+      }
     }
+    return nextAt;
   }
   async maintenanceStatus(scope: Scope) {
     return this.maintenance?.status(scope);

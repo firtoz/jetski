@@ -1,7 +1,6 @@
 import {
   DEFAULTS,
   type Fence,
-  type Json,
   type Scope,
   type StateStore,
   scopeKey,
@@ -9,7 +8,7 @@ import {
 } from "./contracts.js";
 
 const RETRY_MS = 5 * 60_000;
-type Maintenance = {
+export type MaintenanceStatus = {
   dueAt: number;
   attempt: { id: string; generation: number } | null;
   last: { id: string; deleted: number; at: number } | null;
@@ -31,7 +30,7 @@ export class CheckpointMaintenance {
     const selected = await this.state.transaction((tx) => {
       const fence = this.eligible(tx, scope);
       if (!fence) return;
-      const previous = tx.get<Maintenance>(key);
+      const previous = tx.get<MaintenanceStatus>(key);
       if (
         previous &&
         (Object.keys(previous).sort().join(",") !== "attempt,dueAt,last" ||
@@ -73,7 +72,7 @@ export class CheckpointMaintenance {
     if (!Number.isSafeInteger(result.deleted) || result.deleted < 0)
       throw Error("Invalid collection outcome");
     await this.state.transaction((tx) => {
-      const record = tx.get<Maintenance>(key);
+      const record = tx.get<MaintenanceStatus>(key);
       if (
         record?.attempt?.id !== selected.attempt.id ||
         record.attempt.generation !== selected.fence.generation
@@ -90,9 +89,9 @@ export class CheckpointMaintenance {
       });
     });
   }
-  async status(scope: Scope): Promise<Json | undefined> {
+  async status(scope: Scope): Promise<MaintenanceStatus | undefined> {
     return this.state.transaction((tx) =>
-      tx.get(`checkpoint-maintenance/${scopeKey(scope)}`),
+      tx.get<MaintenanceStatus>(`checkpoint-maintenance/${scopeKey(scope)}`),
     );
   }
 }

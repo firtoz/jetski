@@ -21,7 +21,10 @@ retain their original default limits. API clients cannot override operator polic
 
 Set top-level `automaticCollection: true` to opt into durable checkpoint maintenance
 (embedded callers use the same manager option). The worker invokes `maintain(owner)`
-after reconciliation; embedded schedulers must invoke both methods. Collection is
+after reconciliation; embedded schedulers must invoke both methods.
+`maintain(owner)` returns the earliest durable due timestamp, or null when no
+idle maintenance is scheduled. Combine it with lifecycle deadlines when arming
+the next platform alarm, including when all hosts have been retired. Collection is
 restricted to stopped or deleted sandboxes without an assigned host or pending
 resume. The first pass waits 24 hours; subsequent successful passes are daily.
 Failures retain their collection identity and retry after five minutes, including
