@@ -99,3 +99,28 @@ is **not a completed replicated ten-versus-ten comparison**. All four owned host
 were retired, provider inventory returned zero active hosts, and checkpoint data
 and failure receipts were retained. A new frozen candidate still needs the full
 matched comparison, large restore and downstream qualification.
+
+## Physical-pack and lifecycle attribution screen
+
+Candidate `45b27a5` completed five alternating trials per arm on a fresh host
+pair with the same fixture, image and equal workload limits. All ten filesystem
+oracles passed. Both hosts were retired; provider inventory returned zero active
+hosts. This remains a screening batch, not the required replicated comparison.
+
+| Median per completed trial | Reference | Candidate |
+| -------------------------- | --------: | --------: |
+| Durable save and release   |   4.389 s |  17.517 s |
+| Resume readiness           |   1.103 s |   1.797 s |
+| Complete cycle             |   6.510 s |  21.184 s |
+| Payload uploaded           |  1.042 MB |  1.042 MB |
+| Storage requests           |        18 |        40 |
+| Provider API requests      |        16 |        32 |
+
+Physical packing removes most of the smaller-frame request amplification, but
+this candidate still **fails the speed target**. Passive observation of persisted
+lifecycle transitions found two full quiesce intervals of 10.350 and 10.364 s.
+The idle process was an unhandled PID 1 sleep, consistent with waiting out the
+configured ten-second stop grace. Subsequent code adds a signal-handling idle
+process while retaining that grace and observed stopped-state checks, and batches
+independent command-output retention with fully drained failures. Those changes
+need a fresh hosted measurement; subtracting ten seconds is not a benchmark.

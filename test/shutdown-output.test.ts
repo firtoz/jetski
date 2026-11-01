@@ -57,6 +57,7 @@ test("shutdown resumes multiple command outputs after committed upload loses ack
     ],
   };
   const actions: string[] = [];
+  const statusCalls = new Map<string, number>();
   const provider: HostProvider = {
     capabilities: () => ({
       kind: "machine-host",
@@ -79,6 +80,11 @@ test("shutdown resumes multiple command outputs after committed upload loses ack
         offset: number;
         bytes: number;
       };
+      if (request.action === "command-status")
+        statusCalls.set(
+          input.commandId,
+          (statusCalls.get(input.commandId) ?? 0) + 1,
+        );
       let result: Json = null;
       if (
         ["command-start", "command-status", "command-cancel"].includes(
@@ -121,23 +127,49 @@ test("shutdown resumes multiple command outputs after committed upload loses ack
   for (const id of ids) await manager.startCommand(scope, id, ["true"]);
   await manager.cancelCommand(scope, ids[0]!);
   const put = objects.put.bind(objects);
-  let lose = true,
-    puts = 0;
+  let puts = 0;
+  let failed = false,
+    drained = false,
+    finished = false;
+  let releaseSibling!: () => void;
+  const sibling = new Promise<void>((resolve) => {
+    releaseSibling = resolve;
+  });
   objects.put = async (...args) => {
-    puts++;
+    const call = ++puts;
     const result = await put(...args);
-    if (lose) {
-      lose = false;
+    if (call === 1) {
+      failed = true;
       throw Error("committed upload ACK lost");
+    }
+    if (call === 2) {
+      await sibling;
+      drained = true;
     }
     return result;
   };
   const stop = randomUUID();
+  statusCalls.clear();
   await manager.stop(scope, stop);
-  await assert.rejects(
-    manager.reconcile(scope.owner),
-    /committed upload ACK lost/,
+  const reconciliation = manager.reconcile(scope.owner).finally(() => {
+    finished = true;
+  });
+  // Attach rejection observation immediately; the sibling deliberately remains pending.
+  const rejected = assert.rejects(reconciliation, /committed upload ACK lost/);
+  for (let attempt = 0; !failed && attempt < 1000; attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.equal(failed, true);
+  assert.equal(finished, false);
+  assert.equal(drained, false);
+  assert.equal(puts, 2, "no later command starts after a failed batch");
+  assert.equal(
+    statusCalls.get(ids[0]!),
+    1,
+    "use the observed terminal outcome without another host query",
   );
+  releaseSibling();
+  await rejected;
+  assert.equal(drained, true);
   assert.ok(!actions.includes("release"));
   state.close();
   state = new SqliteState(path);

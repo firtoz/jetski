@@ -143,7 +143,18 @@ class PodmanRuntime:
                     args.extend(
                         ["--mount", "type=bind,src=" + self.relay + ",dst=/jetski-tcp-relay,ro"]
                     )
-                args.extend([self.image, "/bin/sh", "-c", "exec sleep infinity"])
+                # PID 1 needs an explicit handler: an unhandled sleep would
+                # consume the full stop grace before SIGKILL on every save.
+                # Tracked commands are already settled before quiescence; the
+                # namespace exit also removes any remaining idle descendants.
+                args.extend(
+                    [
+                        self.image,
+                        "/bin/sh",
+                        "-c",
+                        "trap 'exit 0' TERM INT; while :; do sleep 3600 & wait $!; done",
+                    ]
+                )
                 result = self.run(args)
                 if result["exitCode"] != 0:
                     raise RuntimeError("runtime_create_failed")

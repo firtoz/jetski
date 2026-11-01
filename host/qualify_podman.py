@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from archive import capture, restore, digest
 from fence import Fence
@@ -61,7 +62,11 @@ def main():
             )
             if result["exitCode"]:
                 raise RuntimeError(result["stderr"])
+            stop_started = time.monotonic()
             runtime.quiesce(lease)
+            stop_seconds = time.monotonic() - stop_started
+            if stop_seconds >= 8:
+                raise RuntimeError("idle_runtime_consumed_stop_grace")
             before = oracle(data / lease["assignmentId"])
             receipt = capture(roots, base / "checkpoint.tgz")
             runtime.remove(lease)
@@ -105,6 +110,7 @@ def main():
                         replacementContainer=True,
                         replacementHost=False,
                         entries=len(before),
+                        idleStopSeconds=stop_seconds,
                         image=image,
                         cgroups=host["cgroupVersion"],
                     )

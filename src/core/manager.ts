@@ -245,13 +245,40 @@ export class SandboxManager {
             .scan<CommandRecord>(`command/${scopeKey(scope)}/`)
             .map((row) => row.value),
         );
-        for (const command of commands) {
-          const status = await this.commandStatus(scope, command.id);
-          if (!status || typeof status !== "object" || Array.isArray(status))
-            throw Error("Invalid command receipt");
-          if (["queued", "running"].includes(String(status.phase)))
+        const concurrency = objects.transferConcurrency ?? 1;
+        if (
+          !Number.isSafeInteger(concurrency) ||
+          concurrency < 1 ||
+          concurrency > DEFAULTS.transferConcurrency
+        )
+          throw Error("Invalid command retention concurrency");
+        for (let at = 0; at < commands.length; at += concurrency) {
+          const settled = await Promise.allSettled(
+            commands.slice(at, at + concurrency).map(async (command) => {
+              const status = await this.commandStatus(scope, command.id);
+              if (
+                !status ||
+                typeof status !== "object" ||
+                Array.isArray(status)
+              )
+                throw Error("Invalid command receipt");
+              if (["queued", "running"].includes(String(status.phase)))
+                return false;
+              await this.retainObservedCommand(scope, command, status);
+              return true;
+            }),
+          );
+          // Source cleanup cannot race a sibling still publishing output.
+          const failure = settled.find(
+            (result) => result.status === "rejected",
+          );
+          if (failure?.status === "rejected") throw failure.reason;
+          if (
+            settled.some(
+              (result) => result.status === "fulfilled" && !result.value,
+            )
+          )
             return false;
-          await this.retainCommand(scope, command.id);
         }
         return true;
       },
@@ -1316,18 +1343,25 @@ export class SandboxManager {
    * keeps its writer admission, preventing collection and successful release. */
   async retainCommand(scope: Scope, id: string): Promise<void> {
     const command = await this.command(scope, id);
+    const status = await this.commandStatus(scope, id);
+    await this.retainObservedCommand(scope, command, status);
+  }
+  private async retainObservedCommand(
+    scope: Scope,
+    command: CommandRecord,
+    status: Json,
+  ): Promise<void> {
     const sandbox = await this.get(scope);
     if (!sandbox) throw new Error("Sandbox unavailable");
-    const status = await this.commandStatus(scope, id);
     await this.outputs.retain(
       { ...scope, generation: sandbox.generation },
-      id,
+      command.id,
       status,
       (channel, offset, bytes) =>
         this.request(command.lease, "command-output", {
           lease: command.lease,
           image: command.image,
-          commandId: id,
+          commandId: command.id,
           channel,
           offset,
           bytes,
