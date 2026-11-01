@@ -80,6 +80,8 @@ runtime-specific readiness probing is injectable, while alternate bootstrap
 capability negotiation and the full runtime conformance audit remain open.
 New command admission reserves the existing checkpoint drain interval before host
 expiry; measured save headroom and full hosted lifetime qualification remain open.
+An explicit authenticated stream crypto suite passes a local embedded-runtime
+encrypted binary round trip; full client transport wiring and hosted checks remain open.
 See [qualification evidence](qualification.md).
 
 ## Next steps

@@ -9,6 +9,13 @@ import { BoatStreamTransport } from "../src/transport/boat-stream.js";
 test("Boat SSH credentials survive lost registration; ownership and host pins fail closed", async (t) => {
   const state = new SqliteState(":memory:");
   t.after(() => state.close());
+  assert.throws(
+    () =>
+      new BoatStreamTransport(state, new BoatApi("fixture"), {
+        cryptoSuite: "unapproved" as never,
+      }),
+    /Unsupported Boat stream crypto suite/,
+  );
   const allocation = {
     owner: "owner",
     id: "bx_owned",

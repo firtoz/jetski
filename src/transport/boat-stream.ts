@@ -20,11 +20,28 @@ import { sshKeyPair } from "./ssh-key.js";
 
 type Credentials = { public: string; private: string; hostKey: string | null };
 
+/** Operator-selected compatibility suite. Never supplied by a workload request. */
+export const BOAT_STREAM_CRYPTO_SUITES = [
+  "default",
+  "aes256-ctr-sha256-etm",
+] as const;
+export type BoatStreamCryptoSuite = (typeof BOAT_STREAM_CRYPTO_SUITES)[number];
+export type BoatStreamOptions = { cryptoSuite?: BoatStreamCryptoSuite };
+
 export class BoatStreamTransport implements HostStreamTransport {
+  private readonly cryptoSuite: BoatStreamCryptoSuite;
   constructor(
     private readonly state: StateStore,
     private readonly api: BoatApi,
-  ) {}
+    options: BoatStreamOptions = {},
+  ) {
+    if (
+      options.cryptoSuite !== undefined &&
+      !BOAT_STREAM_CRYPTO_SUITES.includes(options.cryptoSuite)
+    )
+      throw Error("Unsupported Boat stream crypto suite");
+    this.cryptoSuite = options.cryptoSuite ?? "default";
+  }
 
   async open(
     host: string,
@@ -190,6 +207,14 @@ export class BoatStreamTransport implements HostStreamTransport {
         );
       });
       client.connect({
+        ...(this.cryptoSuite === "aes256-ctr-sha256-etm"
+          ? {
+              algorithms: {
+                cipher: ["aes256-ctr"],
+                hmac: ["hmac-sha2-256-etm@openssh.com"],
+              },
+            }
+          : {}),
         host: hostname,
         port,
         username: "user",

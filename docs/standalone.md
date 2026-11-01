@@ -574,3 +574,16 @@ Reconnecting to an existing command still observes its recorded identity.
 This is a scheduling bound, not a guarantee that a checkpoint of any size can be
 saved before provider expiry; uncertain saves remain quarantined and unpublished
 changes are not promised durable.
+
+### Embedded stream crypto compatibility
+
+`BoatStreamTransport` accepts an optional third constructor argument:
+`{ cryptoSuite: "aes256-ctr-sha256-etm" }`. This selects AES-256-CTR with
+HMAC-SHA-256 encrypt-then-MAC for runtimes whose AES-GCM streaming behavior differs
+from Node. The default suite is unchanged. Selection is trusted operator
+configuration; no workload request can change it, and unsupported values fail.
+Host-key pinning, key ownership checks and at-most-once stream admission still apply.
+An embedded runtime must also bundle Node dependencies against its native Node
+compatibility APIs, rather than browser crypto shims. Runtime import alone is not
+qualification: verify authenticated binary transfer, close, abort and host-key
+rejection in the target runtime before enabling interactive access.
