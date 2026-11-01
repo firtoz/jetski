@@ -94,7 +94,7 @@ The already-running hosted comparison may finish and must clean its owned hosts.
 
 ## Next steps
 
-1. Implementation candidate: public runtime `4187272`, qualification artifact 17,
+1. Implementation candidate: public runtime `ad1f5e5`, qualification artifact 18,
    and the published client pin/idle-maintenance integration. The finite source
    checklist has implementations for all approved v1 areas; release acceptance is open.
 2. Execute one consolidated pass using the existing acceptance matrix and prior

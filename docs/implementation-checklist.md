@@ -16,12 +16,12 @@ missing approved contract or a concrete defect.
 | Embedded scheduling                                   | contracts.ts Scheduler, external reconciliation entry point  | Implemented transactional client alarms plus core maintenance deadlines; stopped-controller restart regression passes                                                                  |
 | Identity, owner scope and preview gateways            | server/http.ts, preview modules, ssh.ts                      | Bearer owner scope, public-key SSH scope, isolated-origin preview sessions and configured capability routing inspected; live isolation remains verification                            |
 | Portable package, SQLite/local/S3 composition         | package exports, state/sqlite.ts, server configuration       | Present; final import and artifact audit is release verification                                                                                                                       |
-| Staging client integration                            | External client adapter and pinned artifact                  | Qualification artifact 17 pinned in both consumers; idle maintenance integrated; persisted backend selection and admission rollback paths inspected                                    |
+| Staging client integration                            | External client adapter and pinned artifact                  | Qualification artifact 18 pinned in both consumers; idle maintenance integrated; persisted backend selection and admission rollback paths inspected                                    |
 
 ## Work order
 
-1. Freeze the current implementation candidate: public runtime commit `4187272`
-   and the client artifact-17 maintenance integration after publication.
+1. Freeze the current implementation candidate: public runtime commit `ad1f5e5`
+   and the client artifact-18 maintenance integration after publication.
 2. Run the existing release acceptance matrix once, reusing valid prior evidence.
 3. Reopen implementation only for an observed failure or an omitted approved
    contract; performance tuning beyond release failures stays deferred.
