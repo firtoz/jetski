@@ -229,3 +229,13 @@ provider absence, without further workload commands. Unknown provider state,
 interrupted upload and corrupt or missing retained objects remain quarantined.
 These fault-injection checks do not qualify live expiration recovery; that gate
 remains open.
+
+Explicit missing-source recovery has local SQLite and HTTP/SDK coverage: a caller
+selects a retained checkpoint and acknowledges unavailable unpublished changes.
+The transaction fences the lost assignment, preserves the failed save, and leaves
+the sandbox stopped. Restart and lost-response replay preserve the same outcome;
+subsequent resume restores the selected archive on one replacement host. Unknown
+or still-ready provider state, corrupt storage, stale lease/generation, concurrent
+readers and cross-owner requests are rejected. Registry tests also cover unrelated
+writers, unidentified writers, retired roots and transaction rollback. This does
+not establish that unpublished source bytes survived a real provider expiry.

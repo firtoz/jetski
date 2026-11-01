@@ -392,6 +392,32 @@ export class PoolJournal {
       return next;
     });
   }
+  /** Explicit recovery only, after positive provider absence. Unlike release,
+   * this records a lost source, never successful quiescence/publication. The
+   * caller must fence sandbox and checkpoint state in the same transaction. */
+  retireMissingAssignmentIn(tx: Transaction, lease: HostLease): void {
+    const slot = this.exact(tx, lease);
+    if (!["quiescing", "quarantined"].includes(slot.phase))
+      throw Error("Missing assignment not quarantined or stopping");
+    const tickets = tx
+      .scan<Ticket>(`${this.prefix()}ticket/${lease.owner}/`)
+      .map((row) => row.value)
+      .filter(
+        (ticket) =>
+          ticket.sandboxId === lease.sandboxId && ticket.phase === "assigned",
+      );
+    if (tickets.length !== 1) throw Error("Placement receipt ambiguous");
+    const machine = tx.get<Machine>(this.machineKey(lease.machineId));
+    if (!machine || machine.slot !== slot.id)
+      throw Error("Machine authority mismatch");
+    tx.put(this.ticketKey(lease.owner, tickets[0]!.id), {
+      ...tickets[0]!,
+      phase: "finished",
+    });
+    tx.put(this.machineKey(lease.machineId), { ...machine, slot: null });
+    tx.put(this.slotKey(slot.id), { ...slot, phase: "retired", lease: null });
+    tx.put(`${this.prefix()}lost/${identifier(lease.assignmentId)}`, lease);
+  }
   async retireIdle(id: string): Promise<PoolSlot> {
     return this.state.transaction((tx) => {
       const slot = tx.get<PoolSlot>(this.slotKey(id));

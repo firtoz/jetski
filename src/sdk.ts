@@ -19,6 +19,10 @@ import {
   persistentPath,
 } from "./core/files.js";
 import {
+  type MissingSourceRecovery,
+  missingSourceRecovery,
+} from "./core/shutdown.js";
+import {
   type TerminalGeometry,
   type TerminalInput,
   terminalGeometry,
@@ -520,6 +524,20 @@ export class JetskiClient {
       `/v1/sandboxes/${identifier(sandbox)}/resume`,
       "POST",
       body,
+    );
+  }
+  recoverMissingSource(
+    sandbox: string,
+    operationId: string,
+    recovery: MissingSourceRecovery,
+  ): Promise<Operation> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/recover-missing-source`,
+      "POST",
+      {
+        operationId: identifier(operationId),
+        recovery: missingSourceRecovery(recovery),
+      },
     );
   }
   checkpoints(

@@ -1908,6 +1908,125 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{sandboxId}/recover-missing-source": {
+      "post": {
+        "summary": "Explicitly select a retained checkpoint after confirmed source loss; leaves the sandbox stopped",
+        "parameters": [
+          {
+            "name": "sandboxId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["operationId", "recovery"],
+                "properties": {
+                  "operationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "recovery": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "generation",
+                      "lease",
+                      "shutdownId",
+                      "checkpointId",
+                      "acknowledgement"
+                    ],
+                    "properties": {
+                      "generation": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "lease": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "owner",
+                          "poolId",
+                          "slotId",
+                          "machineId",
+                          "sandboxId",
+                          "assignmentId",
+                          "generation"
+                        ],
+                        "properties": {
+                          "owner": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "poolId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "slotId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "machineId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "sandboxId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "assignmentId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "generation": {
+                            "type": "integer",
+                            "minimum": 1
+                          }
+                        }
+                      },
+                      "shutdownId": {
+                        "type": "string"
+                      },
+                      "checkpointId": {
+                        "type": "string"
+                      },
+                      "acknowledgement": {
+                        "type": "string",
+                        "enum": ["unpublished-changes-unavailable"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid or rejected request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sandbox unavailable in principal scope"
+          },
+          "200": {
+            "description": "Persisted recovery outcome; sandbox stopped at selected checkpoint"
+          }
+        },
+        "description": "Requires acknowledgement that unpublished changes are unavailable. Fences the lost assignment and preserves the failed save. Does not resume or replay commands. Stable operation identity supports lost-response recovery."
+      }
     }
   },
   "components": {

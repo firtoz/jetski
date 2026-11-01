@@ -59,6 +59,18 @@ Poll `operation ID --id UUID` for completion. Failed publication quarantines the
 source; it never reports successful release. A lost release acknowledgement can
 be reconciled using the existing receipt without creating a new assignment.
 
+When a source has disappeared during an unfinished save, an operator can explicitly
+select an older retained filesystem checkpoint with `recover-missing-source ID
+--operation UUID --config recovery.json`. The JSON contains `generation`, the exact
+`lease` from sandbox inspection, `shutdownId`, `checkpointId`, and
+`acknowledgement: "unpublished-changes-unavailable"`. The SDK exposes the same
+operation. Recovery requires positive provider absence and refuses other active
+storage actors, stale authority or invalid retained objects. It leaves the sandbox
+stopped at the selected checkpoint; use a separate resume operation afterwards.
+The incomplete save stays uncertain and recorded. Unpublished changes are not
+recovered, and uncertain commands must not be replayed automatically. This path
+has local fault/restart coverage; hosted qualification remains pending.
+
 `resume ID --operation UUID` restores a stopped sandbox into a fresh writable
 assignment. If its checkpoint still holds the host, the same durable resume request
 first releases that assignment. Checkpoints and prior command output remain

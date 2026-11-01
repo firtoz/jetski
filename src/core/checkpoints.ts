@@ -179,6 +179,50 @@ export class CheckpointRegistry {
     tx.put(this.key(fence), { ...state, generation });
     return { ...fence, generation };
   }
+  /** Recovery coordinator only: it must positively establish source-host absence
+   * and atomically fence the sandbox/operation journals in this transaction.
+   * Keep the interrupted save journal and objects as evidence. This does not
+   * publish that save or authorize deletion of its partial objects. */
+  recoverMissingSourceIn(
+    tx: Transaction,
+    fence: Fence,
+    writerId: string,
+    retainedRootId: string,
+  ): Fence {
+    identifier(writerId);
+    identifier(retainedRootId);
+    const state = this.load(tx, fence);
+    validateCollectionState(state, fence);
+    if (
+      state.collection ||
+      state.accesses.some(
+        (access) => access.id !== writerId || access.kind !== "writer",
+      )
+    )
+      throw Error("Checkpoint actors still active");
+    if (
+      !state.roots.some(
+        (root) => root.id === retainedRootId && root.retiredAt === null,
+      ) ||
+      state.roots.some((root) => root.id === writerId)
+    )
+      throw Error("Recovery requires a retained root and an unpublished save");
+    const save = tx.get<FrameSave>(`frame-save/${scopeKey(fence)}/${writerId}`);
+    if (
+      (state.accesses.length && !save) ||
+      (save && save.generation !== fence.generation)
+    )
+      throw Error("Interrupted frame writer identity unavailable");
+    const generation = fence.generation + 1;
+    if (!Number.isSafeInteger(generation)) throw Error("Generation exhausted");
+    tx.put(this.key(fence), { ...state, accesses: [], generation });
+    tx.put(`checkpoint-recovery/${scopeKey(fence)}/${fence.generation}`, {
+      writerId,
+      retainedRootId,
+      generation,
+    });
+    return { ...fence, generation };
+  }
   async initialize(fence: Fence): Promise<void> {
     await this.state.transaction((tx) => this.initializeIn(tx, fence));
   }

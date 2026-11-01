@@ -5,6 +5,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { missingSourceRecovery } from "./core/shutdown.js";
 import { DEFAULT_TERMINAL_GEOMETRY } from "./core/terminal-input.js";
 import { MAX_FILE_UPLOAD_BYTES } from "./core/uploads.js";
 import { JetskiClient } from "./sdk.js";
@@ -423,6 +424,20 @@ if (command === "serve") {
         `/v1/sandboxes/${required(positionals[1], "sandbox ID")}`,
         "DELETE",
         { operationId: required(values.operation, "--operation") },
+      );
+      break;
+    case "recover-missing-source":
+      result = await client.recoverMissingSource(
+        required(positionals[1], "sandbox ID"),
+        required(values.operation, "--operation"),
+        missingSourceRecovery(
+          JSON.parse(
+            await readFile(
+              required(values.config, "--config recovery request JSON"),
+              "utf8",
+            ),
+          ),
+        ),
       );
       break;
     case "resume":

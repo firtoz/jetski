@@ -4,6 +4,7 @@ import {
   type CheckpointStore,
   canonical,
   type Fence,
+  identifier,
   type Json,
   type Scope,
   type StateStore,
@@ -43,7 +44,55 @@ type Shutdown = {
   stage: Stage;
   archive: CapturedArchive | null;
   blocked: boolean;
+  recoveredBy?: string;
 };
+export type MissingSourceRecovery = {
+  generation: number;
+  lease: HostLease;
+  shutdownId: string;
+  checkpointId: string;
+  acknowledgement: "unpublished-changes-unavailable";
+};
+export function missingSourceRecovery(value: unknown): MissingSourceRecovery {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw Error("Invalid recovery request");
+  const input = value as Record<string, unknown>;
+  if (
+    Object.keys(input).sort().join(",") !==
+      "acknowledgement,checkpointId,generation,lease,shutdownId" ||
+    input.acknowledgement !== "unpublished-changes-unavailable" ||
+    !Number.isSafeInteger(input.generation) ||
+    Number(input.generation) < 1 ||
+    typeof input.shutdownId !== "string" ||
+    typeof input.checkpointId !== "string" ||
+    !input.lease ||
+    typeof input.lease !== "object" ||
+    Array.isArray(input.lease)
+  )
+    throw Error("Invalid recovery request");
+  identifier(input.shutdownId);
+  identifier(input.checkpointId);
+  const lease = input.lease as Record<string, unknown>;
+  if (
+    Object.keys(lease).sort().join(",") !==
+      "assignmentId,generation,machineId,owner,poolId,sandboxId,slotId" ||
+    !Number.isSafeInteger(lease.generation) ||
+    Number(lease.generation) < 1
+  )
+    throw Error("Invalid recovery lease");
+  for (const key of [
+    "assignmentId",
+    "machineId",
+    "owner",
+    "poolId",
+    "sandboxId",
+    "slotId",
+  ]) {
+    if (typeof lease[key] !== "string") throw Error("Invalid recovery lease");
+    identifier(lease[key]);
+  }
+  return structuredClone(value) as MissingSourceRecovery;
+}
 type Dependencies = {
   state: StateStore;
   operations: OperationJournal;
@@ -63,6 +112,107 @@ export class ShutdownCoordinator {
   constructor(private readonly deps: Dependencies) {}
   private key(scope: Scope, id: string) {
     return `shutdown/${scopeKey(scope)}/${id}`;
+  }
+  async recoverMissingSource(
+    scope: Scope,
+    id: string,
+    input: MissingSourceRecovery,
+  ) {
+    input = missingSourceRecovery(input);
+    identifier(id);
+    const { state, operations, registry, pool, objects } = this.deps;
+    const previous = await operations.get(scope, id);
+    if (previous) {
+      if (
+        previous.kind !== "recover-missing-source" ||
+        canonical(previous.input) !== canonical(input)
+      )
+        throw Error("Recovery identity conflict");
+      return previous;
+    }
+    const sourceIn = (tx: Transaction) => {
+      const sandbox = tx.get<Sandbox>(sandboxKey(scope));
+      const record = tx.get<Shutdown>(this.key(scope, input.shutdownId));
+      if (
+        !sandbox ||
+        sandbox.phase !== "quarantined" ||
+        sandbox.pendingResume ||
+        sandbox.generation !== input.generation ||
+        canonical(sandbox.lease) !== canonical(input.lease) ||
+        !record ||
+        record.blocked ||
+        record.generation !== input.generation ||
+        canonical(record.lease) !== canonical(input.lease) ||
+        !["quiesce", "outputs", "capture", "publish"].includes(record.stage)
+      )
+        throw Error("Recovery source authority changed");
+      return { sandbox, record };
+    };
+    await state.transaction(sourceIn);
+    const fence = { ...scope, generation: input.generation };
+    const root = await registry.root(fence, input.checkpointId);
+    if (!root) throw Error("Recovery checkpoint unavailable");
+    parseArchive(root.metadata);
+    for (const frame of root.frames) {
+      const head = await objects.head(frame);
+      if (!head || head.bytes !== frame.bytes || head.sha256 !== frame.sha256)
+        throw Error("Recovery checkpoint integrity failure");
+    }
+    if (!(await this.deps.hostAbsent(input.lease)))
+      throw Error("Source absence not established");
+    return state.transaction((tx) => {
+      const prior = operations.getIn(tx, scope, id);
+      if (prior) {
+        if (
+          prior.kind !== "recover-missing-source" ||
+          canonical(prior.input) !== canonical(input)
+        )
+          throw Error("Recovery identity conflict");
+        return prior;
+      }
+      const { sandbox, record } = sourceIn(tx);
+      const retained = registry
+        .rootsIn(tx, fence)
+        .find((candidate) => candidate.id === input.checkpointId);
+      if (
+        !retained ||
+        canonical(retained) !== canonical(root) ||
+        retained.retiredAt !== null
+      )
+        throw Error("Recovery checkpoint changed");
+      operations.admitIn(tx, fence, id, "recover-missing-source", input);
+      operations.claimIn(tx, fence, id);
+      const result = operations.finishIn(tx, fence, id, {
+        phase: "succeeded",
+        result: {
+          checkpointId: input.checkpointId,
+          abandonedShutdownId: input.shutdownId,
+          unpublishedChangesUnavailable: true,
+        },
+        error: null,
+      });
+      const next = registry.recoverMissingSourceIn(
+        tx,
+        fence,
+        input.shutdownId,
+        input.checkpointId,
+      );
+      operations.advanceIn(tx, fence);
+      pool.retireMissingAssignmentIn(tx, input.lease);
+      tx.put(this.key(scope, input.shutdownId), {
+        ...record,
+        blocked: true,
+        recoveredBy: id,
+      });
+      tx.put(sandboxKey(scope), {
+        ...sandbox,
+        generation: next.generation,
+        phase: "stopped",
+        lease: null,
+        checkpoint: input.checkpointId,
+      });
+      return result;
+    });
   }
   async admit(scope: Scope, id: string, mode: ShutdownMode) {
     const { state, operations } = this.deps;

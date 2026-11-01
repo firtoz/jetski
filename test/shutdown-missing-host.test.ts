@@ -5,14 +5,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { gzipSync } from "node:zlib";
+import { CheckpointRegistry } from "../src/core/checkpoints.js";
 import type { HostProvider, Json } from "../src/core/contracts.js";
 import { SandboxManager } from "../src/core/manager.js";
+import { CheckpointTransfer } from "../src/core/transfer.js";
 import type { HostTransport } from "../src/core/transport.js";
+import { JetskiClient } from "../src/sdk.js";
+import { bearerAuthentication, createHttpServer } from "../src/server/http.js";
 import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 
 for (const stage of ["remove", "release", "purge-source", "read-checkpoint"])
-  for (const observation of ["absent", "unknown", "corrupt"] as const)
+  for (const observation of ["absent", "unknown", "ready", "corrupt"] as const)
     test(`host loss at ${stage}, provider ${observation}`, async (t) => {
       const dir = await mkdtemp(join(tmpdir(), "jetski-missing-stop-"));
       let state = new SqliteState(join(dir, "state.sqlite"));
@@ -59,7 +63,7 @@ for (const stage of ["remove", "release", "purge-source", "read-checkpoint"])
         if (lost && observation === "corrupt") return undefined;
         return head(ref);
       };
-      const providerState = observation === "unknown" ? "unknown" : "absent";
+      const providerState = observation === "corrupt" ? "absent" : observation;
       const provider: HostProvider = {
         capabilities: () => ({
           kind: "machine-host",
@@ -141,6 +145,15 @@ for (const stage of ["remove", "release", "purge-source", "read-checkpoint"])
         stop = randomUUID();
       await manager.create(scope.owner, scope.sandbox, image, randomUUID());
       await manager.reconcile(scope.owner);
+      const retained = randomUUID();
+      if (stage === "read-checkpoint")
+        await new CheckpointTransfer(
+          objects,
+          new CheckpointRegistry(state, objects),
+        ).save({ ...scope, generation: 1 }, retained, manifest, {
+          read: async (offset, bytes) =>
+            archive.subarray(offset, offset + bytes),
+        });
       await manager.stop(scope, stop);
       const recoverable =
         observation === "absent" && stage !== "read-checkpoint";
@@ -198,5 +211,113 @@ for (const stage of ["remove", "release", "purge-source", "read-checkpoint"])
         );
         if (stage === "read-checkpoint")
           assert.equal(await manager.history.get(scope, stop), undefined);
+        if (stage === "read-checkpoint") {
+          const sandbox = (await manager.get(scope))!;
+          const recoveryId = randomUUID();
+          const input = {
+            generation: sandbox.generation,
+            lease: sandbox.lease!,
+            shutdownId: stop,
+            checkpointId: retained,
+            acknowledgement: "unpublished-changes-unavailable" as const,
+          };
+          if (observation !== "absent") {
+            await assert.rejects(
+              manager.recoverMissingSource(scope, recoveryId, input),
+              /absence|integrity/,
+            );
+            assert.equal((await manager.get(scope))?.phase, "quarantined");
+            assert.equal(allocations, 1);
+            return;
+          }
+          await assert.rejects(
+            manager.recoverMissingSource(scope, recoveryId, {
+              ...input,
+              generation: 2,
+            }),
+            /authority/,
+          );
+          const server = createHttpServer(
+            manager,
+            bearerAuthentication([
+              { owner: scope.owner, token: "a".repeat(32) },
+              { owner: "bob", token: "b".repeat(32) },
+            ]),
+          );
+          await new Promise<void>((resolve) =>
+            server.listen(0, "127.0.0.1", resolve),
+          );
+          t.after(async () => {
+            server.closeAllConnections();
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+          });
+          const address = server.address();
+          assert.ok(address && typeof address === "object");
+          const url = `http://127.0.0.1:${address.port}`;
+          const client = new JetskiClient(url, "a".repeat(32));
+          await assert.rejects(
+            client.recoverMissingSource(scope.sandbox, recoveryId, {
+              ...input,
+              lease: { ...input.lease, assignmentId: randomUUID() },
+            }),
+          );
+          const registry = new CheckpointRegistry(state, objects);
+          const fence = { ...scope, generation: input.generation };
+          await registry.admit(fence, "concurrent-reader", "reader", retained);
+          await assert.rejects(
+            client.recoverMissingSource(scope.sandbox, recoveryId, input),
+          );
+          assert.equal(await manager.operation(scope, recoveryId), undefined);
+          assert.equal((await manager.get(scope))?.phase, "quarantined");
+          await registry.close(fence, "concurrent-reader");
+          await assert.rejects(
+            new JetskiClient(url, "b".repeat(32)).recoverMissingSource(
+              scope.sandbox,
+              recoveryId,
+              input,
+            ),
+          );
+          const result = await client.recoverMissingSource(
+            scope.sandbox,
+            recoveryId,
+            input,
+          );
+          assert.equal(result.phase, "succeeded");
+          assert.equal(
+            (await manager.operation(scope, stop))?.phase,
+            "uncertain",
+          );
+          assert.equal((await manager.get(scope))?.generation, 2);
+          assert.equal((await manager.get(scope))?.phase, "stopped");
+          assert.equal((await manager.get(scope))?.lease, null);
+          assert.equal(await manager.history.get(scope, stop), undefined);
+          state.close();
+          state = new SqliteState(join(dir, "state.sqlite"));
+          manager = new SandboxManager(
+            state,
+            provider,
+            transport,
+            objects,
+            options,
+          );
+          assert.deepEqual(
+            await manager.recoverMissingSource(scope, recoveryId, input),
+            result,
+          );
+          await assert.rejects(
+            manager.recoverMissingSource(scope, recoveryId, {
+              ...input,
+              checkpointId: stop,
+            }),
+            /identity/,
+          );
+          await manager.resume(scope, randomUUID());
+          await manager.reconcile(scope.owner);
+          assert.equal((await manager.get(scope))?.phase, "running");
+          assert.equal((await manager.get(scope))?.generation, 3);
+          assert.deepEqual(Buffer.concat(imported), archive);
+          assert.equal(allocations, 2);
+          assert.equal(unavailableEffects, 0);
+        }
       }
     });

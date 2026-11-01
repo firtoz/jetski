@@ -69,6 +69,10 @@ Bounded parallel range reads passed a focused live comparison; whole-workload
 measurements remain required. The separate paid-host allowance is approved.
 Optional lifecycle observations report redacted phases and timings. Remaining gates
 include real-grace collection, matched hosted measurements and staging integration.
+Explicit recovery from an interrupted save after confirmed source loss now has
+local restart and HTTP/SDK coverage; pinned client adoption and hosted validation
+remain required. Recovery selects acknowledged data and discloses unavailable
+unpublished changes rather than reporting the failed save as successful.
 See [qualification evidence](qualification.md).
 
 ## Next steps

@@ -11,6 +11,10 @@ export * from "./operations.js";
 export type { HostLease } from "./pool.js";
 export * from "./ports.js";
 export * from "./preview-sessions.js";
+export {
+  type MissingSourceRecovery,
+  missingSourceRecovery,
+} from "./shutdown.js";
 export * from "./stream-protocol.js";
 export * from "./streams.js";
 export type { TerminalGeometry, TerminalInput } from "./terminal-input.js";

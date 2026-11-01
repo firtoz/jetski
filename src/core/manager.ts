@@ -22,7 +22,11 @@ import { type HostLease, PoolJournal } from "./pool.js";
 import { PortRegistry } from "./ports.js";
 import { PreviewSessions } from "./preview-sessions.js";
 import { restoreCheckpoint } from "./restore.js";
-import { ShutdownCoordinator, type ShutdownMode } from "./shutdown.js";
+import {
+  type MissingSourceRecovery,
+  ShutdownCoordinator,
+  type ShutdownMode,
+} from "./shutdown.js";
 import { StreamCoordinator } from "./streams.js";
 import {
   type TerminalGeometry,
@@ -879,6 +883,14 @@ export class SandboxManager {
         error: null,
       });
     });
+  }
+  async recoverMissingSource(
+    scope: Scope,
+    id: string,
+    input: MissingSourceRecovery,
+  ) {
+    this.uuid(id);
+    return this.shutdown.recoverMissingSource(scope, id, input);
   }
   async stop(scope: Scope, id: string, mode: ShutdownMode = "stop") {
     this.uuid(id);
