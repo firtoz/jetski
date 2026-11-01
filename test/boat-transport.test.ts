@@ -34,7 +34,7 @@ test("Boat control uses only owned hosts, encoded fixed dispatch and matching re
       String(url),
       "https://boat.dev/api/v1/sandboxes/bx_owned/commands",
     );
-    assert.equal(init?.redirect, "error");
+    assert.equal(init?.redirect, "manual");
     const body = JSON.parse(init?.body as string);
     assert.deepEqual(
       { ...body, command: "omitted" },

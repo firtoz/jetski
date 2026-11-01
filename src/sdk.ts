@@ -36,6 +36,8 @@ export class JetskiClient {
     private readonly token: string,
     private readonly transport: typeof fetch = fetch,
   ) {
+    // Invoke fetch as a function, not as a method of this client instance.
+    this.transport = (input, init) => transport(input, init);
     this.base = new URL(url);
     if (
       this.base.protocol !== "https:" &&
@@ -148,11 +150,14 @@ export class JetskiClient {
       authorization: `Bearer ${this.token}`,
       "content-type": "application/json",
     };
-    const options: RequestInit = { method, headers, redirect: "error" };
+    const options: RequestInit = { method, headers, redirect: "manual" };
     if (signal) options.signal = signal;
     if (body !== undefined) options.body = JSON.stringify(body);
     const response = await this.transport(new URL(path, this.base), options);
-    if (!response.ok) throw new JetskiHttpError(response.status);
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new JetskiHttpError(response.status);
+    }
     return (await response.json()) as T;
   }
   startTerminal(

@@ -191,3 +191,15 @@ replays, and rejection when pool assignment already won. Pool assignment, operat
 claim and sandbox ownership commit atomically; injected rollback and lost-ACK tests
 recover the same lease with one workload creation. This is local fault-injection
 evidence; disposable-host CI and downstream pinned-artifact adoption remain required.
+
+## Edge fetch portability
+
+The first live embedded edge-controller preparation remained queued before any
+physical allocation: native `fetch` rejected the adapter instance as its receiver.
+A native Workers-runtime fixture reproduced that failure and also exposed unsupported
+`redirect: "error"` handling. The provider API and SDK now invoke fetch without a
+class receiver, use manual redirects and reject redirect responses without following
+the destination. Rejected response bodies are released. Unit tests cover both
+receiver-sensitive implementations and redirect refusal; the native runtime fixture
+passes with external networking blocked. Hosted retry and replacement qualification
+remain required before counting the embedded workflow as passed.

@@ -26,7 +26,7 @@ test("Boat allocation preserves request identity across loss and restart; retire
     body: string | undefined;
   }> = [];
   const fetcher: typeof fetch = async (url, init) => {
-    assert.equal(init?.redirect, "error");
+    assert.equal(init?.redirect, "manual");
     assert.ok(init?.signal);
     const headers = new Headers(init?.headers);
     assert.equal(headers.get("Authorization"), "Bearer fixture");
@@ -182,4 +182,50 @@ test("Boat HTTP rejects oversized and non-JSON responses without echoing content
     message: "Invalid Boat JSON response",
   });
   await assert.rejects(invalid.call("/wallet"), /Unsupported Boat route/);
+});
+
+test("Boat API does not bind a receiver-sensitive fetch to its adapter", async () => {
+  let calls = 0;
+  const fetcher: typeof fetch = async function (this: unknown, url, init) {
+    assert.equal(
+      this,
+      undefined,
+      "native fetch must not receive the adapter as this",
+    );
+    assert.equal(String(url), "https://boat.dev/api/v1/sandboxes");
+    assert.equal(init?.redirect, "manual");
+    calls++;
+    return Response.json({ sandboxes: [] });
+  };
+  assert.deepEqual(
+    (await new BoatApi("fixture", fetcher).call("/sandboxes")).value,
+    { sandboxes: [] },
+  );
+  assert.equal(calls, 1);
+});
+
+test("Boat redirects are refused without reading or following the destination", async () => {
+  let calls = 0,
+    cancelled = false;
+  const fetcher: typeof fetch = async (_url, init) => {
+    assert.equal(init?.redirect, "manual");
+    calls++;
+    return new Response(
+      new ReadableStream({
+        cancel() {
+          cancelled = true;
+        },
+      }),
+      {
+        status: 307,
+        headers: { location: "https://other.invalid/credential-trap" },
+      },
+    );
+  };
+  await assert.rejects(
+    new BoatApi("fixture", fetcher).call("/sandboxes"),
+    /redirect prohibited/,
+  );
+  assert.equal(calls, 1);
+  assert.equal(cancelled, true);
 });

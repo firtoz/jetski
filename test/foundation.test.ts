@@ -176,10 +176,57 @@ test("SDK refuses insecure remote endpoints and never follows bearer redirects",
     "secret",
     async (url, options) => {
       assert.equal(new URL(String(url)).origin, "https://example.com");
-      assert.equal(options?.redirect, "error");
+      assert.equal(options?.redirect, "manual");
       return new Response("{}", { status: 200 });
     },
   );
   await client.operation("sandbox", "operation");
   await assert.rejects(client.request("//other.example/v1/"), /Invalid/);
+});
+
+test("SDK does not bind a receiver-sensitive fetch to the client", async () => {
+  let calls = 0;
+  const fetcher: typeof fetch = async function (this: unknown, url, init) {
+    assert.equal(
+      this,
+      undefined,
+      "native fetch must not receive the client as this",
+    );
+    assert.equal(String(url), "https://example.com/v1/capabilities");
+    assert.equal(init?.redirect, "manual");
+    calls++;
+    return Response.json({ version: 1 });
+  };
+  await new JetskiClient(
+    "https://example.com",
+    "fixture",
+    fetcher,
+  ).capabilities();
+  assert.equal(calls, 1);
+});
+
+test("SDK rejects manual redirects and releases their body", async () => {
+  let calls = 0,
+    cancelled = false;
+  const fetcher: typeof fetch = async (_url, init) => {
+    assert.equal(init?.redirect, "manual");
+    calls++;
+    return new Response(
+      new ReadableStream({
+        cancel() {
+          cancelled = true;
+        },
+      }),
+      {
+        status: 302,
+        headers: { location: "https://other.invalid/credential-trap" },
+      },
+    );
+  };
+  await assert.rejects(
+    new JetskiClient("https://example.com", "fixture", fetcher).capabilities(),
+    /302/,
+  );
+  assert.equal(calls, 1);
+  assert.equal(cancelled, true);
 });

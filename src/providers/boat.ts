@@ -31,6 +31,8 @@ export class BoatApi {
     private readonly request: typeof fetch = fetch,
   ) {
     if (!token || /[\r\n]/.test(token)) throw Error("Invalid Boat credential");
+    // Native fetch implementations can reject an arbitrary class receiver.
+    this.request = (input, init) => request(input, init);
   }
   async call(
     path: string,
@@ -64,7 +66,7 @@ export class BoatApi {
     if (options.signal) signals.push(options.signal);
     const response = await this.request(`https://boat.dev/api/v1${path}`, {
       method,
-      redirect: "error",
+      redirect: "manual",
       signal: AbortSignal.any(signals),
       headers: {
         ...headers,
@@ -73,6 +75,10 @@ export class BoatApi {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      throw Error("Boat redirect prohibited");
+    }
     if (!response.body) throw Error("Missing Boat response");
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
