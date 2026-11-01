@@ -48,15 +48,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepare disposable rootless runtime
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session
+          sudo timeout --kill-after=5s 180s apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
+          sudo timeout --kill-after=5s 300s apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session
           sudo loginctl enable-linger "$USER"
           sudo systemctl start "user@$(id -u).service"
           echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
           echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
       - name: Resolve test fixture image to approved digest
         run: |
-          podman pull docker.io/library/alpine:3.22
+          timeout --kill-after=5s 120s podman pull docker.io/library/alpine:3.22
           image=$(podman image inspect docker.io/library/alpine:3.22 --format '{{index .RepoDigests 0}}')
           echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
       - name: Qualify rootless lifecycle and filesystem recovery
@@ -88,9 +88,9 @@ jobs:
       - run: npm ci
       - name: Prepare disposable SSH host
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session openssh-server libssl-dev
-          podman pull docker.io/library/alpine:3.22
+          sudo timeout --kill-after=5s 180s apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
+          sudo timeout --kill-after=5s 300s apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session openssh-server libssl-dev
+          timeout --kill-after=5s 120s podman pull docker.io/library/alpine:3.22
           image=$(podman image inspect docker.io/library/alpine:3.22 --format '{{index .RepoDigests 0}}')
           echo "JETSKI_TEST_IMAGE=$image" >> "$GITHUB_ENV"
           python3 -c 'import json,sys; json.dump(dict(version=1,machineId="ssh-ci",poolId="ci",images=[sys.argv[1]]),open("/tmp/jetski-host.json","w"))' "$image"
