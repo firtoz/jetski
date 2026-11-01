@@ -41,7 +41,7 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 | Independent repository           | Public MIT source, separate exports, standalone examples and CI                              | Final provenance/package independence audit                                          |
 | Core lifecycle and pooling       | Replay/fencing tests; real API stop/resume, warm reuse, held/historical restore, idle expiry | Full restart/placement matrix and matched hosted runs                                |
 | Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Remaining interactive lifecycle/provider audit                                       |
-| Filesystem and checkpoints       | Exact archive fixtures; incremental/local-cache and source-deleted recovery tests            | Both providers/stores qualified under matched recovery conditions                    |
+| Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests            | Wire verified local-cache reuse; qualify both providers/stores and replacement                    |
 | Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                           |
 | Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                       |
 | Client integration               | Agreed staging-only adoption design                                                          | Implement client adapters, pinned dependency, real workflow and replacement recovery |
@@ -54,8 +54,10 @@ intentional worker-loss cleanup without promoting uncertain command outcomes.
 Real filesystem archives also pass exact source-deleted recovery through local
 storage and the isolated R2 bucket, including historical versions and links.
 The Boat SSH stream adapter passed disposable encrypted transport and preview
-qualification. A resumable, two-host live recovery runner is prepared; its paid-host
-allowance is pending. Remaining gates include live-provider replacement, real-grace
+qualification. A separately funded two-host live recovery run is underway. Warm byte/mode/link
+recovery passed, but currently downloads from remote storage; the retained cache
+marker is not yet wired into restore. Complete this unchanged baseline before
+implementing and qualifying verified cache reuse. Remaining gates include live-provider replacement, real-grace
 collection, matched hosted measurements and staging integration. See [qualification evidence](qualification.md).
 
 ## Next steps
