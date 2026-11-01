@@ -36,16 +36,16 @@ Inspect the worktree and exact-SHA CI before trusting a recorded result.
 Evidence scope matters: disposable SSH/Podman tests do not prove live Boat,
 physical-host replacement, remote-store parity or downstream staging behavior.
 
-| Gate                             | Current evidence                                                                             | Remaining acceptance                                                             |
-| -------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Independent repository           | Public MIT source; artifact content audit and dependency-denying portable import tests pass  | Repeat provenance/package audit for the final release artifact                   |
-| Core lifecycle and pooling       | Replay/fencing tests; real API stop/resume, warm reuse, held/historical restore, idle expiry | Full restart/placement matrix and matched hosted runs                            |
-| Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Remaining interactive lifecycle/provider audit                                   |
-| Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                     |
-| Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                       |
-| Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                   |
-| Client integration               | Pinned artifact; live read/edit/publication, source-deleted recovery and resumed work pass   | Interactive client integration, lifecycle audit and final rollout qualification  |
-| Benchmarks and release           | Per-fixture measurements and preserved failures                                              | Matched comparison, owned-resource cleanup, documented limits and green final CI |
+| Gate                             | Current evidence                                                                             | Remaining acceptance                                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Independent repository           | Public MIT source; artifact content audit and dependency-denying portable import tests pass  | Repeat provenance/package audit for the final release artifact                    |
+| Core lifecycle and pooling       | Replay/fencing tests; real API stop/resume, warm reuse, held/historical restore, idle expiry | Full restart/placement matrix and matched hosted runs                             |
+| Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Remaining interactive lifecycle/provider audit                                    |
+| Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                      |
+| Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                        |
+| Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                    |
+| Client integration               | Pinned artifact; live read/edit/publication, source-deleted recovery and resumed work pass   | Browser UI, remaining interactive/lifecycle audit and final rollout qualification |
+| Benchmarks and release           | Per-fixture measurements and preserved failures                                              | Matched comparison, owned-resource cleanup, documented limits and green final CI  |
 
 ## Current work
 
@@ -58,14 +58,16 @@ required; focused improvements do not establish a universal speedup.
 The downstream staging read/edit/publication workflow passes with the pinned
 artifact. Source-deleted replacement matches 156 filesystem entries and
 322,806,090 bytes, including modes and symlinks. Resumed work retains the original
-session and confirms the published revision with a clean tree. Interactive
-product integration, hosted restart/rollback checks and final rollout remain open.
+session and confirms the published revision with a clean tree. Live embedded
+terminal input/replay, binary HTTP/WebSocket preview, timed access
+revocation and durable release now pass. Browser UI, hosted restart/rollback checks
+and final rollout remain open.
 
 Portable HTTP and WebSocket transports now pass binary/failure tests and local
 Workers probes. A Fetch preview gateway reuses durable preview sessions, enforces
 isolated origins and cookie authentication, and aborts active streams on revocation.
 SQLite-backed tests and the combined authenticated Workers HTTP/WebSocket probe
-pass, including revocation. Hosted client integration still needs qualification. See [runtime limits](runtime.md#embedded-preview-compatibility).
+pass, including revocation. Live embedded transport qualification now passes; browser UI remains unverified. See [runtime limits](runtime.md#embedded-preview-compatibility).
 
 Podman is the only supplied runtime. Explicit FUSE-overlay bootstrap is qualified;
 changing immutable host assets still requires draining old assignments. Remaining

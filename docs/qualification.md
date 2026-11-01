@@ -283,3 +283,17 @@ rejects unexpected message types and enforces cumulative output bounds even when
 `bufferedAmount` is unavailable. Node's HTTP custom-connection option remains
 unsupported in the tested Workers runtime; the optional portable exports avoid it.
 See [runtime contracts and limits](runtime.md#embedded-preview-compatibility).
+
+Live embedded Boat/R2 qualification on November 1 passed terminal input/output,
+same-input replay with one observed execution, authenticated binary HTTP and
+WebSocket echo, and server-owned expiry. An established stream closed with code
+1011 at 121 ms after its access deadline; the expired cookie subsequently received
+403. The server completed durable stop and released the business reservation.
+The resulting archive matched the pre-test SHA-256, 154,551,473 compressed bytes
+and 167 entries. The owned host was then deleted, confirmed absent, and provider
+inventory reported zero active hosts. This does not qualify browser UI interaction.
+
+The host audit found residual container monitors after workload removal; these
+exited without intervention before host retirement. No assignment mounts or
+fixture server remained, but this run does not establish an instantaneous clean
+process slate for warm reuse. End-to-end matched benchmarks remain outstanding.
