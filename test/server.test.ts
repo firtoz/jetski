@@ -117,6 +117,13 @@ test("server enforces owner scope and progresses without browser polling", async
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(creations, 1);
   const client = new JetskiClient(base, "a".repeat(32));
+  assert.equal((await client.createSandbox(id, image, operationId)).id, id);
+  assert.equal((await client.getSandbox(id)).phase, "running");
+  assert.deepEqual(
+    (await client.listSandboxes()).map((sandbox) => sandbox.id),
+    [id],
+  );
+  await assert.rejects(new JetskiClient(base, "b".repeat(32)).getSandbox(id));
   const foreign = new JetskiClient(base, "b".repeat(32));
   const exposure = randomUUID();
   const grant = await client.exposePort(id, exposure, 8080);

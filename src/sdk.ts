@@ -18,6 +18,7 @@ import {
   type FileListing,
   persistentPath,
 } from "./core/files.js";
+import type { Sandbox, SandboxManager } from "./core/manager.js";
 import {
   type MissingPlacementRecovery,
   missingPlacementRecovery,
@@ -93,6 +94,81 @@ export class JetskiClient {
   }
   capabilities(): Promise<import("./core/capabilities.js").ApiCapabilities> {
     return this.request("/v1/capabilities");
+  }
+  listSandboxes(): Promise<Sandbox[]> {
+    return this.request("/v1/sandboxes");
+  }
+  getSandbox(id: string): Promise<Sandbox> {
+    return this.request(`/v1/sandboxes/${identifier(id)}`);
+  }
+  createSandbox(
+    id: string,
+    image: string,
+    operationId: string,
+  ): Promise<Sandbox> {
+    return this.request("/v1/sandboxes", "POST", {
+      id: identifier(id),
+      image,
+      operationId: identifier(operationId),
+    });
+  }
+  stopSandbox(
+    id: string,
+    operationId: string,
+  ): ReturnType<SandboxManager["stop"]> {
+    return this.request(`/v1/sandboxes/${identifier(id)}/stop`, "POST", {
+      operationId: identifier(operationId),
+    });
+  }
+  createCheckpoint(
+    id: string,
+    operationId: string,
+  ): ReturnType<SandboxManager["stop"]> {
+    return this.request(`/v1/sandboxes/${identifier(id)}/checkpoint`, "POST", {
+      operationId: identifier(operationId),
+    });
+  }
+  deleteSandbox(
+    id: string,
+    operationId: string,
+  ): ReturnType<SandboxManager["deleteSandbox"]> {
+    return this.request(`/v1/sandboxes/${identifier(id)}`, "DELETE", {
+      operationId: identifier(operationId),
+    });
+  }
+  startCommand(
+    sandbox: string,
+    id: string,
+    argv: string[],
+    cwd = "/workspace",
+    timeout = 120,
+  ): ReturnType<SandboxManager["startCommand"]> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/commands`,
+      "POST",
+      { id: identifier(id), argv, cwd, timeout },
+    );
+  }
+  commandStatus(sandbox: string, id: string): Promise<Json> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/commands/${identifier(id)}`,
+    );
+  }
+  commandOutput(
+    sandbox: string,
+    id: string,
+    channel: "stdout" | "stderr",
+    offset = 0,
+    limit = OUTPUT_CHUNK,
+  ): ReturnType<SandboxManager["commandOutput"]> {
+    const query = new URLSearchParams({
+      channel,
+      offset: String(offset),
+      bytes: String(limit),
+    });
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/commands/${identifier(id)}/output?${query}`,
+    );
   }
   streamStatus(
     sandbox: string,
