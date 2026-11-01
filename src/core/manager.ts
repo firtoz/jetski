@@ -26,6 +26,11 @@ import {
 import { type HostLease, PoolJournal } from "./pool.js";
 import { PortRegistry } from "./ports.js";
 import { PreviewSessions } from "./preview-sessions.js";
+import {
+  DEFAULT_WORKLOAD_RESOURCES,
+  type WorkloadResources,
+  workloadResources,
+} from "./resources.js";
 import { restoreCheckpoint } from "./restore.js";
 import {
   type MissingSourceRecovery,
@@ -47,6 +52,8 @@ export type Sandbox = {
   id: string;
   owner: string;
   image: string;
+  /** Absent only on records created before resource policy was persisted. */
+  resources?: WorkloadResources;
   createOperation: string;
   placementOperation: string;
   restoreCheckpoint: string | null;
@@ -85,6 +92,8 @@ export type ManagerOptions = {
   poolId: string;
   streamTransport?: HostStreamTransport;
   approvedImages: string[];
+  /** Operator policy for new sandboxes; existing records retain their limits. */
+  workloadResources?: WorkloadResources;
   hostsPerOwner?: number;
   now?: () => number;
   events?: EventSink;
@@ -100,6 +109,7 @@ export class SandboxManager {
   private readonly outputs: CommandOutputStore;
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
+  private readonly resources: WorkloadResources;
   readonly history: CheckpointHistory;
   readonly ports: PortRegistry;
   readonly previewSessions: PreviewSessions;
@@ -118,6 +128,11 @@ export class SandboxManager {
     private readonly objects: CheckpointStore,
     options: ManagerOptions,
   ) {
+    this.resources = workloadResources(
+      options.workloadResources === undefined
+        ? DEFAULT_WORKLOAD_RESOURCES
+        : options.workloadResources,
+    );
     this.now = options.now ?? Date.now;
     if (options.events)
       state = observeLifecycle(state, options.events, this.now);
@@ -251,6 +266,7 @@ export class SandboxManager {
         id,
         owner,
         image,
+        resources: { ...this.resources },
         createOperation: operationId,
         placementOperation: operationId,
         restoreCheckpoint: null,
@@ -324,6 +340,7 @@ export class SandboxManager {
         id,
         owner,
         image,
+        resources: { ...this.resources },
         createOperation: operationId,
         placementOperation: operationId,
         restoreCheckpoint: null,
@@ -475,7 +492,11 @@ export class SandboxManager {
                 image: sandbox.image,
               }),
           );
-        await this.request(lease, "create", { lease, image: sandbox.image });
+        await this.request(lease, "create", {
+          lease,
+          image: sandbox.image,
+          ...workloadResources(sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES),
+        });
         observed = await this.request(lease, "inspect", { lease });
         if (
           !observed ||
@@ -706,7 +727,11 @@ export class SandboxManager {
                 image: sandbox.image,
               }),
           );
-        await this.request(lease, "create", { lease, image: sandbox.image });
+        await this.request(lease, "create", {
+          lease,
+          image: sandbox.image,
+          ...workloadResources(sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES),
+        });
         await this.pool.transition(lease, "active");
         await this.state.transaction((tx) => {
           const current = tx.get<Sandbox>(this.key(scope));

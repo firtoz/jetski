@@ -10,6 +10,15 @@ Select `hostProvider: { "kind": "ssh", "hosts": [...] }` for an adopted host,
 or the [Boat configuration](boat.md#automatic-owned-machine-bootstrap) for automatic
 owned-machine bootstrap. The instructions below describe the SSH path.
 
+The optional top-level `workloadResources` setting selects container limits, for
+example `{ "cpus": 2, "memoryMb": 2048 }`. Embedded callers use the same setting in
+`ManagerOptions`. Defaults are 1 CPU and 512 MiB; supported integer bounds are
+1–64 CPUs and 128–65536 MiB. These are workload limits, not provider machine sizes;
+operators must select hosts with enough capacity. Limits are persisted at sandbox
+creation and survive controller restart, stop/resume and replacement. Configuration
+changes apply to new sandboxes, including copies. Records predating this setting
+retain their original default limits. API clients cannot override operator policy.
+
 Install Node from `.nvmrc`, then `npm ci && npm run build`. Prepare a dedicated
 Linux x86-64 host with rootless Podman prerequisites and GNU coreutils `timeout`.
 As an operator on that host,

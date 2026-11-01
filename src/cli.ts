@@ -41,6 +41,7 @@ if (command === "serve") {
     dataDirectory: string;
     poolId: string;
     approvedImages: string[];
+    workloadResources?: import("./core/resources.js").WorkloadResources;
     port?: number;
     hostsPerOwner?: number;
     sshGateway?: {
@@ -92,6 +93,9 @@ if (command === "serve") {
       poolId: config.poolId,
       ...(streamTransport ? { streamTransport } : {}),
       approvedImages: config.approvedImages,
+      ...(config.workloadResources !== undefined
+        ? { workloadResources: config.workloadResources }
+        : {}),
       hostsPerOwner: config.hostsPerOwner ?? 1,
     },
   );

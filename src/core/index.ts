@@ -15,6 +15,7 @@ export {
 export type { HostLease } from "./pool.js";
 export * from "./ports.js";
 export * from "./preview-sessions.js";
+export * from "./resources.js";
 export {
   type MissingSourceRecovery,
   missingSourceRecovery,
