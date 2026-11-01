@@ -24,6 +24,13 @@ Creation admission commits its operation, sandbox and placement ticket atomicall
 failure, lost commit acknowledgements, deletion before allocation and stable replay.
 Its provider is a fixture; it does not add live-provider evidence.
 
+`CheckpointCopy` has local SQLite/object-store coverage for same-owner copies,
+interrupted streams, lost upload/publication acknowledgements, cancellation races
+and independent target bytes after source collection. Copies use separate immutable
+object identities and protect source readers and target writers until publication
+or cancellation. Sandbox placement and live-provider qualification for this copy
+path remain open.
+
 Browser tests also verify bootstrap fragment removal, Secure/HttpOnly/Strict cookie
 acceptance, script execution and active revocation. Application cookies, iframe
 embedding, service workers and other browsers are not qualified. No universal

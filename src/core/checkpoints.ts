@@ -180,19 +180,20 @@ export class CheckpointRegistry {
     return { ...fence, generation };
   }
   async initialize(fence: Fence): Promise<void> {
-    await this.state.transaction((tx) => {
-      if (tx.get(this.key(fence))) {
-        this.load(tx, fence);
-        return;
-      }
-      if (!Number.isSafeInteger(fence.generation) || fence.generation < 1)
-        throw new Error("Invalid generation");
-      tx.put(this.key(fence), {
-        generation: fence.generation,
-        accesses: [],
-        roots: [],
-        collection: null,
-      });
+    await this.state.transaction((tx) => this.initializeIn(tx, fence));
+  }
+  initializeIn(tx: Transaction, fence: Fence): void {
+    if (tx.get(this.key(fence))) {
+      this.load(tx, fence);
+      return;
+    }
+    if (!Number.isSafeInteger(fence.generation) || fence.generation < 1)
+      throw new Error("Invalid generation");
+    tx.put(this.key(fence), {
+      generation: fence.generation,
+      accesses: [],
+      roots: [],
+      collection: null,
     });
   }
   async admit(
@@ -201,29 +202,39 @@ export class CheckpointRegistry {
     kind: Access["kind"],
     root: string | null = null,
   ): Promise<void> {
+    await this.state.transaction((tx) =>
+      this.admitIn(tx, fence, id, kind, root),
+    );
+  }
+  admitIn(
+    tx: Transaction,
+    fence: Fence,
+    id: string,
+    kind: Access["kind"],
+    root: string | null = null,
+  ): void {
     identifier(id);
-    await this.state.transaction((tx) => {
-      const state = this.load(tx, fence);
-      if (state.collection) throw new Error("Collection in progress");
-      const usedKey = `checkpoint-access/${scopeKey(fence)}/${id}`;
-      if (tx.get(usedKey)) throw new Error("Admission already exists");
-      if (
-        kind === "reader" &&
-        !state.roots.some((item) => item.id === root && item.retiredAt === null)
-      )
-        throw new Error("Root unavailable");
-      if (state.accesses.length >= 64) throw new Error("Admission limit");
-      tx.put(usedKey, true);
-      state.accesses.push({ id, kind, root, generation: fence.generation });
-      tx.put(this.key(fence), state);
-    });
+    const state = this.load(tx, fence);
+    if (state.collection) throw new Error("Collection in progress");
+    const usedKey = `checkpoint-access/${scopeKey(fence)}/${id}`;
+    if (tx.get(usedKey)) throw new Error("Admission already exists");
+    if (
+      kind === "reader" &&
+      !state.roots.some((item) => item.id === root && item.retiredAt === null)
+    )
+      throw new Error("Root unavailable");
+    if (state.accesses.length >= 64) throw new Error("Admission limit");
+    tx.put(usedKey, true);
+    state.accesses.push({ id, kind, root, generation: fence.generation });
+    tx.put(this.key(fence), state);
   }
   async close(fence: Fence, id: string): Promise<void> {
-    await this.state.transaction((tx) => {
-      const state = this.load(tx, fence);
-      state.accesses = state.accesses.filter((access) => access.id !== id);
-      tx.put(this.key(fence), state);
-    });
+    await this.state.transaction((tx) => this.closeIn(tx, fence, id));
+  }
+  closeIn(tx: Transaction, fence: Fence, id: string): void {
+    const state = this.load(tx, fence);
+    state.accesses = state.accesses.filter((access) => access.id !== id);
+    tx.put(this.key(fence), state);
   }
   async publish(
     fence: Fence,
