@@ -19,6 +19,12 @@ provider APIs on disposable Linux; it is not live Boat qualification.
 | Browser previews       | HTTPS page/assets, exact binary HTTP/WSS, durable closed stream receipts and revoked admission                                                   | Fresh test profile pins a one-day fixture certificate key; not public CA or operator deployment qualification |
 | Remote storage         | Isolated R2 functional qualification recorded in prior evidence                                                                                  | Not a complete live-provider/storage/replacement matrix                                                       |
 
+`test/boat-stream.test.ts` exercises the explicit stream crypto suite against a
+local authenticated SSH peer: exact binary transfer succeeds, while a peer offering
+only an unselected cipher is rejected before command execution. Separate local
+embedded-runtime probes verify binary transfer, host-key rejection and abort cleanup.
+These do not qualify downstream UI wiring or hosted interactive lifecycle behavior.
+
 Creation admission commits its operation, sandbox and placement ticket atomically.
 `test/creation-admission.test.ts` uses real SQLite rollback/reopen to verify queue-write
 failure, lost commit acknowledgements, deletion before allocation and stable replay.
