@@ -165,7 +165,8 @@ S3-backed host recovery and matched end-to-end performance remain acceptance gat
 
 Adapters may declare `verificationConcurrency` from 1 to 4 for overlapping
 independent `head` checks. Omission remains serial for custom adapters; the local
-and S3 adapters opt into four. Publication checks each distinct immutable identity
+and S3 adapters opt into four. Publication, release and positive-absence recovery checks use bounded batches.
+Publication checks each distinct immutable identity
 once, preserves manifest order, and rejects conflicting duplicate metadata. Failed
 batches drain before rejection and later batches do not start. The final
 transaction rechecks the writer and generation before publishing. This capability
@@ -174,6 +175,8 @@ readback requirement. Source reads remain separately opt-in.
 
 Adapters may also opt into `transferConcurrency` from 1 to 2. Local and S3
 adapters enable two frame transfers; custom adapters remain serial by default.
+Reuse observations finish in their own bounded verification phase before any
+upload begins. Missing candidates can be repaired from the retained capture.
 The save pipeline divides the source's existing read budget across that batch,
 never exceeding four concurrent range reads and two storage transfers. It drains
 all started transfers on failure and preserves per-frame upload identities for

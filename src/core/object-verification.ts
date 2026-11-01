@@ -13,7 +13,27 @@ export async function verifyCheckpointObjects(
   store: CheckpointStore,
   fence: Fence,
   objects: ObjectInfo[],
+  integrityMessage = "Publication integrity failure",
 ): Promise<void> {
+  await observeCheckpointObjects(
+    store,
+    fence,
+    objects,
+    false,
+    integrityMessage,
+  );
+}
+
+/** Missing candidates may be repaired from the retained capture by the transfer
+ * layer. Every present identity still requires complete verification. */
+export async function observeCheckpointObjects(
+  store: CheckpointStore,
+  fence: Fence,
+  objects: ObjectInfo[],
+  allowMissing = false,
+  integrityMessage = "Publication integrity failure",
+): Promise<Map<string, ObjectInfo | undefined>> {
+  const observations = new Map<string, ObjectInfo | undefined>();
   const concurrency = store.verificationConcurrency ?? 1;
   if (
     !Number.isSafeInteger(concurrency) ||
@@ -47,11 +67,16 @@ export async function verifyCheckpointObjects(
           sandbox: object.sandbox,
           id: object.id,
         });
-        if (!verified || !sameObject(verified, object))
-          throw Error("Publication integrity failure");
+        if (
+          (!verified && !allowMissing) ||
+          (verified && !sameObject(verified, object))
+        )
+          throw Error(integrityMessage);
+        observations.set(object.id, verified);
       }),
     );
     for (const result of settled)
       if (result.status === "rejected") throw result.reason;
   }
+  return observations;
 }

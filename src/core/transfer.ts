@@ -8,7 +8,7 @@ import {
   type Json,
   type ObjectInfo,
 } from "./contracts.js";
-import { sameObject } from "./inventory.js";
+import { observeCheckpointObjects } from "./object-verification.js";
 
 export type ArchiveFrame = {
   offset: number;
@@ -155,42 +155,26 @@ export class CheckpointTransfer {
         frame,
       ]),
     );
-    const reuseChecks = new Map<
-      string,
-      { expected: ObjectInfo; check: Promise<ObjectInfo | undefined> }
-    >();
-    const reuse = (object: ObjectInfo) => {
-      const expected = { ...object };
-      if (expected.owner !== fence.owner || expected.sandbox !== fence.sandbox)
-        throw Error("Cross-owner reuse object");
-      const prior = reuseChecks.get(expected.id);
-      if (prior) {
-        if (!sameObject(prior.expected, expected))
-          throw Error("Conflicting reuse object identity");
-        return prior.check;
-      }
-      const check = this.objects
-        .head({
-          owner: expected.owner,
-          sandbox: expected.sandbox,
-          id: expected.id,
-        })
-        .then((verified) => {
-          if (verified && !sameObject(verified, expected))
-            throw Error("Reuse integrity failure");
-          return verified;
-        });
-      reuseChecks.set(expected.id, { expected, check });
-      return check;
-    };
+    const candidates = archive.frames.map(
+      (frame, index) =>
+        pending[String(index)] ??
+        reusable.get(`${frame.sha256}/${frame.bytes}`),
+    );
+    // Finish independent observations before starting uploads, so verification
+    // shares neither connections nor memory with active source range batches.
+    const reuseChecks = await observeCheckpointObjects(
+      this.objects,
+      fence,
+      candidates.filter((object): object is ObjectInfo => object !== undefined),
+      true,
+      "Reuse integrity failure",
+    );
     const frames: ObjectInfo[] = [];
     let uploadedBytes = 0,
       reusedBytes = 0;
     const transferFrame = async (index: number, frame: ArchiveFrame) => {
-      const candidate =
-        pending[String(index)] ??
-        reusable.get(`${frame.sha256}/${frame.bytes}`);
-      const verified = candidate ? await reuse(candidate) : undefined;
+      const candidate = candidates[index];
+      const verified = candidate ? reuseChecks.get(candidate.id) : undefined;
       if (
         verified &&
         verified.owner === fence.owner &&

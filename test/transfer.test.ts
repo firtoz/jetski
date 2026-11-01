@@ -426,3 +426,72 @@ test("parallel reuse checks each repeated immutable identity once per phase", as
   assert.equal(checks, 2, "one reuse check and one final publication check");
   assert.equal(third.reusedBytes, fixture.bytes.length);
 });
+
+test("reuse observations finish as a bounded phase before repairing missing objects", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "jetski-reuse-repair-"));
+  const state = new SqliteState(join(dir, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const store = new LocalCheckpointStore(join(dir, "objects"));
+  const registry = new CheckpointRegistry(state, store);
+  const fence = { owner: "alice", sandbox: "box", generation: 1 };
+  await registry.initialize(fence);
+  const fixture = archive(
+    ["one", "two", "three", "four"].map((value) => Buffer.from(value)),
+  );
+  const transfer = new CheckpointTransfer(store, registry);
+  const source = {
+    readConcurrency: 4,
+    read: async (offset: number, count: number) =>
+      fixture.bytes.subarray(offset, offset + count),
+  };
+  const first = await transfer.save(fence, "first", fixture.manifest, source);
+  await store.delete(first.root.frames[2]!); // Deliberate missing-object fault in this disposable scope.
+  const head = store.head.bind(store),
+    put = store.put.bind(store);
+  let checks = 0,
+    finished = 0;
+  const batch = deferred();
+  store.head = async (address) => {
+    if (++checks > 4) return head(address);
+    if (checks === 4) batch.resolve();
+    await batch.promise;
+    try {
+      return await head(address);
+    } finally {
+      finished++;
+    }
+  };
+  store.put = async (...args) => {
+    assert.equal(
+      finished,
+      4,
+      "all reuse observations finish before repair I/O",
+    );
+    return put(...args);
+  };
+  const reads: number[] = [];
+  const saved = await transfer.save(
+    fence,
+    "repaired",
+    fixture.manifest,
+    {
+      ...source,
+      read: async (offset, count) => {
+        reads.push(offset);
+        return source.read(offset, count);
+      },
+    },
+    "first",
+  );
+  assert.deepEqual(reads, [fixture.manifest.frames[2]!.offset]);
+  assert.equal(saved.uploadedBytes, fixture.manifest.frames[2]!.bytes);
+  assert.notEqual(saved.root.frames[2]!.id, first.root.frames[2]!.id);
+  assert.equal(saved.root.frames[0]!.id, first.root.frames[0]!.id);
+  const restored: Uint8Array[] = [];
+  for (const frame of saved.root.frames)
+    for await (const chunk of store.read(frame)) restored.push(chunk);
+  assert.deepEqual(Buffer.concat(restored), fixture.bytes);
+});

@@ -447,3 +447,123 @@ for (const failure of [
       /unavailable/,
     );
   });
+
+test("release verification drains parallel checks and retains source on integrity failure", async (t) => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "jetski-release-verification-"),
+  );
+  const state = new SqliteState(join(directory, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const objects = new LocalCheckpointStore(join(directory, "objects"));
+  const compressed = ["one", "two", "three", "four"].map((part) =>
+    gzipSync(Buffer.from(part)),
+  );
+  const archive = Buffer.concat(compressed);
+  let offset = 0;
+  const manifest = {
+    version: 1,
+    sha256: sha(archive),
+    bytes: archive.length,
+    expandedBytes: 15,
+    entries: 2,
+    frames: compressed.map((part, index) => {
+      const raw = Buffer.from(["one", "two", "three", "four"][index]!);
+      const frame = {
+        offset,
+        bytes: part.length,
+        expandedBytes: raw.length,
+        sha256: sha(part),
+        expandedSha256: sha(raw),
+      };
+      offset += part.length;
+      return frame;
+    }),
+  };
+  const scope = { owner: "alice", sandbox: randomUUID() },
+    fence = { ...scope, generation: 1 };
+  const actions: string[] = [];
+  const provider: HostProvider = {
+    capabilities: () => ({
+      kind: "machine-host",
+      architecture: "x86_64",
+      rootlessPodman: true,
+    }),
+    allocate: async (input) => ({
+      id: "host",
+      allocationId: input.operationId,
+    }),
+    inspect: async () => ({ state: "ready" }),
+    retire: async () => {},
+  };
+  const transport: HostTransport = {
+    request: async (_host, request) => {
+      actions.push(request.action);
+      let result: Json = null;
+      if (request.action === "capture") result = manifest;
+      if (request.action === "read-checkpoint") {
+        const input = request.payload as { offset: number; bytes: number };
+        result = {
+          ...input,
+          base64: archive
+            .subarray(input.offset, input.offset + input.bytes)
+            .toString("base64"),
+        };
+      }
+      return { version: 1, id: request.id, result };
+    },
+  };
+  const manager = new SandboxManager(state, provider, transport, objects, {
+    poolId: "pool",
+    approvedImages: [image],
+  });
+  await manager.create(scope.owner, scope.sandbox, image, randomUUID());
+  await manager.reconcile(scope.owner);
+  const stop = randomUUID();
+  await manager.stop(scope, stop);
+  const registry = new CheckpointRegistry(state, objects),
+    head = objects.head.bind(objects);
+  const pending: ((corrupt?: boolean) => void)[] = [];
+  let started!: () => void;
+  const allStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  objects.head = async (address) => {
+    if (!(await registry.root(fence, stop))) return head(address);
+    return new Promise((resolve, reject) => {
+      pending.push((corrupt) => {
+        if (corrupt) resolve(undefined);
+        else void head(address).then(resolve, reject);
+      });
+      if (pending.length === 4) started();
+    });
+  };
+  let settled = false;
+  const reconciling = manager.reconcile(scope.owner).finally(() => {
+    settled = true;
+  });
+  const rejected = assert.rejects(
+    reconciling,
+    /Published checkpoint integrity failure/,
+  );
+  await allStarted;
+  pending[0]!(true);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(
+    settled,
+    false,
+    "release waits for all started integrity checks",
+  );
+  assert.equal(actions.includes("remove"), false);
+  for (const release of pending.slice(1)) release();
+  await rejected;
+  assert.equal((await manager.get(scope))?.phase, "quarantined");
+  assert.equal(actions.includes("remove"), false);
+  assert.ok(await registry.root(fence, stop), "durable checkpoint is retained");
+  objects.head = head;
+  await manager.reconcile(scope.owner);
+  assert.equal((await manager.get(scope))?.phase, "stopped");
+  assert.equal(actions.includes("release"), true);
+});

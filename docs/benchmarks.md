@@ -65,3 +65,37 @@ frame sizes and transport round trips remain measured limitations. The reference
 was slower than in the first run, so comparisons across runs cannot isolate the
 optimization's latency effect. Cold setup and initial priming remain outside these
 warm timings. This implementation does not promise universal speedups.
+
+
+## Follow-on checkpoint pipeline screen
+
+Candidate `98fe0ad` used 1 MiB capture frames, bounded two-frame uploads and
+four-way publication verification. Five alternating trials per arm completed on
+one independent host pair, with the same 64 MiB fixture, image, two CPUs, 2 GiB
+and verified durability boundary as the equal-resource reference. Every completed
+trial passed its independent recovery oracle.
+
+| Median per completed trial | Reference | Candidate |
+| -------------------------- | --------: | --------: |
+| Durable save and release   |   5.704 s |  29.405 s |
+| Resume readiness           |   2.546 s |   1.503 s |
+| Complete cycle             |   9.469 s |  32.254 s |
+| Payload uploaded           |  1.042 MB |  1.042 MB |
+| Storage requests           |        18 |       207 |
+| Provider API requests      |        16 |        32 |
+
+This screen **fails the performance target**. Smaller frames reached reference
+upload volume but increased immutable-object checks. Release-time verification
+was still serial; subsequent development batches reuse, release and recovery
+checks without removing their proofs. Physical packing remains under evaluation.
+The maximum observed save was 12.098 s for the reference and 32.368 s for the
+candidate; five observations per arm do not establish stable tail estimates.
+
+A second host pair failed during candidate workload creation before any timed
+trial. Its request reached the five-minute deadline, leaving a quarantined
+`creating` receipt. Bootstrap had completed, but the workload outcome was not
+confirmed; no workload commands were admitted. The failure is preserved and this
+is **not a completed replicated ten-versus-ten comparison**. All four owned hosts
+were retired, provider inventory returned zero active hosts, and checkpoint data
+and failure receipts were retained. A new frozen candidate still needs the full
+matched comparison, large restore and downstream qualification.

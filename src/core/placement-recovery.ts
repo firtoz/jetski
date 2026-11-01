@@ -10,6 +10,7 @@ import {
   type Transaction,
 } from "./contracts.js";
 import type { Sandbox } from "./manager.js";
+import { verifyCheckpointObjects } from "./object-verification.js";
 import type { OperationJournal } from "./operations.js";
 import type { PoolJournal } from "./pool.js";
 import {
@@ -99,11 +100,12 @@ export async function recoverMissingPlacement(
   );
   if (!root) throw Error("Recovery checkpoint unavailable");
   parseArchive(root.metadata);
-  for (const frame of root.frames) {
-    const head = await objects.head(frame);
-    if (!head || head.bytes !== frame.bytes || head.sha256 !== frame.sha256)
-      throw Error("Recovery checkpoint integrity failure");
-  }
+  await verifyCheckpointObjects(
+    objects,
+    fence,
+    root.frames,
+    "Recovery checkpoint integrity failure",
+  );
   if ((await provider.inspect(input.lease.machineId)).state !== "absent")
     throw Error("Placement host absence not established");
   return state.transaction((tx) => {

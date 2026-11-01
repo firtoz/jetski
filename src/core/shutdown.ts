@@ -12,6 +12,7 @@ import {
   type Transaction,
 } from "./contracts.js";
 import type { Sandbox } from "./manager.js";
+import { verifyCheckpointObjects } from "./object-verification.js";
 import type { OperationJournal } from "./operations.js";
 import type { HostLease, PoolJournal } from "./pool.js";
 import {
@@ -155,11 +156,12 @@ export class ShutdownCoordinator {
     );
     if (!root) throw Error("Recovery checkpoint unavailable");
     parseArchive(root.metadata);
-    for (const frame of root.frames) {
-      const head = await objects.head(frame);
-      if (!head || head.bytes !== frame.bytes || head.sha256 !== frame.sha256)
-        throw Error("Recovery checkpoint integrity failure");
-    }
+    await verifyCheckpointObjects(
+      objects,
+      fence,
+      root.frames,
+      "Recovery checkpoint integrity failure",
+    );
     if (!(await this.deps.hostAbsent(input.lease)))
       throw Error("Source absence not established");
     return state.transaction((tx) => {
@@ -346,15 +348,12 @@ export class ShutdownCoordinator {
         const root = await registry.root(fence, record.id);
         if (!root || canonical(root.metadata) !== canonical(record.archive))
           throw Error("Durable publication unavailable");
-        for (const frame of root.frames) {
-          const observed = await this.deps.objects.head(frame);
-          if (
-            !observed ||
-            observed.sha256 !== frame.sha256 ||
-            observed.bytes !== frame.bytes
-          )
-            throw Error("Published checkpoint integrity failure");
-        }
+        await verifyCheckpointObjects(
+          this.deps.objects,
+          fence,
+          root.frames,
+          "Published checkpoint integrity failure",
+        );
       }
       if (record.stage === "remove") {
         await request(record.lease, "remove", payload);
