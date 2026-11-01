@@ -1,5 +1,6 @@
 import { type CheckpointRegistry, type CheckpointRoot } from "./checkpoints.js";
 import {
+  CHECKPOINT_FORMAT,
   type CheckpointStore,
   canonical,
   DEFAULTS,
@@ -7,6 +8,7 @@ import {
   type Json,
   type ObjectInfo,
 } from "./contracts.js";
+import { sameObject } from "./inventory.js";
 
 export type ArchiveFrame = {
   offset: number;
@@ -54,7 +56,7 @@ export function parseArchive(value: unknown): CapturedArchive {
     !integer(archive.expandedBytes, 0, 16 * 1024 ** 3) ||
     !integer(archive.entries, 2, 100_000) ||
     !Array.isArray(archive.frames) ||
-    !integer(archive.frames.length, 1, 8192)
+    !integer(archive.frames.length, 1, CHECKPOINT_FORMAT.maxFrames)
   )
     throw new Error("Invalid archive manifest");
   let offset = 0,
@@ -66,7 +68,11 @@ export function parseArchive(value: unknown): CapturedArchive {
         "bytes,expandedBytes,expandedSha256,offset,sha256" ||
       frame.offset !== offset ||
       !integer(frame.bytes, 1, DEFAULTS.maxObjectBytes) ||
-      !integer(frame.expandedBytes, 1, DEFAULTS.frameBytes) ||
+      !integer(
+        frame.expandedBytes,
+        1,
+        CHECKPOINT_FORMAT.maxExpandedFrameBytes,
+      ) ||
       !digest(frame.sha256) ||
       !digest(frame.expandedSha256)
     )
@@ -110,6 +116,21 @@ export class CheckpointTransfer {
       readConcurrency > MAX_READ_CONCURRENCY
     )
       throw Error("Invalid checkpoint read concurrency");
+    const storeConcurrency = this.objects.transferConcurrency ?? 1;
+    if (
+      !Number.isSafeInteger(storeConcurrency) ||
+      storeConcurrency < 1 ||
+      storeConcurrency > DEFAULTS.transferConcurrency
+    )
+      throw Error("Invalid checkpoint transfer concurrency");
+    // Share the source budget across frames, never multiply it by the number
+    // of uploads. A source which requires serial reads also serializes frames.
+    const concurrency = Math.min(
+      storeConcurrency,
+      readConcurrency,
+      archive.frames.length,
+    );
+    const rangesPerFrame = Math.floor(readConcurrency / concurrency);
     const existing = await this.registry.root(fence, id);
     if (existing) {
       if (canonical(existing.metadata) !== canonical(archive))
@@ -134,16 +155,42 @@ export class CheckpointTransfer {
         frame,
       ]),
     );
+    const reuseChecks = new Map<
+      string,
+      { expected: ObjectInfo; check: Promise<ObjectInfo | undefined> }
+    >();
+    const reuse = (object: ObjectInfo) => {
+      const expected = { ...object };
+      if (expected.owner !== fence.owner || expected.sandbox !== fence.sandbox)
+        throw Error("Cross-owner reuse object");
+      const prior = reuseChecks.get(expected.id);
+      if (prior) {
+        if (!sameObject(prior.expected, expected))
+          throw Error("Conflicting reuse object identity");
+        return prior.check;
+      }
+      const check = this.objects
+        .head({
+          owner: expected.owner,
+          sandbox: expected.sandbox,
+          id: expected.id,
+        })
+        .then((verified) => {
+          if (verified && !sameObject(verified, expected))
+            throw Error("Reuse integrity failure");
+          return verified;
+        });
+      reuseChecks.set(expected.id, { expected, check });
+      return check;
+    };
     const frames: ObjectInfo[] = [];
     let uploadedBytes = 0,
       reusedBytes = 0;
-    for (const [index, frame] of archive.frames.entries()) {
+    const transferFrame = async (index: number, frame: ArchiveFrame) => {
       const candidate =
         pending[String(index)] ??
         reusable.get(`${frame.sha256}/${frame.bytes}`);
-      const verified = candidate
-        ? await this.objects.head(candidate)
-        : undefined;
+      const verified = candidate ? await reuse(candidate) : undefined;
       if (
         verified &&
         verified.owner === fence.owner &&
@@ -152,9 +199,7 @@ export class CheckpointTransfer {
         verified.sha256 === frame.sha256
       ) {
         await this.registry.planFrame(fence, id, index, verified);
-        frames.push(verified);
-        reusedBytes += frame.bytes;
-        continue;
+        return { object: verified, reused: true };
       }
       const address = {
         owner: fence.owner,
@@ -172,7 +217,7 @@ export class CheckpointTransfer {
         while (remaining) {
           const reads: Promise<Uint8Array>[] = [];
           const counts: number[] = [];
-          for (let index = 0; index < readConcurrency && remaining; index++) {
+          for (let index = 0; index < rangesPerFrame && remaining; index++) {
             const count = Math.min(READ_BYTES, remaining);
             const position = offset;
             reads.push(
@@ -208,8 +253,26 @@ export class CheckpointTransfer {
         stored.sha256 !== frame.sha256
       )
         throw Error("Storage upload receipt mismatch");
-      frames.push(stored);
-      uploadedBytes += frame.bytes;
+      return { object: stored, reused: false };
+    };
+    for (
+      let offset = 0;
+      offset < archive.frames.length;
+      offset += concurrency
+    ) {
+      // Keep all uploads and their range reads within the writer lifetime even
+      // when one fails. Publication cannot race a surviving sibling upload.
+      const settled = await Promise.allSettled(
+        archive.frames
+          .slice(offset, offset + concurrency)
+          .map((frame, index) => transferFrame(offset + index, frame)),
+      );
+      for (const result of settled) {
+        if (result.status === "rejected") throw result.reason;
+        frames.push(result.value.object);
+        if (result.value.reused) reusedBytes += result.value.object.bytes;
+        else uploadedBytes += result.value.object.bytes;
+      }
     }
     await this.registry.publish(fence, id, id, frames, archive as Json);
     const root = await this.registry.root(fence, id);

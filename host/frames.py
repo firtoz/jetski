@@ -3,12 +3,13 @@
 import gzip
 import hashlib
 
-FRAME_BYTES = 4 * 1024 * 1024
+MAX_FRAME_BYTES = 4 * 1024 * 1024
+FRAME_BYTES = 1024 * 1024
 
 
 class FrameWriter:
     def __init__(self, output, frame_bytes=FRAME_BYTES):
-        if type(frame_bytes) is not int or not 1024 <= frame_bytes <= FRAME_BYTES:
+        if type(frame_bytes) is not int or not 1024 <= frame_bytes <= MAX_FRAME_BYTES:
             raise ValueError("invalid_frame_bound")
         self.output = output
         self.frame_bytes = frame_bytes

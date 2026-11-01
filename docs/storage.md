@@ -170,4 +170,26 @@ once, preserves manifest order, and rejects conflicting duplicate metadata. Fail
 batches drain before rejection and later batches do not start. The final
 transaction rechecks the writer and generation before publishing. This capability
 does not relax the adapter's byte/hash verification contract or the S3 upload
-readback requirement. It does not enable parallel uploads or source reads.
+readback requirement. Source reads remain separately opt-in.
+
+Adapters may also opt into `transferConcurrency` from 1 to 2. Local and S3
+adapters enable two frame transfers; custom adapters remain serial by default.
+The save pipeline divides the source's existing read budget across that batch,
+never exceeding four concurrent range reads and two storage transfers. It drains
+all started transfers on failure and preserves per-frame upload identities for
+replay after lost acknowledgements. A serial-only source also serializes uploads.
+
+New captures use 1 MiB independent gzip frames. Readers continue accepting the
+previous 4 MiB frames, independently of capture defaults. The smaller default
+reduces changed-byte amplification but increases object counts; hosted latency
+and request-count acceptance remains part of the performance qualification.
+
+
+Cold imports advertise a durable `chunkBytes` limit in their begin receipt. New
+hosts accept 512 KiB chunks, within the existing 1 MiB control-request envelope;
+hosts or pending imports without that field retain 256 KiB. Each acknowledgement
+still follows file fsync, directory synchronization and durable progress recording.
+Verified frame tails are coalesced in one bounded chunk buffer. Lost-journal
+replay compares already written bytes before advancing. This reduces
+control calls and sync points without acknowledging buffered data. Direct bulk
+transport and hosted cold-restore performance remain under evaluation.

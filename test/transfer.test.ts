@@ -13,6 +13,14 @@ import {
 import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 const sha = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
 function archive(parts: Buffer[]) {
@@ -267,4 +275,154 @@ test("opt-in parallel ranges are bounded, ordered and drained before failure", a
     }),
     /concurrency/,
   );
+});
+
+test("frame uploads share the range budget and drain a failed batch before replay", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "jetski-frame-pipeline-"));
+  const state = new SqliteState(join(dir, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const store = new LocalCheckpointStore(join(dir, "objects"));
+  const registry = new CheckpointRegistry(state, store);
+  const fence = { owner: "alice", sandbox: "box", generation: 1 };
+  await registry.initialize(fence);
+  const fixture = archive(
+    Array.from({ length: 3 }, () => randomBytes(600_000)),
+  );
+  const put = store.put.bind(store);
+  const failed = deferred();
+  const release = deferred();
+  const started = deferred();
+  let uploads = 0,
+    active = 0,
+    maximum = 0,
+    reads = 0;
+  store.put = async (...args) => {
+    const index = uploads++;
+    if (uploads === 2) started.resolve();
+    await started.promise;
+    const object = await put(...args);
+    if (index === 0) {
+      failed.resolve();
+      throw Error("lost upload acknowledgement");
+    }
+    if (index === 1) await release.promise;
+    return object;
+  };
+  const source = {
+    readConcurrency: 4,
+    read: async (offset: number, count: number) => {
+      reads++;
+      active++;
+      maximum = Math.max(maximum, active);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      active--;
+      return fixture.bytes.subarray(offset, offset + count);
+    },
+  };
+  let completed = false;
+  const saving = new CheckpointTransfer(store, registry)
+    .save(fence, "save", fixture.manifest, source)
+    .finally(() => {
+      completed = true;
+    });
+  const rejected = assert.rejects(saving, /lost upload acknowledgement/);
+  await failed.promise;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(
+    completed,
+    false,
+    "sibling upload remains inside failed operation",
+  );
+  assert.equal(uploads, 2, "later batch must not start");
+  release.resolve();
+  await rejected;
+  assert.equal(active, 0);
+  assert.ok(maximum >= 2 && maximum <= 4, "uploads share the four-read budget");
+  assert.equal(await registry.root(fence, "save"), undefined);
+  await assert.rejects(registry.collect(fence, "gc"), /Active/);
+  reads = 0;
+  const recovered = await new CheckpointTransfer(store, registry).save(
+    fence,
+    "save",
+    fixture.manifest,
+    source,
+  );
+  assert.equal(uploads, 3, "both committed siblings reused after lost ACK");
+  assert.equal(reads, 3, "only the remaining 600KB frame was read");
+  const chunks: Uint8Array[] = [];
+  for (const frame of recovered.root.frames)
+    for await (const chunk of store.read(frame)) chunks.push(chunk);
+  assert.deepEqual(Buffer.concat(chunks), fixture.bytes);
+});
+
+test("capture tuning retains acknowledged four-MiB archive compatibility", () => {
+  const old = archive([Buffer.alloc(4 * 1024 * 1024, 7)]);
+  assert.deepEqual(parseArchive(old.manifest), old.manifest);
+  const invalid = structuredClone(old.manifest);
+  invalid.frames[0]!.expandedBytes++;
+  assert.throws(() => parseArchive(invalid), /Invalid archive frame/);
+});
+
+test("parallel reuse checks each repeated immutable identity once per phase", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "jetski-reuse-dedup-"));
+  const state = new SqliteState(join(dir, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const store = new LocalCheckpointStore(join(dir, "objects"));
+  const registry = new CheckpointRegistry(state, store);
+  const fence = { owner: "alice", sandbox: "box", generation: 1 };
+  await registry.initialize(fence);
+  const fixture = archive([Buffer.from("identical"), Buffer.from("identical")]);
+  const transfer = new CheckpointTransfer(store, registry);
+  const source = {
+    readConcurrency: 4,
+    read: async (offset: number, count: number) =>
+      fixture.bytes.subarray(offset, offset + count),
+  };
+  await transfer.save(fence, "first", fixture.manifest, source);
+  const second = await transfer.save(
+    fence,
+    "second",
+    fixture.manifest,
+    source,
+    "first",
+  );
+  assert.equal(second.root.frames[0]!.id, second.root.frames[1]!.id);
+  const head = store.head.bind(store);
+  const active = new Set<string>();
+  let checks = 0;
+  store.head = async (address) => {
+    assert.equal(
+      active.has(address.id),
+      false,
+      "same-key receipt checks cannot overlap",
+    );
+    active.add(address.id);
+    checks++;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    try {
+      return await head(address);
+    } finally {
+      active.delete(address.id);
+    }
+  };
+  const third = await transfer.save(
+    fence,
+    "third",
+    fixture.manifest,
+    {
+      readConcurrency: 4,
+      read: async () => {
+        throw Error("unchanged source must not be read");
+      },
+    },
+    "second",
+  );
+  assert.equal(checks, 2, "one reuse check and one final publication check");
+  assert.equal(third.reusedBytes, fixture.bytes.length);
 });

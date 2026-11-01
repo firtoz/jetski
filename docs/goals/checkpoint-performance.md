@@ -49,16 +49,27 @@ as a substitute for a contemporaneous comparison.
 
 ## Finite implementation and acceptance checklist
 
-| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Core logical profile confirms serial store I/O and four-way source reads; adapter/host phase attribution pending         |
-| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | Pending                                                                                                                  |
-| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Opt-in publication verification/dedup implemented; local drain/revocation/isolation checks pass; upload batching pending |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Pending                                                                                                                  |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | Pending                                                                                                                  |
-| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Pending                                                                                                                  |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending                                                                                                                  |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Pending                                                                                                                  |
+| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Core logical profile confirms serial store I/O and four-way source reads; adapter/host phase attribution pending                                                     |
+| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | Local geometry screen selects 1 MiB capture; old 4 MiB source-deleted filesystem restore passes; packing evaluation pending                                          |
+| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Opt-in verification/dedup and bounded two-frame upload pipeline implemented; local failure/replay checks pass; hosted qualification pending                          |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated 512 KiB durable chunks and coalesced verified frame tails implemented; legacy bounds and cross-frame lost-ACK/journal replay pass; bulk transport pending |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | Local suite, old-frame source-deleted restore and live R2 acknowledgement-loss/reopen/recovery pass; new hosted paths pending                                        |
+| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Pending                                                                                                                                                              |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending                                                                                                                                                              |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Pending                                                                                                                                                              |
+
+## Current local screen
+
+For a deterministic 16 MiB binary with a 4 KiB same-length edit, 256 KiB,
+1 MiB and 4 MiB frames uploaded 0.258, 1.045 and 4.192 MB respectively, with
+64, 16 and 4 objects. The candidate selects 1 MiB for hosted evaluation. This
+geometry screen does not establish end-to-end speed; packing and bulk transport
+remain alternatives if the measured request/restore costs still miss the target.
+Local and live R2 checkpoint recovery pass all eleven runner checks, including
+acknowledgement loss, reopen, retained reconstruction and scoped cleanup. Their
+synthetic-clock collection checks do not replace the protected real-grace test.
 
 ## Execution order
 

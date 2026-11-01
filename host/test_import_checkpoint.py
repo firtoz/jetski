@@ -5,6 +5,7 @@ import pathlib
 import tempfile
 import types
 import unittest
+from unittest.mock import patch
 import uuid
 from archive import capture
 from fence import Fence
@@ -77,6 +78,41 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(
             oracle(self.base / "source"), oracle(self.data / self.lease["assignmentId"])
         )
+
+    def test_large_chunk_is_durable_before_progress_and_replays_after_lost_journal(self):
+        raw = os.urandom(700000)
+        with self.fence.locked():
+            state = self.fence.read()
+            receipt = {
+                **state["import"],
+                "bytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+            self.fence.write({**state, "import": receipt})
+        fsync = os.fsync
+        with patch("import_checkpoint.os.fsync", wraps=fsync) as synced:
+            with patch.object(self.fence, "write", side_effect=OSError("journal interrupted")):
+                with self.assertRaisesRegex(OSError, "journal interrupted"):
+                    self.send(0, raw[: 512 * 1024])
+            self.assertGreaterEqual(synced.call_count, 1)
+        self.assertEqual(self.fence.read()["import"]["offset"], 0)
+        self.assertEqual(self.importer.path(self.lease).read_bytes(), raw[: 512 * 1024])
+        self.assertEqual(self.send(0, raw[: 512 * 1024])["offset"], 512 * 1024)
+        self.assertEqual(self.send(0, raw[: 512 * 1024])["offset"], 512 * 1024)
+        self.assertEqual(self.send(512 * 1024, raw[512 * 1024 :])["offset"], len(raw))
+        self.assertEqual(self.importer.path(self.lease).read_bytes(), raw)
+        with self.assertRaisesRegex(ValueError, "integrity"):
+            self.send(0, raw[: 512 * 1024 + 1])
+
+    def test_legacy_import_receipt_keeps_its_chunk_limit(self):
+        with self.fence.locked():
+            state = self.fence.read()
+            receipt = {**state["import"], "bytes": 512 * 1024}
+            del receipt["chunkBytes"]
+            self.fence.write({**state, "import": receipt})
+        with self.assertRaisesRegex(ValueError, "extent"):
+            self.send(0, b"x" * (256 * 1024 + 1))
+        self.assertFalse(self.importer.path(self.lease).exists())
 
     def test_digest_corruption_and_conflicting_replay_fail_closed(self):
         self.send(0, self.raw)

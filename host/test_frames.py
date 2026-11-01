@@ -2,7 +2,7 @@ import gzip
 import hashlib
 import io
 import unittest
-from frames import FrameWriter
+from frames import FrameWriter, FRAME_BYTES, MAX_FRAME_BYTES
 
 
 class FrameTests(unittest.TestCase):
@@ -38,6 +38,18 @@ class FrameTests(unittest.TestCase):
         ]
         self.assertEqual(changed, [1])
         self.assertEqual(len(before), len(after))
+
+    def test_capture_default_and_old_frame_bound(self):
+        self.assertEqual(FRAME_BYTES, 1024 * 1024)
+        value = b"x" * (MAX_FRAME_BYTES + 1)
+        for bound, expected in [(FRAME_BYTES, 5), (MAX_FRAME_BYTES, 2)]:
+            output = io.BytesIO()
+            with FrameWriter(output, bound) as writer:
+                writer.write(value)
+            self.assertEqual(len(writer.frames), expected)
+            self.assertEqual(gzip.decompress(output.getvalue()), value)
+        with self.assertRaises(ValueError):
+            FrameWriter(io.BytesIO(), MAX_FRAME_BYTES + 1)
 
     def test_failed_capture_does_not_flush_partial_frame(self):
         output = io.BytesIO()

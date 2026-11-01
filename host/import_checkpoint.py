@@ -57,7 +57,7 @@ class CheckpointImport:
                 self.path(lease)
             ):
                 raise ValueError("import_destination_exists")
-            receipt = {**expected, "offset": 0, "phase": "receiving"}
+            receipt = {**expected, "offset": 0, "phase": "receiving", "chunkBytes": 512 * 1024}
             state = {**state, "import": receipt}
             self.fence.write(state)
             return self.cached(lease, state, receipt)
@@ -77,20 +77,21 @@ class CheckpointImport:
             type(offset) is not int
             or offset < 0
             or not isinstance(encoded, str)
-            or len(encoded) > 350000
+            or len(encoded) > 700000
         ):
             raise ValueError("invalid_import_chunk")
         try:
             data = base64.b64decode(encoded, validate=True)
         except ValueError:
             raise ValueError("invalid_import_encoding") from None
-        if not 1 <= len(data) <= 256 * 1024 or hashlib.sha256(data).hexdigest() != sha256:
+        if not 1 <= len(data) <= 512 * 1024 or hashlib.sha256(data).hexdigest() != sha256:
             raise ValueError("import_chunk_integrity")
         with self.fence.locked():
             state = self.state(lease)
             receipt = state.get("import")
             if (
                 not receipt
+                or len(data) > receipt.get("chunkBytes", 256 * 1024)
                 or receipt["phase"] != "receiving"
                 or offset > receipt["offset"]
                 or offset + len(data) > receipt["bytes"]

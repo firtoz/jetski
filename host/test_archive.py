@@ -3,9 +3,12 @@ import io
 import os
 import pathlib
 import stat
+import shutil
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
+from frames import FrameWriter
 from archive import capture, restore, digest
 
 
@@ -71,6 +74,18 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(original, oracle(destination))
         with self.assertRaisesRegex(ValueError, "destination_exists"):
             restore(self.archive, destination, receipt["sha256"])
+
+    def test_acknowledged_old_frame_geometry_recovers_after_source_deletion(self):
+        original = oracle(self.source)
+        with patch(
+            "archive.FrameWriter", side_effect=lambda output: FrameWriter(output, 4 * 1024 * 1024)
+        ):
+            receipt = capture(self.roots, self.archive)
+        self.assertEqual(receipt["frames"][0]["expandedBytes"], 4 * 1024 * 1024)
+        shutil.rmtree(self.source)
+        destination = self.base / "old-restored"
+        restore(self.archive, destination, receipt["sha256"])
+        self.assertEqual(original, oracle(destination))
 
     def test_changed_bytes_rename_delete_and_modes(self):
         capture(self.roots, self.archive)

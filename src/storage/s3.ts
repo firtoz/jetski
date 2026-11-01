@@ -33,6 +33,7 @@ type VerifiedObject = { info: ObjectInfo; etag: string };
  * Reads verify complete bounded objects before returning even a requested range. */
 export class S3CheckpointStore implements CheckpointStore {
   readonly verificationConcurrency = DEFAULTS.verificationConcurrency;
+  readonly transferConcurrency = DEFAULTS.transferConcurrency;
   private maxBytes: number;
   private timeoutMs: number;
   private listPageSize: number;

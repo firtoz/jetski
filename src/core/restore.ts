@@ -49,6 +49,12 @@ export async function restoreCheckpoint(
       (receipt.phase !== "receiving" && receipt.offset !== archive.bytes)
     )
       throw Error("Invalid import receipt");
+    // Older immutable hosts omit the advertised bound and retain 256 KiB.
+    // Larger durable chunks amortize host-control and fsync costs without
+    // changing acknowledgement or replay semantics, within the 1 MiB envelope.
+    const chunkBytes = receipt.chunkBytes ?? 256 * 1024;
+    if (chunkBytes !== 256 * 1024 && chunkBytes !== 512 * 1024)
+      throw Error("Invalid import chunk bound");
     const finish = async () => {
       const done = await request("import-finish", {});
       if (
@@ -69,7 +75,32 @@ export async function restoreCheckpoint(
       await finish();
       return;
     }
-    let offset = 0;
+    let frameOffset = 0,
+      offset = resumeOffset,
+      buffered = 0;
+    const buffer = new Uint8Array(chunkBytes);
+    const flush = async () => {
+      if (!buffered) return;
+      const part = buffer.subarray(0, buffered);
+      const acknowledged = await request("import-chunk", {
+        offset,
+        base64: encodeBase64(part),
+        sha256: await sha(part),
+      });
+      offset += part.length;
+      if (
+        !acknowledged ||
+        typeof acknowledged !== "object" ||
+        Array.isArray(acknowledged) ||
+        acknowledged.id !== id ||
+        acknowledged.sha256 !== archive.sha256 ||
+        acknowledged.bytes !== archive.bytes ||
+        acknowledged.offset !== offset ||
+        acknowledged.phase !== "receiving"
+      )
+        throw Error("Invalid import chunk acknowledgement");
+      buffered = 0;
+    };
     for (let index = 0; index < root.frames.length; index++) {
       const frame = root.frames[index]!,
         expected = archive.frames[index]!;
@@ -80,10 +111,9 @@ export async function restoreCheckpoint(
         frame.sha256 !== expected.sha256
       )
         throw Error("Restore object mismatch");
-      if (offset + frame.bytes <= resumeOffset) {
-        offset += frame.bytes;
-        continue;
-      }
+      const frameStart = frameOffset;
+      frameOffset += frame.bytes;
+      if (frameOffset <= resumeOffset) continue;
       const full = new Uint8Array(frame.bytes);
       let filled = 0;
       for await (const part of objects.read(frame)) {
@@ -94,31 +124,18 @@ export async function restoreCheckpoint(
       }
       if (filled !== full.length || (await sha(full)) !== frame.sha256)
         throw Error("Restore integrity failure");
-      const frameStart = offset;
       let position = Math.max(0, resumeOffset - frameStart);
-      offset = frameStart + position;
+      // Only fully hash-verified frames enter the bounded transport buffer.
+      // Coalesce frame tails instead of paying a control round trip for each.
       while (position < full.length) {
-        const part = full.subarray(position, position + 256 * 1024);
-        const acknowledged = await request("import-chunk", {
-          offset,
-          base64: encodeBase64(part),
-          sha256: await sha(part),
-        });
-        offset += part.length;
-        position += part.length;
-        if (
-          !acknowledged ||
-          typeof acknowledged !== "object" ||
-          Array.isArray(acknowledged) ||
-          acknowledged.id !== id ||
-          acknowledged.sha256 !== archive.sha256 ||
-          acknowledged.bytes !== archive.bytes ||
-          acknowledged.offset !== offset ||
-          acknowledged.phase !== "receiving"
-        )
-          throw Error("Invalid import chunk acknowledgement");
+        const count = Math.min(chunkBytes - buffered, full.length - position);
+        buffer.set(full.subarray(position, position + count), buffered);
+        buffered += count;
+        position += count;
+        if (buffered === chunkBytes) await flush();
       }
     }
+    await flush();
     if (offset !== archive.bytes) throw Error("Restore extent mismatch");
     await finish();
   } finally {

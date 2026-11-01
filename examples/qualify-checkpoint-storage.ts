@@ -47,6 +47,8 @@ const started = Date.now();
 function wrapped(): CheckpointStore {
   const base = session!.store;
   return {
+    verificationConcurrency: base.verificationConcurrency ?? 1,
+    transferConcurrency: base.transferConcurrency ?? 1,
     head: (address) => base.head(address),
     read: (address, range) => base.read(address, range),
     list: (scope) => base.list(scope),
@@ -166,6 +168,7 @@ try {
     "second",
     second.manifest,
     {
+      readConcurrency: 4,
       read: async (offset, count) => {
         assert.ok(
           offset >= first.bytes.length,

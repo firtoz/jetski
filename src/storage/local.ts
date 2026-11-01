@@ -28,6 +28,7 @@ function missing(error: unknown): boolean {
  * An interrupted upload can leak a reservation, but cannot replace acknowledged bytes. */
 export class LocalCheckpointStore implements CheckpointStore {
   readonly verificationConcurrency = DEFAULTS.verificationConcurrency;
+  readonly transferConcurrency = DEFAULTS.transferConcurrency;
   private readonly root: string;
   constructor(
     root: string,

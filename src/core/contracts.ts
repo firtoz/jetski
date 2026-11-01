@@ -19,6 +19,11 @@ export interface StateStore {
 }
 export type Scope = { owner: string; sandbox: string };
 export type Fence = Scope & { generation: number };
+/** Format acceptance is independent of current capture tuning. */
+export const CHECKPOINT_FORMAT = Object.freeze({
+  maxExpandedFrameBytes: 4 * 1024 * 1024,
+  maxFrames: 18 * 1024,
+});
 export const DEFAULTS = Object.freeze({
   idleMs: 10 * 60_000,
   hostLifetimeMs: 60 * 60_000,
@@ -27,8 +32,9 @@ export const DEFAULTS = Object.freeze({
   gcGraceMs: 24 * 60 * 60_000,
   gcInventoryObjects: 100_000,
   gcInventoryPageObjects: 64,
-  frameBytes: 4 * 1024 * 1024,
+  frameBytes: 1024 * 1024,
   verificationConcurrency: 4,
+  transferConcurrency: 2,
   maxObjectBytes: 8 * 1024 * 1024,
   outputChannelBytes: 16 * 1024 * 1024,
   outputChunkBytes: 256 * 1024,
@@ -59,6 +65,8 @@ export type ByteStream = AsyncIterable<Uint8Array>;
 export interface CheckpointStore {
   /** Opt-in bound for overlapping independent head calls (1..4). Omission is serial. */
   readonly verificationConcurrency?: number;
+  /** Opt into independent frame uploads, bounded to two; omitted means serial. */
+  readonly transferConcurrency?: number;
   /** Create-only. Never replace a physical object identity, even after deletion. */
   put(
     address: ObjectAddress,
