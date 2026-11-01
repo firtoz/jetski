@@ -50,6 +50,14 @@ test("packed artifact excludes local/test files and independently imports portab
     const sdk = await import(root + 'dist/sdk.js');
     assert.equal(typeof core.SandboxManager, 'function');
     assert.equal(typeof sdk.JetskiClient, 'function');
+    const http = await import(root + 'dist/transport/http-forward.js');
+    const websocket = await import(root + 'dist/transport/websocket.js');
+    const preview = await import(root + 'dist/server/preview-fetch.js');
+    const terminal = await import(root + 'dist/client/terminal.js');
+    assert.equal(typeof http.forwardHttp, 'function');
+    assert.equal(typeof websocket.bridgeWebSocket, 'function');
+    assert.equal(typeof preview.createFetchPreviewGateway, 'function');
+    assert.equal(typeof terminal.TerminalAttachment, 'function');
     const assets = await import(root + 'dist/host-assets.js');
     const firstAssets = await assets.loadBoatBootstrapAssets();
     assert.ok(firstAssets.installer.length > 0);

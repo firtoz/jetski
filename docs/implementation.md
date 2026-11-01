@@ -38,7 +38,7 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 
 | Gate                             | Current evidence                                                                             | Remaining acceptance                                                             |
 | -------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Independent repository           | Public MIT source, separate exports, standalone examples and CI                              | Final provenance/package independence audit                                      |
+| Independent repository           | Public MIT source; artifact content audit and dependency-denying portable import tests pass | Repeat provenance/package audit for the final release artifact                                      |
 | Core lifecycle and pooling       | Replay/fencing tests; real API stop/resume, warm reuse, held/historical restore, idle expiry | Full restart/placement matrix and matched hosted runs                            |
 | Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Remaining interactive lifecycle/provider audit                                   |
 | Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                     |
