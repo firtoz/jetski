@@ -150,7 +150,9 @@ export class ShutdownCoordinator {
     };
     await state.transaction(sourceIn);
     const fence = { ...scope, generation: input.generation };
-    const root = await registry.root(fence, input.checkpointId);
+    const root = await state.transaction((tx) =>
+      registry.validatedRootIn(tx, fence, input.checkpointId),
+    );
     if (!root) throw Error("Recovery checkpoint unavailable");
     parseArchive(root.metadata);
     for (const frame of root.frames) {

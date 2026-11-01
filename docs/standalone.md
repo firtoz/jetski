@@ -79,6 +79,15 @@ The incomplete save stays uncertain and recorded. Unpublished changes are not
 recovered, and uncertain commands must not be replayed automatically. This path
 has local fault/restart coverage; hosted qualification remains pending.
 
+An interrupted restore/container creation has no shutdown journal. For that case,
+use `recover-missing-placement ID --operation UUID --config recovery.json` (or the
+SDK method). Its request replaces `shutdownId` with the exact `placementId` from
+sandbox inspection/pending operations. It accepts only the checkpoint that placement
+was restoring, requires an uncertain placement and positively absent host, and
+refuses active storage readers/writers. The original placement stays uncertain;
+recovery records a separate outcome and leaves the sandbox stopped. A new resume
+is explicit. Neither API treats an inspect timeout as proof of host absence.
+
 `resume ID --operation UUID` restores a stopped sandbox into a fresh writable
 assignment. If its checkpoint still holds the host, the same durable resume request
 first releases that assignment. Checkpoints and prior command output remain

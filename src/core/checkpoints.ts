@@ -179,6 +179,28 @@ export class CheckpointRegistry {
     tx.put(this.key(fence), { ...state, generation });
     return { ...fence, generation };
   }
+  /** Only after positive host absence and exact placement authority verification.
+   * No reader/writer admission is abandoned by this path. */
+  recoverMissingPlacementIn(
+    tx: Transaction,
+    fence: Fence,
+    placementId: string,
+    rootId: string,
+  ): Fence {
+    const state = this.load(tx, fence);
+    validateCollectionState(state, fence);
+    const reference = tx.get<{ rootId: string }>(
+      `checkpoint-reference/${scopeKey(fence)}/${identifier(placementId)}`,
+    );
+    if (
+      !reference ||
+      reference.rootId !== rootId ||
+      !state.roots.some((root) => root.id === rootId && root.retiredAt === null)
+    )
+      throw Error("Placement checkpoint reference changed");
+    this.releaseIn(tx, fence, placementId);
+    return this.advanceIn(tx, fence);
+  }
   /** Recovery coordinator only: it must positively establish source-host absence
    * and atomically fence the sandbox/operation journals in this transaction.
    * Keep the interrupted save journal and objects as evidence. This does not
@@ -566,6 +588,18 @@ export class CheckpointRegistry {
     root.pins = root.pins.filter((value) => value !== pin);
     if (retain) root.pins.push(pin);
     tx.put(this.key(fence), state);
+  }
+  /** Validate persisted scope and payload identities before external recovery reads. */
+  validatedRootIn(
+    tx: Transaction,
+    fence: Fence,
+    id: string,
+  ): CheckpointRoot | undefined {
+    const state = this.load(tx, fence);
+    validateCollectionState(state, fence);
+    return state.roots.find(
+      (root) => root.id === id && root.retiredAt === null,
+    );
   }
   rootsIn(tx: Transaction, fence: Fence): CheckpointRoot[] {
     return this.load(tx, fence).roots;

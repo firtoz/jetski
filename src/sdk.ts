@@ -19,6 +19,10 @@ import {
   persistentPath,
 } from "./core/files.js";
 import {
+  type MissingPlacementRecovery,
+  missingPlacementRecovery,
+} from "./core/placement-recovery.js";
+import {
   type MissingSourceRecovery,
   missingSourceRecovery,
 } from "./core/shutdown.js";
@@ -524,6 +528,20 @@ export class JetskiClient {
       `/v1/sandboxes/${identifier(sandbox)}/resume`,
       "POST",
       body,
+    );
+  }
+  recoverMissingPlacement(
+    sandbox: string,
+    operationId: string,
+    recovery: MissingPlacementRecovery,
+  ): Promise<Operation> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/recover-missing-placement`,
+      "POST",
+      {
+        operationId: identifier(operationId),
+        recovery: missingPlacementRecovery(recovery),
+      },
     );
   }
   recoverMissingSource(

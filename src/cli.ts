@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { missingPlacementRecovery } from "./core/placement-recovery.js";
 import { missingSourceRecovery } from "./core/shutdown.js";
 import { DEFAULT_TERMINAL_GEOMETRY } from "./core/terminal-input.js";
 import { MAX_FILE_UPLOAD_BYTES } from "./core/uploads.js";
@@ -429,6 +431,20 @@ if (command === "serve") {
     case "pending-operations":
       result = await client.pendingOperations(
         required(positionals[1], "sandbox ID"),
+      );
+      break;
+    case "recover-missing-placement":
+      result = await client.recoverMissingPlacement(
+        required(positionals[1], "sandbox ID"),
+        required(values.operation, "--operation"),
+        missingPlacementRecovery(
+          JSON.parse(
+            await readFile(
+              required(values.config, "--config recovery request JSON"),
+              "utf8",
+            ),
+          ),
+        ),
       );
       break;
     case "recover-missing-source":

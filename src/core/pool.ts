@@ -395,7 +395,11 @@ export class PoolJournal {
   /** Explicit recovery only, after positive provider absence. Unlike release,
    * this records a lost source, never successful quiescence/publication. The
    * caller must fence sandbox and checkpoint state in the same transaction. */
-  retireMissingAssignmentIn(tx: Transaction, lease: HostLease): void {
+  retireMissingAssignmentIn(
+    tx: Transaction,
+    lease: HostLease,
+    placementId?: string,
+  ): void {
     const slot = this.exact(tx, lease);
     if (!["quiescing", "quarantined"].includes(slot.phase))
       throw Error("Missing assignment not quarantined or stopping");
@@ -406,7 +410,11 @@ export class PoolJournal {
         (ticket) =>
           ticket.sandboxId === lease.sandboxId && ticket.phase === "assigned",
       );
-    if (tickets.length !== 1) throw Error("Placement receipt ambiguous");
+    if (
+      tickets.length !== 1 ||
+      (placementId !== undefined && tickets[0]!.id !== placementId)
+    )
+      throw Error("Placement receipt ambiguous");
     const machine = tx.get<Machine>(this.machineKey(lease.machineId));
     if (!machine || machine.slot !== slot.id)
       throw Error("Machine authority mismatch");

@@ -8,6 +8,10 @@ export * from "./host-stream.js";
 export * from "./manager.js";
 export * from "./observability.js";
 export * from "./operations.js";
+export {
+  type MissingPlacementRecovery,
+  missingPlacementRecovery,
+} from "./placement-recovery.js";
 export type { HostLease } from "./pool.js";
 export * from "./ports.js";
 export * from "./preview-sessions.js";

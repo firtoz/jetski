@@ -7,6 +7,7 @@ import {
 import type { ApiCapabilities } from "../core/capabilities.js";
 import { identifier } from "../core/contracts.js";
 import type { SandboxManager } from "../core/manager.js";
+import { missingPlacementRecovery } from "../core/placement-recovery.js";
 import { tcpPort } from "../core/ports.js";
 import { missingSourceRecovery } from "../core/shutdown.js";
 import { StreamNotFound } from "../core/streams.js";
@@ -360,6 +361,24 @@ export function createHttpServer(
           response,
           202,
           await manager.stop(scope, string(input.operationId), parts[3]),
+        );
+        return;
+      }
+      if (
+        parts.length === 4 &&
+        parts[3] === "recover-missing-placement" &&
+        request.method === "POST"
+      ) {
+        const input = await body(request);
+        fields(input, ["operationId", "recovery"]);
+        send(
+          response,
+          200,
+          await manager.recoverMissingPlacement(
+            scope,
+            string(input.operationId),
+            missingPlacementRecovery(input.recovery),
+          ),
         );
         return;
       }

@@ -250,3 +250,13 @@ are gone, while preserving normal exit/output and output-size bounds. This does
 not prove the outcome of a container operation or terminate detached workloads;
 creation uncertainty still requires reconciliation. Hosted qualification of the
 watchdog remains open.
+
+## Interrupted placement recovery
+
+An interrupted restore/container creation has no shutdown journal, so save-recovery
+alone cannot release it after host loss. The explicit placement-recovery path
+validates the exact lease, generation, uncertain resume and selected checkpoint,
+requires positive provider absence, and atomically fences the old placement. It
+refuses active storage actors and preserves the original uncertain outcome. SQLite
+restart/replay, HTTP/SDK owner denial, corrupt storage, stale authority and a
+separate replacement restore are covered locally. Hosted adoption remains open.

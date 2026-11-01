@@ -18,6 +18,10 @@ import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
 import type { HostStreamTransport } from "./host-stream.js";
 import { observeLifecycle } from "./observability.js";
 import { OperationJournal } from "./operations.js";
+import {
+  type MissingPlacementRecovery,
+  recoverMissingPlacement,
+} from "./placement-recovery.js";
 import { type HostLease, PoolJournal } from "./pool.js";
 import { PortRegistry } from "./ports.js";
 import { PreviewSessions } from "./preview-sessions.js";
@@ -902,6 +906,26 @@ export class SandboxManager {
         error: null,
       });
     });
+  }
+  async recoverMissingPlacement(
+    scope: Scope,
+    id: string,
+    input: MissingPlacementRecovery,
+  ) {
+    this.uuid(id);
+    return recoverMissingPlacement(
+      {
+        state: this.state,
+        provider: this.provider,
+        objects: this.objects,
+        registry: this.checkpoints,
+        operations: this.operations,
+        pool: this.pool,
+      },
+      scope,
+      id,
+      input,
+    );
   }
   async recoverMissingSource(
     scope: Scope,
