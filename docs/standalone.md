@@ -549,6 +549,20 @@ The thin CLI exposes the same admission with
 Replaying the same arguments observes the existing copy; use a separate stable
 operation ID for `jetski resume DESTINATION --operation UUID`.
 
+### Embedded transactional admission
+
+An embedded access controller can wrap `StateStore.transaction` to check its own
+reservation together with `manager.getIn(tx, scope)`. The accessor reads the
+owner-scoped sandbox within the existing transaction without dispatching work or
+exposing internal storage keys. Check reservation expiry/revocation, the running
+phase, generation and complete assigned lease before invoking the transaction
+callback. Rejecting the callback prevents admission from persisting a command.
+Core admission fences still apply; this accessor does not grant access by itself.
+Use an unguarded controller for reconciliation and cleanup so revocation cannot
+prevent durable stop or release. External business-state changes must be reflected
+in the transactional reservation; a prior database read alone is not an atomic
+admission guard.
+
 ### Optional lifecycle observations
 
 Pass `events: { emit(event) { /* enqueue in your telemetry adapter */ } }` in

@@ -13,6 +13,7 @@ import {
   type Scope,
   type StateStore,
   scopeKey,
+  type Transaction,
 } from "./contracts.js";
 import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
 import type { HostStreamTransport } from "./host-stream.js";
@@ -372,8 +373,13 @@ export class SandboxManager {
       });
     }
   }
+  /** Read within an embedding client's transaction guard. This performs no
+   * dispatch and does not replace the core's intrinsic admission fences. */
+  getIn(tx: Pick<Transaction, "get">, scope: Scope): Sandbox | undefined {
+    return tx.get<Sandbox>(this.key(scope));
+  }
   async get(scope: Scope): Promise<Sandbox | undefined> {
-    return this.state.transaction((tx) => tx.get<Sandbox>(this.key(scope)));
+    return this.state.transaction((tx) => this.getIn(tx, scope));
   }
   async list(owner: string): Promise<Sandbox[]> {
     identifier(owner);

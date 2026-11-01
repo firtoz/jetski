@@ -90,6 +90,9 @@ configuration/replay guards. All seven CI jobs pass, including disposable SSH
 and Boat-adapter FUSE qualification and lost-acknowledgement replay. Hosted
 qualification and performance comparisons remain open. Host bundle changes
 require draining old assignments before replacement; see [runtime configuration](runtime.md).
+Embedded transactional admission can now inspect owner-scoped sandbox state in
+the caller transaction without depending on internal keys. Client access wiring
+and hosted qualification remain open.
 See [qualification evidence](qualification.md).
 
 ## Next steps

@@ -148,7 +148,61 @@ test("command cancellation survives controller restart before dispatch and after
     command = randomUUID();
   await manager.create(scope.owner, scope.sandbox, image, randomUUID());
   await manager.reconcile(scope.owner);
-  await manager.startCommand(scope, command, ["sleep", "120"]);
+  const bound = await manager.get(scope);
+  assert.ok(bound?.lease);
+  let expectedGeneration = bound.generation;
+  await state.transaction((tx) => tx.put("client/access-closed", true));
+  const guarded = new SandboxManager(
+    {
+      transaction: (body) =>
+        state.transaction((tx) => {
+          const current = manager.getIn(tx, scope);
+          assert.equal(
+            manager.getIn(tx, { ...scope, owner: "foreign" }),
+            undefined,
+          );
+          if (
+            tx.get("client/access-closed") ||
+            current?.phase !== "running" ||
+            current.generation !== expectedGeneration ||
+            JSON.stringify(current.lease) !== JSON.stringify(bound.lease)
+          )
+            throw Error("Client access closed or placement changed");
+          return body(tx);
+        }),
+    },
+    provider,
+    transport,
+    objects,
+    options,
+  );
+  const deniedByClient = randomUUID();
+  await assert.rejects(
+    guarded.startCommand(scope, deniedByClient, ["true"]),
+    /Client access closed/,
+  );
+  assert.equal(starts, 0);
+  assert.equal(
+    await state.transaction((tx) =>
+      tx.get(`command/${scope.owner}/${scope.sandbox}/${deniedByClient}`),
+    ),
+    undefined,
+  );
+  await state.transaction((tx) => tx.put("client/access-closed", false));
+  expectedGeneration++;
+  await assert.rejects(
+    guarded.startCommand(scope, deniedByClient, ["true"]),
+    /placement changed/,
+  );
+  assert.equal(starts, 0);
+  assert.equal(
+    await state.transaction((tx) =>
+      tx.get(`command/${scope.owner}/${scope.sandbox}/${deniedByClient}`),
+    ),
+    undefined,
+  );
+  expectedGeneration = bound.generation;
+  await guarded.startCommand(scope, command, ["sleep", "120"]);
   await assert.rejects(
     manager.cancelCommand({ ...scope, owner: "other" }, command),
     /unavailable/,
