@@ -23,6 +23,7 @@ import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 import { SshTransport } from "../src/transport/ssh.js";
 import { qualifyGateway } from "./qualify-gateway.js";
+import { qualifyLiveInteractive } from "./qualify-live-interactive.js";
 
 const key = process.env.JETSKI_TEST_SSH_KEY,
   knownHosts = process.env.JETSKI_TEST_KNOWN_HOSTS,
@@ -656,6 +657,7 @@ try {
   // Keep an admitted workload connection alive across the real stop operation.
   // No persistent fixture files are introduced into the checkpoint oracle.
   const streamScope = { owner: "qualification", sandbox: id };
+  await qualifyLiveInteractive(manager, state, streamScope);
   const listenerCommand = randomUUID(),
     listenerReady = randomUUID();
   await client.request(`/v1/sandboxes/${id}/commands`, "POST", {

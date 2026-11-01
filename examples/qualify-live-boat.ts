@@ -13,8 +13,10 @@ import {
   standaloneStorage,
 } from "../src/server/storage.js";
 import { SqliteState } from "../src/state/sqlite.js";
+import { qualifyLiveInteractive } from "./qualify-live-interactive.js";
 
 type Config = {
+  interactive?: boolean;
   image: string;
   hosts: Extract<HostConfig, { kind: "boat" }>;
   storage: StorageConfig;
@@ -227,6 +229,10 @@ if (mode === "prepare") {
         "cd /workspace; dd if=/dev/urandom of=binary bs=1048576 count=5 2>/dev/null; chmod 640 binary; ln binary hard; printf home > /home/sandbox/identity; ln -s binary link; ln -s missing dangling; mkdir directory .git; chmod 751 directory; printf '#!/bin/sh\\nexit 0\\n' > run.sh; chmod 755 run.sh; : > empty; printf '[core]\\n bare = false\\n' > .git/config",
       ),
     );
+    if (plan.config.interactive)
+      await step("live-interactive", () =>
+        qualifyLiveInteractive(manager, state, scope),
+      );
     const before = await step("oracle-initial", (id) => command(id, oracle));
     await step("save-initial", stopped);
     const warm = await step("resume-warm", resumed);
