@@ -13,7 +13,7 @@ provider APIs on disposable Linux; it is not live Boat qualification.
 | Area                   | Evidence                                                                                                                                         | Boundary                                                                                                      |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | Core and storage       | Tests under test/ and host/; local/S3 fault contracts                                                                                            | Fault fixtures do not establish every remote provider's consistency                                           |
-| API lifecycle          | examples/qualify-api.ts: stop, warm reuse, source-deleted restore, held/historical checkpoints, expiry, lost output/import/save acknowledgements | Same-host fresh-container recovery; physical provider replacement remains open                                |
+| API lifecycle          | examples/qualify-api.ts: stop, warm reuse, source-deleted restore, held/historical checkpoints, expiry, lost output/import/save acknowledgements | Same-host fixture; live physical replacement is qualified separately below                                    |
 | Host execution         | examples/qualify-ssh.ts and host qualification programs: real isolated execution, cancellation, worker loss and filesystem restoration           | Disposable adopted SSH host                                                                                   |
 | Interactive transports | PTY/SSH/TCP tests plus examples/qualify-browser-container.ts                                                                                     | Chrome 156, real rootless container and encrypted host control                                                |
 | Browser previews       | HTTPS page/assets, exact binary HTTP/WSS, durable closed stream receipts and revoked admission                                                   | Fresh test profile pins a one-day fixture certificate key; not public CA or operator deployment qualification |
@@ -32,6 +32,14 @@ after disappearance, lost retirement acknowledgements, controller restart and a
 concurrent assignment invalidating the absence observation. This adds a provider
 readiness check to warm placement; its hosted latency remains to be measured.
 It does not recover unsaved changes from an absent active host.
+
+The live Boat/R2 pilot at `268b7fc` passed confirmed source deletion before idle
+expiry, fresh-host restoration and exact byte/mode/link oracle comparison. Warm
+resume took 3,436 ms; physical replacement took 69,217 ms. Initial/changed/final
+saves took 22,737/17,396/15,697 ms. Two hosts were allocated and retired; a final
+provider inventory showed zero active hosts and a scoped storage listing showed
+zero checkpoint objects. Immutable identity reservations remain intentionally.
+These are single-pilot timings, not a matched comparison or a speedup claim.
 
 `CheckpointCopy` has local SQLite/object-store coverage for same-owner copies,
 interrupted streams, lost upload/publication acknowledgements, cancellation races

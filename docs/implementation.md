@@ -55,7 +55,8 @@ object cleanup. This baseline downloads checkpoints from remote storage.
 Verified local-cache reuse passes all five disposable CI jobs on its development
 branch and the live warm-restore oracle. Live terminal controls, binary forwarding
 and replacement-host R2 restore passed, including final host retirement and owned
-object cleanup.
+object cleanup. Confirmed idle-host disappearance now also passes live Boat/R2
+replacement with exact bytes, modes and links; both test hosts were retired.
 Explicit operator-selected outbound networking passed all five CI jobs, including
 real outbound access and host-loopback denial on a disposable rootless host.
 Networking stays disabled by default; broader destination filtering is external.
@@ -66,7 +67,7 @@ hosted measurements and staging integration. See [qualification evidence](qualif
 
 ## Next steps
 
-1. Qualify idle-host disappearance and remaining remote/provider recovery gates.
+1. Finish the remaining remote/provider recovery gates; idle-host disappearance now passes a live oracle.
 2. Audit remaining lifecycle/replacement requirements against existing tests;
    add checks only for uncovered requirements or concrete defects.
 3. Finish provider/storage qualification and prepare the downstream staging adapter.
