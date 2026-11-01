@@ -54,3 +54,8 @@ it still requires Node-compatible crypto, path and Buffer support. The normal
 `BoatBootstrap` remains the Node filesystem-backed default. Both paths validate
 the complete module set, size limits and identical persisted bootstrap identity.
 Changing installed code or policy requires explicit host replacement.
+
+For Bun, consume a built release `.tgz` artifact pinned by URL and lockfile digest.
+Bun does not install a Git dependency's development tools before `prepare`; a Git
+source install is therefore not qualified for Bun. CI verifies artifact installation
+with lifecycle scripts disabled, including core, SDK and bundled host assets.
