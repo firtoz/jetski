@@ -138,3 +138,7 @@ That is historical evidence, not current instructions or acceptance status. A
 private local copy preserves the last uncommitted handoff details. Do not append
 routine CI polling or temporary process handles to this document; update a result
 row only when it changes a qualification conclusion.
+
+## Opt-in outbound networking
+
+Commit `dcb4e64` passed [all five CI jobs](https://github.com/firtoz/jetski/actions/runs/41261217878). The rootless runtime fixture verified public HTTP access, rejected the host-loopback route, and removed its container. Default networking remains disabled. This is disposable CI evidence, not a live provider or general destination-filtering claim.
