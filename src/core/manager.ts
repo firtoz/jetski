@@ -206,9 +206,9 @@ export class SandboxManager {
     this.uuid(operationId);
     if (!this.images.has(image)) throw new Error("Image not approved");
     const scope = { owner, sandbox: id };
-    const fence = await this.operations.generation(scope);
-    await this.operations.admit(fence, operationId, "create", { image });
-    const sandbox = await this.state.transaction((tx) => {
+    return this.state.transaction((tx) => {
+      const fence = this.operations.generationIn(tx, scope);
+      this.operations.admitIn(tx, fence, operationId, "create", { image });
       const previous = tx.get<Sandbox>(this.key(scope));
       if (previous) {
         if (
@@ -216,6 +216,11 @@ export class SandboxManager {
           previous.createOperation !== operationId
         )
           throw new Error("Sandbox identity conflict");
+        if (
+          previous.phase === "queued" &&
+          previous.placementOperation === operationId
+        )
+          this.pool.enqueueIn(tx, owner, id, operationId, { image });
         return previous;
       }
       const record: Sandbox = {
@@ -232,14 +237,9 @@ export class SandboxManager {
         generation: 1,
       };
       tx.put(this.key(scope), record);
+      this.pool.enqueueIn(tx, owner, id, operationId, { image });
       return record;
     });
-    if (
-      sandbox.phase === "queued" &&
-      sandbox.placementOperation === operationId
-    )
-      await this.pool.enqueue(owner, id, operationId, { image });
-    return sandbox;
   }
   async get(scope: Scope): Promise<Sandbox | undefined> {
     return this.state.transaction((tx) => tx.get<Sandbox>(this.key(scope)));

@@ -98,44 +98,53 @@ export class PoolJournal {
     id: string,
     input: Json,
   ): Promise<Ticket> {
+    return this.state.transaction((tx) =>
+      this.enqueueIn(tx, owner, sandboxId, id, input),
+    );
+  }
+  enqueueIn(
+    tx: Transaction,
+    owner: string,
+    sandboxId: string,
+    id: string,
+    input: Json,
+  ): Ticket {
     identifier(owner);
     identifier(sandboxId);
     identifier(id);
     const encoded = canonical(input);
     if (encoded.length > 65536) throw new Error("Placement input bound");
-    return this.state.transaction((tx) => {
-      const key = this.ticketKey(owner, id),
-        previous = tx.get<Ticket>(key);
-      if (previous) {
-        if (
-          previous.sandboxId !== sandboxId ||
-          canonical(previous.input) !== encoded
-        )
-          throw new Error("Placement identity conflict");
-        return previous;
-      }
-      const queued = tx
-        .scan<Ticket>(`${this.prefix()}ticket/${owner}/`)
-        .filter((row) => row.value.phase !== "finished");
-      if (queued.length >= 1024) throw new Error("Owner queue bound");
-      if (queued.some((row) => row.value.sandboxId === sandboxId))
-        throw new Error("Sandbox already has an active placement");
-      const sequenceKey = `${this.prefix()}sequence`;
-      const sequence = (tx.get<number>(sequenceKey) ?? 0) + 1;
-      if (!Number.isSafeInteger(sequence))
-        throw new Error("Queue sequence exhausted");
-      tx.put(sequenceKey, sequence);
-      const ticket: Ticket = {
-        id,
-        owner,
-        sandboxId,
-        input: JSON.parse(encoded),
-        phase: "queued",
-        sequence,
-      };
-      tx.put(key, ticket);
-      return ticket;
-    });
+    const key = this.ticketKey(owner, id),
+      previous = tx.get<Ticket>(key);
+    if (previous) {
+      if (
+        previous.sandboxId !== sandboxId ||
+        canonical(previous.input) !== encoded
+      )
+        throw new Error("Placement identity conflict");
+      return previous;
+    }
+    const queued = tx
+      .scan<Ticket>(`${this.prefix()}ticket/${owner}/`)
+      .filter((row) => row.value.phase !== "finished");
+    if (queued.length >= 1024) throw new Error("Owner queue bound");
+    if (queued.some((row) => row.value.sandboxId === sandboxId))
+      throw new Error("Sandbox already has an active placement");
+    const sequenceKey = `${this.prefix()}sequence`;
+    const sequence = (tx.get<number>(sequenceKey) ?? 0) + 1;
+    if (!Number.isSafeInteger(sequence))
+      throw new Error("Queue sequence exhausted");
+    tx.put(sequenceKey, sequence);
+    const ticket: Ticket = {
+      id,
+      owner,
+      sandboxId,
+      input: JSON.parse(encoded),
+      phase: "queued",
+      sequence,
+    };
+    tx.put(key, ticket);
+    return ticket;
   }
   async reserve(owner: string): Promise<PoolSlot | undefined> {
     identifier(owner);

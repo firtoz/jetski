@@ -35,12 +35,13 @@ export class OperationJournal {
       throw new Error("Stale generation");
   }
   async generation(scope: Scope): Promise<Fence> {
-    return this.state.transaction((tx) => {
-      const key = this.fenceKey(scope);
-      const generation = tx.get<number>(key) ?? 1;
-      tx.put(key, generation);
-      return { ...scope, generation };
-    });
+    return this.state.transaction((tx) => this.generationIn(tx, scope));
+  }
+  generationIn(tx: Transaction, scope: Scope): Fence {
+    const key = this.fenceKey(scope);
+    const generation = tx.get<number>(key) ?? 1;
+    tx.put(key, generation);
+    return { ...scope, generation };
   }
   /** Caller must fence the host too before allowing replacement execution. */
   advanceIn(tx: Transaction, fence: Fence): Fence {
