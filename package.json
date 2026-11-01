@@ -57,7 +57,7 @@
     "jetski": "dist/cli.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1161.0",
+    "@aws-sdk/client-s3": "3.1160.0",
     "ssh2": "1.17.0"
   }
 }
