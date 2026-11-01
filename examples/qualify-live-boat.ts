@@ -93,7 +93,29 @@ if (mode === "prepare") {
   const manager = new SandboxManager(
     state,
     provider,
-    hosts.transport,
+    {
+      request: async (host, request, signal) => {
+        const response = await hosts.transport.request(host, request, signal);
+        if (
+          request.action === "import-begin" ||
+          request.action === "import-chunk"
+        ) {
+          const result = response.result;
+          if (result && typeof result === "object" && !Array.isArray(result)) {
+            console.log(
+              JSON.stringify({
+                observation: "restore-transfer",
+                host,
+                action: request.action,
+                phase: result.phase,
+                offset: result.offset,
+              }),
+            );
+          }
+        }
+        return response;
+      },
+    },
     storage.store,
     {
       poolId: plan.pool,
