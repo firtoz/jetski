@@ -29,7 +29,8 @@
     "./client/forward": "./dist/client/forward.js",
     "./server/preview": "./dist/server/preview.js",
     "./transport/duplex": "./dist/transport/duplex.js",
-    "./providers/boat-bootstrap-embedded": "./dist/providers/boat-bootstrap-embedded.js"
+    "./providers/boat-bootstrap-embedded": "./dist/providers/boat-bootstrap-embedded.js",
+    "./host-assets": "./dist/host-assets.js"
   },
   "files": [
     "dist",
@@ -38,7 +39,7 @@
     "NOTICE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/build-host-assets.mjs",
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.check.json",
     "test": "tsx --test test/*.test.ts",
