@@ -11,6 +11,7 @@ import {
   CheckpointRegistry,
   type CheckpointStore,
   CheckpointTransfer,
+  checkpointLayout,
   DEFAULTS,
   type ObjectAddress,
 } from "../src/core/index.js";
@@ -44,11 +45,16 @@ let losePut = true;
 let loseDelete = false;
 let config: StorageConfig = { kind: "local" };
 const started = Date.now();
+const packing = process.argv.slice(2).includes("--packing");
+const args = process.argv.slice(2).filter((arg) => arg !== "--packing");
 function wrapped(): CheckpointStore {
   const base = session!.store;
   return {
     verificationConcurrency: base.verificationConcurrency ?? 1,
     transferConcurrency: base.transferConcurrency ?? 1,
+    ...(base.verifyRanges
+      ? { verifyRanges: base.verifyRanges.bind(base) }
+      : {}),
     head: (address) => base.head(address),
     read: (address, range) => base.read(address, range),
     list: (scope) => base.list(scope),
@@ -107,10 +113,10 @@ function archive(parts: Buffer[]) {
   return { bytes, manifest };
 }
 try {
-  if (process.argv[2])
-    config = JSON.parse(
-      await readFile(process.argv[2], "utf8"),
-    ) as StorageConfig;
+  if (args.length > 1 || args.some((arg) => arg.startsWith("--")))
+    throw Error("Invalid qualification arguments");
+  if (args[0])
+    config = JSON.parse(await readFile(args[0], "utf8")) as StorageConfig;
   if (config.kind === "s3") config = { ...config, listPageSize: 1 };
   session = await standaloneStorage(directory, config);
   for await (const _ of session.store.list(fence))
@@ -120,19 +126,17 @@ try {
   await registry.initialize(fence);
   const original = randomBytes(65539);
   const changed = randomBytes(32771);
-  const first = archive([original]);
+  const first = archive(packing ? [original, randomBytes(32771)] : [original]);
+  const unchangedBytes = first.manifest.frames[0]!.bytes;
   const second = archive([original, changed]);
   phase = "upload-ack-loss";
   await assert.rejects(
-    new CheckpointTransfer(store, registry).save(
-      fence,
-      "first",
-      first.manifest,
-      {
-        read: async (offset, count) =>
-          first.bytes.subarray(offset, offset + count),
-      },
-    ),
+    new CheckpointTransfer(store, registry, undefined, {
+      packBytes: packing ? DEFAULTS.maxObjectBytes : 0,
+    }).save(fence, "first", first.manifest, {
+      read: async (offset, count) =>
+        first.bytes.subarray(offset, offset + count),
+    }),
     /Injected committed upload/,
   );
   assert.equal(await registry.root(fence, "first"), undefined);
@@ -148,12 +152,9 @@ try {
       throw Error("Source unavailable");
     },
   };
-  const recovered = await new CheckpointTransfer(store, registry).save(
-    fence,
-    "first",
-    first.manifest,
-    absent,
-  );
+  const recovered = await new CheckpointTransfer(store, registry, undefined, {
+    packBytes: packing ? DEFAULTS.maxObjectBytes : 0,
+  }).save(fence, "first", first.manifest, absent);
   assert.equal(puts, 1);
   assert.equal(recovered.uploadedBytes, 0);
   assert.equal(recovered.reusedBytes, first.bytes.length);
@@ -163,7 +164,9 @@ try {
     "source-independent-publication",
   );
   phase = "changed-frame-save";
-  const saved = await new CheckpointTransfer(store, registry).save(
+  const saved = await new CheckpointTransfer(store, registry, undefined, {
+    packBytes: packing ? DEFAULTS.maxObjectBytes : 0,
+  }).save(
     fence,
     "second",
     second.manifest,
@@ -171,7 +174,7 @@ try {
       readConcurrency: 4,
       read: async (offset, count) => {
         assert.ok(
-          offset >= first.bytes.length,
+          offset >= unchangedBytes,
           "Unchanged frame must not be reread",
         );
         return second.bytes.subarray(offset, offset + count);
@@ -180,15 +183,12 @@ try {
     "first",
   );
   assert.equal(puts, 2);
-  assert.equal(saved.reusedBytes, first.bytes.length);
-  assert.equal(saved.uploadedBytes, second.bytes.length - first.bytes.length);
+  assert.equal(saved.reusedBytes, unchangedBytes);
+  assert.equal(saved.uploadedBytes, second.bytes.length - unchangedBytes);
   assert.equal(saved.root.frames[0]!.id, recovered.root.frames[0]!.id);
-  const replay = await new CheckpointTransfer(store, registry).save(
-    fence,
-    "second",
-    second.manifest,
-    absent,
-  );
+  const replay = await new CheckpointTransfer(store, registry, undefined, {
+    packBytes: packing ? DEFAULTS.maxObjectBytes : 0,
+  }).save(fence, "second", second.manifest, absent);
   assert.equal(replay.uploadedBytes, 0);
   checks.push("changed-frame-only-upload", "stable-save-replay");
   phase = "retained-recovery";
@@ -198,17 +198,40 @@ try {
   now += DEFAULTS.gcGraceMs;
   assert.deepEqual(await registry.collect(fence, "shared"), { deleted: 0 });
   const restored: Buffer[] = [];
-  for (const frame of saved.root.frames) {
-    const chunks: Uint8Array[] = [];
-    let bytes = 0;
-    for await (const chunk of store.read(frame)) {
-      bytes += chunk.length;
-      assert.ok(bytes <= frame.bytes);
-      chunks.push(chunk);
+  const layout = checkpointLayout(saved.root),
+    cache = new Map<string, Buffer>();
+  for (const [index, segment] of layout.segments.entries()) {
+    const frame = saved.root.frames[segment.object]!;
+    let physical = cache.get(frame.id);
+    if (!physical) {
+      const chunks: Uint8Array[] = [];
+      let count = 0;
+      for await (const chunk of store.read(frame)) {
+        count += chunk.length;
+        assert.ok(count <= frame.bytes);
+        chunks.push(chunk);
+      }
+      physical = Buffer.concat(chunks);
+      assert.equal(sha(physical), frame.sha256);
+      cache.set(frame.id, physical);
     }
-    const compressed = Buffer.concat(chunks);
-    assert.equal(sha(compressed), frame.sha256);
+    const member = layout.archive.frames[index]!;
+    const compressed = physical.subarray(
+      segment.offset,
+      segment.offset + member.bytes,
+    );
+    assert.equal(sha(compressed), member.sha256);
     restored.push(gunzipSync(compressed, { maxOutputLength: 65539 }));
+  }
+  if (packing) {
+    assert.equal(recovered.root.frames.length, 1);
+    assert.equal(checkpointLayout(recovered.root).archive.frames.length, 2);
+    assert.equal(
+      saved.root.frames[0]!.bytes,
+      first.bytes.length,
+      "unchanged subrange retains the original complete physical pack",
+    );
+    checks.push("two-logical-members-one-pack", "shared-packed-subrange");
   }
   assert.deepEqual(Buffer.concat(restored), Buffer.concat([original, changed]));
   await registry.admit(fence, "reader", "reader", "second");
@@ -266,6 +289,7 @@ try {
     JSON.stringify({
       version: 1,
       backend: config.kind,
+      packing,
       passed: passed && cleanup,
       phase,
       ...fence,

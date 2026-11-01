@@ -1,6 +1,23 @@
+import {
+  type ArchiveSource,
+  archiveChunks,
+  archiveReadConcurrency,
+} from "./archive-source.js";
+import { PackedCheckpointTransfer } from "./packed-transfer.js";
+
+export type { ArchiveSource } from "./archive-source.js";
+
+import { type ArchiveFrame, parseArchive } from "./archive-format.js";
+import { checkpointArchive } from "./checkpoint-layout.js";
+
+export {
+  type ArchiveFrame,
+  type CapturedArchive,
+  parseArchive,
+} from "./archive-format.js";
+
 import { type CheckpointRegistry, type CheckpointRoot } from "./checkpoints.js";
 import {
-  CHECKPOINT_FORMAT,
   type CheckpointStore,
   canonical,
   DEFAULTS,
@@ -10,92 +27,14 @@ import {
 } from "./contracts.js";
 import { observeCheckpointObjects } from "./object-verification.js";
 
-export type ArchiveFrame = {
-  offset: number;
-  bytes: number;
-  expandedBytes: number;
-  sha256: string;
-  expandedSha256: string;
-};
-export type CapturedArchive = {
-  version: 1;
-  sha256: string;
-  bytes: number;
-  expandedBytes: number;
-  entries: number;
-  frames: ArchiveFrame[];
-};
-const READ_BYTES = 256 * 1024;
-const MAX_READ_CONCURRENCY = 4;
-
-export interface ArchiveSource {
-  /** Opt in only when independent immutable range reads may overlap. */
-  readConcurrency?: number;
-  read(offset: number, bytes: number): Promise<Uint8Array>;
-}
-const digest = (value: unknown): value is string =>
-  typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
-const integer = (value: unknown, min: number, max: number): value is number =>
-  typeof value === "number" &&
-  Number.isSafeInteger(value) &&
-  value >= min &&
-  value <= max;
-
-export function parseArchive(value: unknown): CapturedArchive {
-  if (!value || typeof value !== "object") throw new Error("Invalid archive");
-  const archive = value as CapturedArchive;
-  if (
-    Object.keys(archive).sort().join(",") !==
-    "bytes,entries,expandedBytes,frames,sha256,version"
-  )
-    throw new Error("Unknown archive fields");
-  if (
-    archive.version !== 1 ||
-    !digest(archive.sha256) ||
-    !integer(archive.bytes, 1, 16 * 1024 ** 3) ||
-    !integer(archive.expandedBytes, 0, 16 * 1024 ** 3) ||
-    !integer(archive.entries, 2, 100_000) ||
-    !Array.isArray(archive.frames) ||
-    !integer(archive.frames.length, 1, CHECKPOINT_FORMAT.maxFrames)
-  )
-    throw new Error("Invalid archive manifest");
-  let offset = 0,
-    expanded = 0;
-  for (const frame of archive.frames) {
-    if (
-      !frame ||
-      Object.keys(frame).sort().join(",") !==
-        "bytes,expandedBytes,expandedSha256,offset,sha256" ||
-      frame.offset !== offset ||
-      !integer(frame.bytes, 1, DEFAULTS.maxObjectBytes) ||
-      !integer(
-        frame.expandedBytes,
-        1,
-        CHECKPOINT_FORMAT.maxExpandedFrameBytes,
-      ) ||
-      !digest(frame.sha256) ||
-      !digest(frame.expandedSha256)
-    )
-      throw new Error("Invalid archive frame");
-    offset += frame.bytes;
-    expanded += frame.expandedBytes;
-  }
-  if (
-    offset !== archive.bytes ||
-    expanded < archive.expandedBytes ||
-    expanded > 18 * 1024 ** 3
-  )
-    throw new Error("Archive extent mismatch");
-  return structuredClone(archive);
-}
-
 /** Core publication path. A failed transfer leaves its durable writer admission
  * intact: lifecycle recovery must quarantine the source, not release it. */
 export class CheckpointTransfer {
   constructor(
     private readonly objects: CheckpointStore,
     private readonly registry: CheckpointRegistry,
-    private readonly newId = () => crypto.randomUUID(),
+    private readonly newId: () => string = () => crypto.randomUUID(),
+    private readonly options: { packBytes?: number } = {},
   ) {}
   async save(
     fence: Fence,
@@ -109,13 +48,28 @@ export class CheckpointTransfer {
     reusedBytes: number;
   }> {
     const archive = parseArchive(input);
-    const readConcurrency = source.readConcurrency ?? 1;
+    const kind = await this.registry.filesystemSaveKind(fence, id);
+    const target = this.options.packBytes ?? 0;
     if (
-      !Number.isSafeInteger(readConcurrency) ||
-      readConcurrency < 1 ||
-      readConcurrency > MAX_READ_CONCURRENCY
+      !Number.isSafeInteger(target) ||
+      target < 0 ||
+      target > DEFAULTS.maxObjectBytes
     )
-      throw Error("Invalid checkpoint read concurrency");
+      throw Error("Invalid checkpoint pack target");
+    if (kind === "packs" || (kind !== "frames" && target > 0))
+      return new PackedCheckpointTransfer(
+        this.objects,
+        this.registry,
+        this.newId,
+      ).save(
+        fence,
+        id,
+        archive,
+        source,
+        previousRoot,
+        target || DEFAULTS.maxObjectBytes,
+      );
+    const readConcurrency = archiveReadConcurrency(source);
     const storeConcurrency = this.objects.transferConcurrency ?? 1;
     if (
       !Number.isSafeInteger(storeConcurrency) ||
@@ -133,7 +87,7 @@ export class CheckpointTransfer {
     const rangesPerFrame = Math.floor(readConcurrency / concurrency);
     const existing = await this.registry.root(fence, id);
     if (existing) {
-      if (canonical(existing.metadata) !== canonical(archive))
+      if (canonical(checkpointArchive(existing)) !== canonical(archive))
         throw new Error("Checkpoint operation identity conflict");
       return { root: existing, uploadedBytes: 0, reusedBytes: archive.bytes };
     }
@@ -195,40 +149,14 @@ export class CheckpointTransfer {
         bytes: frame.bytes,
         sha256: frame.sha256,
       });
-      const chunks = async function* () {
-        let remaining = frame.bytes,
-          offset = frame.offset;
-        while (remaining) {
-          const reads: Promise<Uint8Array>[] = [];
-          const counts: number[] = [];
-          for (let index = 0; index < rangesPerFrame && remaining; index++) {
-            const count = Math.min(READ_BYTES, remaining);
-            const position = offset;
-            reads.push(
-              Promise.resolve().then(() => source.read(position, count)),
-            );
-            counts.push(count);
-            offset += count;
-            remaining -= count;
-          }
-          // Drain the bounded batch even on failure. Preserve archive order and
-          // never let reads outlive a failed upload or its source quarantine.
-          const settled = await Promise.allSettled(reads);
-          for (const [index, result] of settled.entries()) {
-            if (result.status === "rejected") throw result.reason;
-            if (
-              !(result.value instanceof Uint8Array) ||
-              result.value.length !== counts[index]
-            )
-              throw new Error("Short checkpoint transfer");
-            yield result.value;
-          }
-        }
-      };
-      const stored = await this.objects.put(address, chunks(), {
-        bytes: frame.bytes,
-        sha256: frame.sha256,
-      });
+      const stored = await this.objects.put(
+        address,
+        archiveChunks(source, frame.offset, frame.bytes, rangesPerFrame),
+        {
+          bytes: frame.bytes,
+          sha256: frame.sha256,
+        },
+      );
       if (
         stored.owner !== address.owner ||
         stored.sandbox !== address.sandbox ||

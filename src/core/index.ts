@@ -1,6 +1,12 @@
 export type { ApiCapabilities } from "./capabilities.js";
 export * from "./checkpoint-copy.js";
 export * from "./checkpoint-history.js";
+export {
+  type ArchiveSegment,
+  checkpointArchive,
+  checkpointLayout,
+  type PackedArchive,
+} from "./checkpoint-layout.js";
 export * from "./checkpoints.js";
 export * from "./contracts.js";
 export * from "./files.js";

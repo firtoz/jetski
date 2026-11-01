@@ -1,3 +1,4 @@
+import { checkpointObjectRanges } from "./checkpoint-layout.js";
 import {
   type CheckpointStore,
   canonical,
@@ -19,10 +20,12 @@ import {
   validObservation,
 } from "./inventory.js";
 import { verifyCheckpointObjects } from "./object-verification.js";
+import { PackedSaveJournal } from "./packed-save-journal.js";
 import { validateRootPayload } from "./root-payload.js";
 
 export type CheckpointRoot = {
   id: string;
+  /** Immutable physical payloads; packed metadata maps logical members by index. */
   frames: ObjectInfo[];
   metadata: Json;
   publishedAt: number;
@@ -156,11 +159,41 @@ function validateCollectionState(state: Registry, fence: Fence): void {
  * cannot continue before advancing its generation. A collector excludes all new
  * readers and writers for its entire sweep, including after process restart. */
 export class CheckpointRegistry {
+  readonly packedSaves: PackedSaveJournal;
   constructor(
     private readonly state: StateStore,
     private readonly objects: CheckpointStore,
     private readonly now = Date.now,
-  ) {}
+  ) {
+    this.packedSaves = new PackedSaveJournal(state, {
+      admit: (tx, fence, id) => this.admitIn(tx, fence, id, "writer"),
+      assert: (tx, fence, id) => {
+        const current = this.load(tx, fence);
+        if (
+          current.collection ||
+          !current.accesses.some(
+            (access) => access.id === id && access.kind === "writer",
+          )
+        )
+          throw Error("Packed writer no longer admitted");
+      },
+    });
+  }
+  async filesystemSaveKind(
+    fence: Fence,
+    id: string,
+  ): Promise<"frames" | "packs" | undefined> {
+    identifier(id);
+    return this.state.transaction((tx) => {
+      this.load(tx, fence);
+      const frames = tx.get(`frame-save/${scopeKey(fence)}/${id}`),
+        packs = tx.get(`packed-save/${scopeKey(fence)}/${id}`);
+      if (frames && packs) throw Error("Ambiguous filesystem save journals");
+      if (packs) return "packs";
+      if (frames) return "frames";
+      return undefined;
+    });
+  }
   private key(scope: Scope) {
     return `checkpoint/${scopeKey(scope)}`;
   }
@@ -314,14 +347,15 @@ export class CheckpointRegistry {
     if (frames.length > 16384) throw new Error("Manifest bound exceeded");
     const frozen = structuredClone(frames);
     const frozenMetadata = structuredClone(metadata);
-    validateRootPayload({
+    const descriptor = {
       id: rootId,
       frames: frozen,
       metadata: frozenMetadata,
       publishedAt: 0,
       retiredAt: null,
       pins: [],
-    });
+    };
+    validateRootPayload(descriptor);
     await this.state.transaction((tx) => {
       const state = this.load(tx, fence);
       if (
@@ -332,7 +366,13 @@ export class CheckpointRegistry {
       )
         throw new Error("Writer not admitted");
     });
-    await verifyCheckpointObjects(this.objects, fence, frozen);
+    await verifyCheckpointObjects(
+      this.objects,
+      fence,
+      frozen,
+      "Publication integrity failure",
+      checkpointObjectRanges([descriptor]),
+    );
     await this.state.transaction((tx) => {
       const state = this.load(tx, fence);
       if (
@@ -693,6 +733,7 @@ export class CheckpointRegistry {
       return state;
     });
     const cutoff = now - DEFAULTS.gcGraceMs;
+    const protectedRoots: CheckpointRoot[] = [];
     const live = new Map<string, ObjectInfo>();
     const candidates = new Map<string, ObjectInfo>();
     for (const root of snapshot.roots) {
@@ -700,6 +741,7 @@ export class CheckpointRegistry {
         root.retiredAt === null ||
         root.retiredAt > cutoff ||
         root.pins.length > 0;
+      if (protectedRoot) protectedRoots.push(root);
       for (const frame of root.frames) {
         if (frame.owner !== fence.owner || frame.sandbox !== fence.sandbox)
           throw new Error("Ambiguous owner metadata");
@@ -747,16 +789,15 @@ export class CheckpointRegistry {
         candidates.set(object.id, object);
       }
     });
-    // Complete retained reachability verification precedes the first delete.
-    for (const frame of live.values()) {
-      const actual = await this.objects.head(frame);
-      if (
-        !actual ||
-        actual.sha256 !== frame.sha256 ||
-        actual.bytes !== frame.bytes
-      )
-        throw new Error("Retained root integrity failure");
-    }
+    // Verify both physical reachability and every retained logical slice before
+    // the first delete. Ambiguous or conflicting metadata keeps GC excluded.
+    await verifyCheckpointObjects(
+      this.objects,
+      fence,
+      [...live.values()],
+      "Retained root integrity failure",
+      checkpointObjectRanges(protectedRoots),
+    );
     const planned = [...candidates.values()].filter(
       (frame) => !live.has(frame.id),
     );

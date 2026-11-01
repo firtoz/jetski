@@ -15,6 +15,7 @@ import {
   type ObjectAddress,
   type ObjectInfo,
   type ObjectRange,
+  type ObjectWriteMetadata,
   type Scope,
 } from "../core/contracts.js";
 
@@ -102,7 +103,7 @@ export class S3CheckpointStore implements CheckpointStore {
   async put(
     address: ObjectAddress,
     source: ByteStream,
-    expected: { bytes: number; sha256: string },
+    expected: ObjectWriteMetadata,
   ): Promise<ObjectInfo> {
     if (
       !Number.isSafeInteger(expected.bytes) ||
@@ -111,6 +112,9 @@ export class S3CheckpointStore implements CheckpointStore {
       !/^[a-f0-9]{64}$/.test(expected.sha256)
     )
       throw Error("Invalid object metadata");
+    const ranges = expected.ranges
+      ? objectRanges(expected.ranges, expected.bytes)
+      : undefined;
     const key = this.key(address);
     // Reservation ACK loss consumes the identity; callers observe or choose a fresh
     // ID. SDK retries cannot turn this conditional reservation into an overwrite.
@@ -152,7 +156,7 @@ export class S3CheckpointStore implements CheckpointStore {
       this.signal(),
     );
     // Every successful new upload receives a full byte/hash readback.
-    const verified = (await this.fetch(address))?.info;
+    const verified = (await this.fetch(address, undefined, ranges))?.info;
     if (
       !verified ||
       verified.bytes !== length ||
@@ -164,10 +168,8 @@ export class S3CheckpointStore implements CheckpointStore {
   private async fetch(
     address: ObjectAddress,
     prior?: VerifiedObject,
-  ): Promise<
-    | { info: ObjectInfo; bytes?: Buffer; receipt: VerifiedObject | undefined }
-    | undefined
-  > {
+    ranges?: readonly ObjectRange[],
+  ): Promise<{ info: ObjectInfo; bytes?: Buffer } | undefined> {
     const key = this.key(address);
     let response;
     try {
@@ -191,7 +193,7 @@ export class S3CheckpointStore implements CheckpointStore {
           if (this.verified.get(key) !== prior)
             throw Error("Verification invalidated during observation");
           this.remember(key, prior);
-          return { info: { ...prior.info }, receipt: prior };
+          return { info: { ...prior.info } };
         }
       }
       this.verified.delete(key);
@@ -241,19 +243,40 @@ export class S3CheckpointStore implements CheckpointStore {
       if (length !== bytes || hash.digest("hex") !== metadata.sha256)
         throw Error("Stored object integrity mismatch");
       const info = { ...address, bytes, sha256: metadata.sha256! };
+      const payload = Buffer.concat(chunks);
+      let proofs: ReadonlyMap<string, string> | undefined;
+      if (ranges) {
+        const checked = objectRanges(ranges, bytes);
+        for (const range of checked) {
+          const digest = createHash("sha256")
+            .update(payload.subarray(range.start, range.endExclusive))
+            .digest("hex");
+          if (digest !== range.sha256)
+            throw Error("Object slice integrity failure");
+        }
+        if (checked.length <= MAX_CACHED_OBJECT_RANGES)
+          proofs = new Map(
+            checked.map((range) => [
+              `${range.start}/${range.endExclusive}`,
+              range.sha256,
+            ]),
+          );
+      }
       this.verified.delete(key);
       // Only strong, bounded entity tags from a fully hashed response qualify.
       // ETags are validators, never substitutes for the SHA-256 integrity check.
-      let receipt: VerifiedObject | undefined;
       if (
         typeof response.ETag === "string" &&
         /^"[\x21\x23-\x7e]{1,256}"$/.test(response.ETag)
       ) {
-        receipt = { info: { ...info }, etag: response.ETag };
+        const receipt: VerifiedObject = {
+          info: { ...info },
+          etag: response.ETag,
+          ...(proofs ? { ranges: proofs } : {}),
+        };
         this.remember(key, receipt);
-        if (this.verified.get(key) !== receipt) receipt = undefined;
       }
-      return { info, bytes: Buffer.concat(chunks), receipt };
+      return { info, bytes: payload };
     } catch (error) {
       this.verified.delete(key);
       throw error;
@@ -289,32 +312,12 @@ export class S3CheckpointStore implements CheckpointStore {
           prior.ranges?.get(`${range.start}/${range.endExclusive}`) ===
           range.sha256,
       );
-    const object = await this.fetch(address, reusable ? prior : undefined);
-    if (!object) return undefined;
-    objectRanges(ranges, object.info.bytes);
-    if (object.bytes) {
-      for (const range of ranges) {
-        const digest = createHash("sha256")
-          .update(object.bytes.subarray(range.start, range.endExclusive))
-          .digest("hex");
-        if (digest !== range.sha256)
-          throw Error("Object slice integrity failure");
-      }
-      if (object.receipt && ranges.length <= MAX_CACHED_OBJECT_RANGES) {
-        if (this.verified.get(key) !== object.receipt)
-          throw Error("Verification invalidated during observation");
-        this.remember(key, {
-          ...object.receipt,
-          ranges: new Map(
-            ranges.map((range) => [
-              `${range.start}/${range.endExclusive}`,
-              range.sha256,
-            ]),
-          ),
-        });
-      }
-    }
-    return { ...object.info };
+    const object = await this.fetch(
+      address,
+      reusable ? prior : undefined,
+      ranges,
+    );
+    return object ? { ...object.info } : undefined;
   }
   async *read(
     address: ObjectAddress,

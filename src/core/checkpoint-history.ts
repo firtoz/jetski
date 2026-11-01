@@ -1,3 +1,4 @@
+import { checkpointArchive } from "./checkpoint-layout.js";
 import type { CheckpointRegistry, CheckpointRoot } from "./checkpoints.js";
 import {
   canonical,
@@ -8,7 +9,6 @@ import {
 } from "./contracts.js";
 import type { Sandbox } from "./manager.js";
 import type { OperationJournal } from "./operations.js";
-import { parseArchive } from "./transfer.js";
 
 export type CheckpointSummary = {
   id: string;
@@ -33,7 +33,7 @@ function summary(root: CheckpointRoot): CheckpointSummary | undefined {
     metadata.kind === "command-output"
   )
     return undefined;
-  const archive = parseArchive(metadata);
+  const archive = checkpointArchive(root);
   return {
     id: root.id,
     publishedAt: root.publishedAt,

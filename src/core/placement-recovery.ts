@@ -1,3 +1,7 @@
+import {
+  checkpointArchive,
+  checkpointObjectRanges,
+} from "./checkpoint-layout.js";
 import type { CheckpointRegistry } from "./checkpoints.js";
 import {
   type CheckpointStore,
@@ -17,7 +21,6 @@ import {
   type MissingSourceRecovery,
   missingSourceRecovery,
 } from "./shutdown.js";
-import { parseArchive } from "./transfer.js";
 
 export type MissingPlacementRecovery = Omit<
   MissingSourceRecovery,
@@ -99,12 +102,13 @@ export async function recoverMissingPlacement(
     registry.validatedRootIn(tx, fence, input.checkpointId),
   );
   if (!root) throw Error("Recovery checkpoint unavailable");
-  parseArchive(root.metadata);
+  checkpointArchive(root);
   await verifyCheckpointObjects(
     objects,
     fence,
     root.frames,
     "Recovery checkpoint integrity failure",
+    checkpointObjectRanges([root]),
   );
   if ((await provider.inspect(input.lease.machineId)).state !== "absent")
     throw Error("Placement host absence not established");

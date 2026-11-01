@@ -45,6 +45,8 @@ jobs:
         run: node --import tsx examples/qualify-storage.ts
       - name: Qualify source-deleted filesystem storage recovery
         run: node --import tsx examples/qualify-filesystem-storage.ts
+      - name: Qualify packed source-deleted filesystem recovery
+        run: node --import tsx examples/qualify-filesystem-storage.ts --packing
       - name: Qualify real-grace early refusal without advancing clocks
         run: |
           fixture_parent="$RUNNER_TEMP/jetski-real-grace"
@@ -59,6 +61,8 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/jetski-real-grace"
       - name: Qualify checkpoint storage recovery
         run: node --import tsx examples/qualify-checkpoint-storage.ts
+      - name: Qualify packed checkpoint acknowledgement recovery
+        run: node --import tsx examples/qualify-checkpoint-storage.ts --packing
       - run: npm run lint
       - run: python3 -m unittest discover -s host -v
       - run: pipx run --spec ruff==0.17.3 ruff check host examples/qualify-tty.py

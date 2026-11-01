@@ -104,7 +104,13 @@ test("conditional verification saves bytes without trusting an unverified or sta
     yield bytes;
   };
   const expected = { bytes: bytes.length, sha256: digest(bytes) };
-  await store.put(a, source(), expected);
+  const slice = {
+    start: 0,
+    endExclusive: 2,
+    sha256: digest(bytes.subarray(0, 2)),
+  };
+  await store.put(a, source(), { ...expected, ranges: [slice] });
+  await store.verifyRanges(a, [slice]);
   assert.equal(
     deliveredBytes,
     4,

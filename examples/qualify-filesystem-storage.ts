@@ -21,13 +21,27 @@ import {
   type ObjectAddress,
   parseArchive,
 } from "../src/core/index.js";
+import { restoreCheckpoint } from "../src/core/restore.js";
 import {
   type StorageConfig,
   standaloneStorage,
 } from "../src/server/storage.js";
 import { SqliteState } from "../src/state/sqlite.js";
 
-const prepareGc = process.argv[3] === "--prepare-gc";
+const arguments_ = process.argv.slice(2);
+const prepareGc = arguments_.includes("--prepare-gc"),
+  packing = arguments_.includes("--packing");
+const configArgs = arguments_.filter(
+  (arg) => arg !== "--prepare-gc" && arg !== "--packing",
+);
+assert.ok(
+  configArgs.length <= 1 && !configArgs.some((arg) => arg.startsWith("--")),
+  "Invalid qualification arguments",
+);
+assert.ok(
+  !(packing && prepareGc),
+  "Timed fixture helper currently prepares legacy roots only",
+);
 const parent = prepareGc
   ? process.env.JETSKI_QUALIFICATION_STATE_DIRECTORY
   : tmpdir();
@@ -72,6 +86,11 @@ const fixture = async (...args: string[]) =>
 function wrap(): CheckpointStore {
   const base = session!.store;
   return {
+    verificationConcurrency: base.verificationConcurrency ?? 1,
+    transferConcurrency: base.transferConcurrency ?? 1,
+    ...(base.verifyRanges
+      ? { verifyRanges: base.verifyRanges.bind(base) }
+      : {}),
     head: (address) => base.head(address),
     read: (address, range) => base.read(address, range),
     list: (scope) => base.list(scope),
@@ -86,10 +105,8 @@ function wrap(): CheckpointStore {
   };
 }
 try {
-  if (process.argv[2])
-    config = JSON.parse(
-      await readFile(process.argv[2], "utf8"),
-    ) as StorageConfig;
+  if (configArgs[0])
+    config = JSON.parse(await readFile(configArgs[0], "utf8")) as StorageConfig;
   session = await standaloneStorage(directory, config);
   for await (const _ of session.store.list(fence))
     throw Error("Fixture scope not empty");
@@ -108,11 +125,14 @@ try {
     phase = `save-${version}`;
     const start = Date.now();
     try {
-      const result = await new CheckpointTransfer(wrap(), registry).save(
+      const result = await new CheckpointTransfer(wrap(), registry, undefined, {
+        packBytes: packing ? DEFAULTS.maxObjectBytes : 0,
+      }).save(
         fence,
         `version-${version}`,
         manifest,
         {
+          readConcurrency: 4,
           read: async (offset, bytes) => {
             const buffer = Buffer.alloc(bytes);
             const read = await file.read(buffer, 0, bytes, offset);
@@ -149,25 +169,63 @@ try {
       "wx",
       0o600,
     );
+    const manifest = JSON.parse(
+      await readFile(join(directory, `manifest-${version}.json`), "utf8"),
+    );
+    const receipt = {
+      id: `version-${version}`,
+      sha256: manifest.sha256 as string,
+      bytes: manifest.bytes as number,
+      offset: 0,
+      phase: "receiving",
+    };
     try {
-      for (const frame of root.frames) {
-        const hash = createHash("sha256");
-        let size = 0;
-        for await (const part of session.store.read(frame)) {
-          size += part.length;
-          assert.ok(size <= frame.bytes);
-          hash.update(part);
-          let offset = 0;
-          while (offset < part.length) {
-            const wrote = await file.write(part.subarray(offset));
-            assert.ok(wrote.bytesWritten > 0);
-            offset += wrote.bytesWritten;
+      await restoreCheckpoint(
+        session.store,
+        reopened,
+        fence,
+        receipt.id,
+        async (action, payload) => {
+          if (action === "import-begin") {
+            const input = payload as {
+              sha256: string;
+              bytes: number;
+              checkpointId: string;
+            };
+            assert.equal(input.sha256, receipt.sha256);
+            assert.equal(input.bytes, receipt.bytes);
+            assert.equal(input.checkpointId, receipt.id);
+            return { ...receipt, chunkBytes: 512 * 1024 };
           }
-        }
-        assert.equal(size, frame.bytes);
-        assert.equal(hash.digest("hex"), frame.sha256);
-      }
-      await file.sync();
+          if (action === "import-chunk") {
+            const part = payload as {
+              offset: number;
+              base64: string;
+              sha256: string;
+            };
+            assert.equal(part.offset, receipt.offset);
+            const bytes = Buffer.from(part.base64, "base64");
+            assert.equal(
+              createHash("sha256").update(bytes).digest("hex"),
+              part.sha256,
+            );
+            let offset = 0;
+            while (offset < bytes.length) {
+              const wrote = await file.write(bytes.subarray(offset));
+              assert.ok(wrote.bytesWritten > 0);
+              offset += wrote.bytesWritten;
+            }
+            await file.sync();
+            receipt.offset += bytes.length;
+            return { ...receipt };
+          }
+          assert.equal(action, "import-finish");
+          assert.equal(receipt.offset, receipt.bytes);
+          await file.sync();
+          receipt.phase = "ready";
+          return { ...receipt };
+        },
+      );
     } finally {
       await file.close();
     }
@@ -225,6 +283,7 @@ try {
     JSON.stringify({
       version: 1,
       backend: config.kind,
+      packing,
       passed: passed && cleanup,
       phase,
       ...fence,

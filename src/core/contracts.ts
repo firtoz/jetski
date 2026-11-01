@@ -66,6 +66,13 @@ export type ObjectRange = {
   endExclusive: number;
   sha256: string;
 };
+export type ObjectWriteMetadata = {
+  bytes: number;
+  sha256: string;
+  /** Optional readback-cache hint. Publication must still verify the ranges;
+   * adapters without this optimization may ignore the hint. */
+  ranges?: readonly ObjectRange[];
+};
 export type ByteStream = AsyncIterable<Uint8Array>;
 export interface CheckpointStore {
   /** Opt-in bound for overlapping independent object verification calls (1..4). Omission is serial. */
@@ -76,7 +83,7 @@ export interface CheckpointStore {
   put(
     address: ObjectAddress,
     source: ByteStream,
-    expected: { bytes: number; sha256: string },
+    expected: ObjectWriteMetadata,
   ): Promise<ObjectInfo>;
   head(address: ObjectAddress): Promise<ObjectInfo | undefined>;
   /** Optional whole-object plus slice-hash proof. Missing support uses bounded

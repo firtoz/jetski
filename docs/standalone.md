@@ -633,3 +633,18 @@ need time to record their outcome and clean up. A timeout remains an uncertain
 remote result and must not trigger blind replay. Operators can explicitly set
 transport deadlines; shorter values can interrupt outcome recording. This is
 separate from workload execution limits and does not extend host lifetimes.
+
+### Experimental checkpoint packing
+
+Set optional server configuration `checkpointPackBytes` to a positive integer
+up to 8388608 to group independently compressed filesystem members into immutable
+physical objects. Zero (the default) retains one object per member. Unchanged
+members can reference verified slices of older packs; collection retains the
+whole physical object while any retained checkpoint needs a slice. This trades
+lower request counts for potentially greater retained storage. No acknowledged
+history expires automatically.
+
+Save journals persist the selected layout, so reconnects continue their original
+operation even if configuration changes. Both layouts remain readable. Local
+and remote-store source-deleted filesystem recovery are qualified; hosted
+performance parity and downstream rollout remain pending.

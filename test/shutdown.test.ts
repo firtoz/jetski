@@ -24,6 +24,7 @@ for (const failure of [
   "upload",
   "none",
   "missing-idle",
+  "packed",
 ] as const)
   test(`shutdown publication and restart: ${failure}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "jetski-stop-"));
@@ -164,6 +165,7 @@ for (const failure of [
     };
     const options = {
         poolId: "pool",
+        checkpointPackBytes: failure === "packed" ? DEFAULTS.maxObjectBytes : 0,
         approvedImages: [image],
         now: () => now,
         streamTransport: {

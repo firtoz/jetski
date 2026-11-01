@@ -1,5 +1,6 @@
 import { CheckpointCopy } from "./checkpoint-copy.js";
 import { CheckpointHistory } from "./checkpoint-history.js";
+import { checkpointArchive } from "./checkpoint-layout.js";
 import { CheckpointRegistry } from "./checkpoints.js";
 import { CommandOutputStore, type OutputChannel } from "./command-output.js";
 import {
@@ -45,7 +46,7 @@ import {
   TerminalInputJournal,
   terminalGeometry,
 } from "./terminal-input.js";
-import { CheckpointTransfer, parseArchive } from "./transfer.js";
+import { CheckpointTransfer } from "./transfer.js";
 import { HOST_PROTOCOL_VERSION, type HostTransport } from "./transport.js";
 import { UploadCoordinator } from "./uploads.js";
 
@@ -97,6 +98,8 @@ export type ManagerOptions = {
   workloadResources?: WorkloadResources;
   /** Explicit opt-in while automatic collection is awaiting release qualification. */
   automaticCollection?: boolean;
+  /** Optional physical packing target; zero retains per-frame storage. */
+  checkpointPackBytes?: number;
   hostsPerOwner?: number;
   now?: () => number;
   events?: EventSink;
@@ -137,6 +140,13 @@ export class SandboxManager {
       typeof options.automaticCollection !== "boolean"
     )
       throw Error("Invalid automatic collection policy");
+    const packBytes = options.checkpointPackBytes ?? 0;
+    if (
+      !Number.isSafeInteger(packBytes) ||
+      packBytes < 0 ||
+      packBytes > DEFAULTS.maxObjectBytes
+    )
+      throw Error("Invalid checkpoint pack target");
     this.resources = workloadResources(
       options.workloadResources === undefined
         ? DEFAULT_WORKLOAD_RESOURCES
@@ -221,7 +231,9 @@ export class SandboxManager {
       pool: this.pool,
       registry: this.checkpoints,
       objects,
-      transfer: new CheckpointTransfer(objects, this.checkpoints),
+      transfer: new CheckpointTransfer(objects, this.checkpoints, undefined, {
+        packBytes,
+      }),
       request: (lease, action, payload) => this.request(lease, action, payload),
       hostAbsent: async (lease) =>
         (await provider.inspect(lease.machineId)).state === "absent",
@@ -893,7 +905,7 @@ export class SandboxManager {
         .rootsIn(tx, fence)
         .find((root) => root.id === selected && root.retiredAt === null);
       if (!root) throw Error("Restore checkpoint unavailable");
-      parseArchive(root.metadata);
+      checkpointArchive(root);
       this.checkpoints.holdIn(tx, fence, id, selected);
       if (sandbox.lease) {
         const releaseId = crypto.randomUUID();

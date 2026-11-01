@@ -1,14 +1,13 @@
+import { checkpointLayout } from "./checkpoint-layout.js";
 import type { CheckpointRegistry } from "./checkpoints.js";
 import { encodeBase64 } from "./command-output.js";
 import type { CheckpointStore, Fence, Json } from "./contracts.js";
+import { sameObject } from "./inventory.js";
 import { validateRootPayload } from "./root-payload.js";
-import { parseArchive } from "./transfer.js";
 
-const sha = async (bytes: Uint8Array) =>
+const sha = async (bytes: Uint8Array<ArrayBuffer>) =>
   Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new Uint8Array(bytes).buffer),
-    ),
+    new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
     (b) => b.toString(16).padStart(2, "0"),
   ).join("");
 /** Restore only through a retained root with reader exclusion. The host verifies
@@ -26,9 +25,19 @@ export async function restoreCheckpoint(
     const root = await registry.root(fence, id);
     if (!root) throw Error("Checkpoint missing");
     validateRootPayload(root);
-    const archive = parseArchive(root.metadata);
-    if (root.frames.length !== archive.frames.length)
-      throw Error("Restore frame count mismatch");
+    const layout = checkpointLayout(root),
+      archive = layout.archive;
+    const identities = new Map<string, (typeof root.frames)[number]>();
+    for (const object of root.frames) {
+      const previous = identities.get(object.id);
+      if (
+        object.owner !== fence.owner ||
+        object.sandbox !== fence.sandbox ||
+        (previous && !sameObject(previous, object))
+      )
+        throw Error("Restore object mismatch");
+      identities.set(object.id, object);
+    }
     const receipt = await request("import-begin", {
       checkpointId: id,
       sha256: archive.sha256,
@@ -101,29 +110,56 @@ export async function restoreCheckpoint(
         throw Error("Invalid import chunk acknowledgement");
       buffered = 0;
     };
-    for (let index = 0; index < root.frames.length; index++) {
-      const frame = root.frames[index]!,
-        expected = archive.frames[index]!;
-      if (
-        frame.owner !== fence.owner ||
-        frame.sandbox !== fence.sandbox ||
-        frame.bytes !== expected.bytes ||
-        frame.sha256 !== expected.sha256
-      )
-        throw Error("Restore object mismatch");
-      const frameStart = frameOffset;
-      frameOffset += frame.bytes;
-      if (frameOffset <= resumeOffset) continue;
-      const full = new Uint8Array(frame.bytes);
+    const cache = new Map<string, Uint8Array<ArrayBuffer>>();
+    const lastUse = new Map<string, number>();
+    for (const [index, segment] of layout.segments.entries())
+      lastUse.set(root.frames[segment.object]!.id, index);
+    const load = async (
+      object: (typeof root.frames)[number],
+      index: number,
+    ) => {
+      // Drop an exhausted sequential pack before evicting one whose members
+      // recur later. Sparse changed packs can then share the two-object cache.
+      for (const key of cache.keys())
+        if (lastUse.get(key)! < index) cache.delete(key);
+      const cached = cache.get(object.id);
+      if (cached) {
+        cache.delete(object.id);
+        cache.set(object.id, cached);
+        return cached;
+      }
+      const full = new Uint8Array(object.bytes);
       let filled = 0;
-      for await (const part of objects.read(frame)) {
-        if (filled + part.length > full.length)
+      for await (const part of objects.read({
+        owner: object.owner,
+        sandbox: object.sandbox,
+        id: object.id,
+      })) {
+        if (!(part instanceof Uint8Array) || filled + part.length > full.length)
           throw Error("Restore object grew");
         full.set(part, filled);
         filled += part.length;
       }
-      if (filled !== full.length || (await sha(full)) !== frame.sha256)
+      if (filled !== full.length || (await sha(full)) !== object.sha256)
         throw Error("Restore integrity failure");
+      cache.set(object.id, full);
+      while (cache.size > 2) cache.delete(cache.keys().next().value!);
+      return full;
+    };
+    for (let index = 0; index < archive.frames.length; index++) {
+      const expected = archive.frames[index]!,
+        segment = layout.segments[index]!;
+      const frame = root.frames[segment.object]!;
+      const frameStart = frameOffset;
+      frameOffset += expected.bytes;
+      if (frameOffset <= resumeOffset) continue;
+      const physical = await load(frame, index);
+      const full = physical.subarray(
+        segment.offset,
+        segment.offset + expected.bytes,
+      );
+      if (layout.packed && (await sha(full)) !== expected.sha256)
+        throw Error("Restore slice integrity failure");
       let position = Math.max(0, resumeOffset - frameStart);
       // Only fully hash-verified frames enter the bounded transport buffer.
       // Coalesce frame tails instead of paying a control round trip for each.

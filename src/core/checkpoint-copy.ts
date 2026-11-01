@@ -1,3 +1,4 @@
+import { checkpointArchive } from "./checkpoint-layout.js";
 import { type CheckpointRegistry, type CheckpointRoot } from "./checkpoints.js";
 import {
   type CheckpointStore,
@@ -10,7 +11,6 @@ import {
   type Transaction,
 } from "./contracts.js";
 import { validateRootPayload } from "./root-payload.js";
-import { parseArchive } from "./transfer.js";
 
 export type CheckpointCopyRecord = {
   source: Fence;
@@ -76,7 +76,7 @@ export class CheckpointCopy {
         .find((root) => root.id === rootId && root.retiredAt === null);
       if (!root) throw Error("Copy source checkpoint unavailable");
       validateRootPayload(root);
-      parseArchive(root.metadata);
+      checkpointArchive(root);
       if (
         root.frames.some(
           (frame) =>

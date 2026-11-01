@@ -62,6 +62,21 @@ async function sha(bytes: Uint8Array<ArrayBuffer>) {
   ).join("");
 }
 
+export function wholeObjectProof(
+  object: ObjectInfo,
+  ranges: readonly ObjectRange[],
+): boolean {
+  return (
+    ranges.length > 0 &&
+    ranges.every(
+      (range) =>
+        range.start === 0 &&
+        range.endExclusive === object.bytes &&
+        range.sha256 === object.sha256,
+    )
+  );
+}
+
 /** A pack hash cannot prove a logical slice hash. Every adapter must either
  * verify both or use this bounded portable fallback before publication. */
 export async function verifyObjectRanges(
@@ -91,6 +106,12 @@ export async function verifyObjectRanges(
     sandbox: expected.sandbox,
     id: expected.id,
   };
+  if (wholeObjectProof(expected, ranges)) {
+    const verified = await store.head(address);
+    if (!verified || !sameObject(verified, expected))
+      throw Error("Object range integrity failure");
+    return;
+  }
   if (store.verifyRanges) {
     const verified = await store.verifyRanges(
       address,

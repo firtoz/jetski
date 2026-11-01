@@ -45,6 +45,7 @@ if (command === "serve") {
     automaticCollection?: boolean;
     port?: number;
     hostsPerOwner?: number;
+    checkpointPackBytes?: number;
     sshGateway?: {
       hostKeyPath: string;
       host?: string;
@@ -98,6 +99,9 @@ if (command === "serve") {
         ? { workloadResources: config.workloadResources }
         : {}),
       hostsPerOwner: config.hostsPerOwner ?? 1,
+      ...(config.checkpointPackBytes !== undefined
+        ? { checkpointPackBytes: config.checkpointPackBytes }
+        : {}),
       ...(config.automaticCollection !== undefined
         ? { automaticCollection: config.automaticCollection }
         : {}),

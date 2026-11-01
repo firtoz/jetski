@@ -1,3 +1,7 @@
+import {
+  checkpointArchive,
+  checkpointObjectRanges,
+} from "./checkpoint-layout.js";
 import type { CheckpointRegistry } from "./checkpoints.js";
 import { decodeBase64 } from "./command-output.js";
 import {
@@ -155,12 +159,13 @@ export class ShutdownCoordinator {
       registry.validatedRootIn(tx, fence, input.checkpointId),
     );
     if (!root) throw Error("Recovery checkpoint unavailable");
-    parseArchive(root.metadata);
+    checkpointArchive(root);
     await verifyCheckpointObjects(
       objects,
       fence,
       root.frames,
       "Recovery checkpoint integrity failure",
+      checkpointObjectRanges([root]),
     );
     if (!(await this.deps.hostAbsent(input.lease)))
       throw Error("Source absence not established");
@@ -346,13 +351,17 @@ export class ShutdownCoordinator {
       // Recheck retained metadata before each cleanup continuation, including restart.
       if (["remove", "release", "purge", "finish"].includes(record.stage)) {
         const root = await registry.root(fence, record.id);
-        if (!root || canonical(root.metadata) !== canonical(record.archive))
+        if (
+          !root ||
+          canonical(checkpointArchive(root)) !== canonical(record.archive)
+        )
           throw Error("Durable publication unavailable");
         await verifyCheckpointObjects(
           this.deps.objects,
           fence,
           root.frames,
           "Published checkpoint integrity failure",
+          checkpointObjectRanges([root]),
         );
       }
       if (record.stage === "remove") {
