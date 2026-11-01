@@ -22,7 +22,11 @@ export {
 } from "./shutdown.js";
 export * from "./stream-protocol.js";
 export * from "./streams.js";
-export type { TerminalGeometry, TerminalInput } from "./terminal-input.js";
+export {
+  type TerminalGeometry,
+  type TerminalInput,
+  TerminalInputNotFound,
+} from "./terminal-input.js";
 export * from "./transfer.js";
 export * from "./transport.js";
 export * from "./uploads.js";
