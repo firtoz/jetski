@@ -168,9 +168,14 @@ try {
     false,
     "Fault must follow successful installation",
   );
-  await new BoatBootstrap(state, api, "ci", [
-    process.env.JETSKI_TEST_IMAGE!,
-  ]).ensure("bx_ci");
+  await new BoatBootstrap(
+    state,
+    api,
+    "ci",
+    [process.env.JETSKI_TEST_IMAGE!],
+    "none",
+    storageMode,
+  ).ensure("bx_ci");
   assert.equal((await run(["stat", "-c", "%u", "/opt"])).stdout.trim(), "0");
   const callsAfterBootstrap = commandCalls;
   await bootstrap.ensure("bx_ci");
@@ -180,9 +185,14 @@ try {
     "Completed bootstrap must not reinstall",
   );
   await assert.rejects(
-    new BoatBootstrap(state, api, "other", [
-      process.env.JETSKI_TEST_IMAGE!,
-    ]).ensure("bx_ci"),
+    new BoatBootstrap(
+      state,
+      api,
+      "other",
+      [process.env.JETSKI_TEST_IMAGE!],
+      "none",
+      storageMode,
+    ).ensure("bx_ci"),
     /identity changed/,
   );
   const transport = new BoatTransport(state, api);
