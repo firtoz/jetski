@@ -564,3 +564,13 @@ acknowledgements emit nothing, and a controller crash can lose an observation.
 Use persisted operation status for recovery or billing. Sink exceptions/rejections
 are ignored; use a nonblocking queue and report exporter failures in your adapter.
 No telemetry service or network export is enabled by default.
+
+### Command lifetime admission
+
+New commands and terminals must fit their requested timeout plus the checkpoint
+drain interval within the assigned host lifetime. Admission checks the exact
+active lease transactionally and rejects insufficient headroom before dispatch.
+Reconnecting to an existing command still observes its recorded identity.
+This is a scheduling bound, not a guarantee that a checkpoint of any size can be
+saved before provider expiry; uncertain saves remain quarantined and unpublished
+changes are not promised durable.

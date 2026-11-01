@@ -135,7 +135,8 @@ test("command cancellation survives controller restart before dispatch and after
       return { version: 1 as const, id: request.id, result: { phase } };
     },
   };
-  const options = { poolId: "pool", approvedImages: [image] };
+  let clock = 1;
+  const options = { poolId: "pool", approvedImages: [image], now: () => clock };
   let manager = new SandboxManager(
     state,
     provider,
@@ -179,4 +180,35 @@ test("command cancellation survives controller restart before dispatch and after
     "observed terminal outcome does not repeat cancellation",
   );
   assert.equal(starts, 1, "recovery must never restart the command");
+  statusFails = false;
+  clock += DEFAULTS.hostLifetimeMs - DEFAULTS.hostDrainMs - 120_000;
+  const denied = randomUUID();
+  await assert.rejects(
+    manager.startCommand(scope, denied, ["sleep", "120"]),
+    /Insufficient host lifetime/,
+  );
+  await assert.rejects(
+    manager.startTerminal(scope, randomUUID(), ["sh"]),
+    /Insufficient host lifetime/,
+  );
+  await assert.rejects(
+    manager.startCommand(scope, randomUUID(), ["true"], "/workspace", NaN),
+    /Invalid command timeout/,
+  );
+  assert.equal(starts, 1, "denied work never crosses the host boundary");
+  assert.equal(
+    await state.transaction((tx) =>
+      tx.get(`command/${scope.owner}/${scope.sandbox}/${denied}`),
+    ),
+    undefined,
+  );
+  assert.deepEqual(
+    await manager.startCommand(scope, command, ["sleep", "120"]),
+    { phase: "cancelled" },
+  );
+  assert.equal(
+    starts,
+    1,
+    "existing command replay remains observation after expiry",
+  );
 });

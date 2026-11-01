@@ -92,6 +92,28 @@ export class PoolJournal {
       throw new Error("Stale host lease");
     return slot;
   }
+  /** Check in the same transaction that persists command admission. */
+  admitExecutionIn(
+    tx: Transaction,
+    lease: HostLease,
+    timeoutSeconds: number,
+  ): void {
+    if (
+      !Number.isSafeInteger(timeoutSeconds) ||
+      timeoutSeconds < 1 ||
+      timeoutSeconds > 3600
+    )
+      throw new Error("Invalid command timeout");
+    const slot = this.exact(tx, lease);
+    if (slot.phase !== "active") throw new Error("Host assignment not active");
+    if (
+      slot.expiresAt <=
+      this.now() + timeoutSeconds * 1000 + DEFAULTS.hostDrainMs
+    )
+      throw new Error(
+        "Insufficient host lifetime for command and checkpoint drain",
+      );
+  }
   async enqueue(
     owner: string,
     sandboxId: string,

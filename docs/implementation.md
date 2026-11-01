@@ -77,6 +77,8 @@ selects acknowledged data and discloses unavailable unpublished changes.
 Host runtime composition now has explicit lifecycle/execution contracts shared by
 control, command workers and forwarding. Podman remains the only supplied backend;
 bootstrap capability negotiation and the full runtime conformance audit remain open.
+New command admission reserves the existing checkpoint drain interval before host
+expiry; measured save headroom and full hosted lifetime qualification remain open.
 See [qualification evidence](qualification.md).
 
 ## Next steps

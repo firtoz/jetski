@@ -1023,6 +1023,7 @@ export class SandboxManager {
       const sandbox = tx.get<Sandbox>(this.key(scope));
       if (!sandbox?.lease || sandbox.phase !== "running")
         throw new Error("Sandbox not running");
+      this.pool.admitExecutionIn(tx, sandbox.lease, timeout);
       const record: CommandRecord = {
         terminal,
         id,
