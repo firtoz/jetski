@@ -143,6 +143,24 @@ speedups. This test allocates no execution host and does not prove physical VM
 replacement or real-grace garbage collection. CI runs the local storage path;
 private receipts retain the live R2 evidence.
 
+## Conditional object verification
+
+The S3 adapter keeps a bounded process-local cache of SHA-256-verified object
+receipts. Repeated observations use conditional GET with a strong ETag; only a
+304 for a still-valid receipt avoids downloading the body. ETags are provider
+validators, not integrity hashes. New upload readback, restores, changed objects
+and the first observation after restart still download and hash the complete object.
+Missing or weak validators fall back to complete reads. Set `verifiedCacheEntries`
+to zero to disable this optimization for providers without qualified validators.
+
+November 1 wire tests cover corrupt data, ignored conditions, eviction, restart,
+weak validators, unsolicited 304 responses and deletion during an observation.
+Live R2 returned body-free 304 responses for repeated checks of a verified 1 MiB
+object, and exact restore, fresh-client verification and the functional storage
+conformance suite passed. Fixture object cleanup passed; identity reservations
+remain intentionally retained. This does not yet establish end-to-end save latency
+or qualify other providers' conditional-read consistency.
+
 ## Real-grace R2 collection
 
 An independent fixture was prepared with real wall-clock retirement and an intact,

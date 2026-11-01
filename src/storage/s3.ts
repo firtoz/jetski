@@ -23,7 +23,11 @@ export type S3StoreOptions = {
   maxBytes?: number;
   timeoutMs?: number;
   listPageSize?: number;
+  /** Bounded, process-local receipts; zero disables conditional verification. */
+  verifiedCacheEntries?: number;
 };
+type VerifiedObject = { info: ObjectInfo; etag: string };
+
 /** Dedicated namespace; credentials belong only to the controller. Reservations
  * are permanent and must never be removed by bucket lifecycle rules or collection.
  * Reads verify complete bounded objects before returning even a requested range. */
@@ -31,6 +35,8 @@ export class S3CheckpointStore implements CheckpointStore {
   private maxBytes: number;
   private timeoutMs: number;
   private listPageSize: number;
+  private verifiedCacheEntries: number;
+  private verified = new Map<string, VerifiedObject>();
   constructor(
     private client: Pick<S3Client, "send">,
     private options: S3StoreOptions,
@@ -48,6 +54,13 @@ export class S3CheckpointStore implements CheckpointStore {
     this.maxBytes = options.maxBytes ?? DEFAULTS.maxObjectBytes;
     this.timeoutMs = options.timeoutMs ?? 30000;
     this.listPageSize = options.listPageSize ?? 1000;
+    this.verifiedCacheEntries = options.verifiedCacheEntries ?? 1024;
+    if (
+      !Number.isSafeInteger(this.verifiedCacheEntries) ||
+      this.verifiedCacheEntries < 0 ||
+      this.verifiedCacheEntries > 10000
+    )
+      throw Error("Invalid verification cache bound");
     if (
       !Number.isSafeInteger(this.listPageSize) ||
       this.listPageSize < 1 ||
@@ -128,7 +141,8 @@ export class S3CheckpointStore implements CheckpointStore {
       }),
       this.signal(),
     );
-    const verified = await this.head(address);
+    // Every successful new upload receives a full byte/hash readback.
+    const verified = (await this.fetch(address))?.info;
     if (
       !verified ||
       verified.bytes !== length ||
@@ -139,17 +153,35 @@ export class S3CheckpointStore implements CheckpointStore {
   }
   private async fetch(
     address: ObjectAddress,
-  ): Promise<{ info: ObjectInfo; bytes: Buffer } | undefined> {
+    prior?: VerifiedObject,
+  ): Promise<{ info: ObjectInfo; bytes?: Buffer } | undefined> {
+    const key = this.key(address);
     let response;
     try {
       response = await this.client.send(
         new GetObjectCommand({
           Bucket: this.options.bucket,
-          Key: this.key(address),
+          Key: key,
+          ...(prior ? { IfNoneMatch: prior.etag } : {}),
         }),
         this.signal(),
       );
     } catch (error) {
+      if (prior && error && typeof error === "object" && "$metadata" in error) {
+        const metadata = error.$metadata;
+        if (
+          metadata &&
+          typeof metadata === "object" &&
+          "httpStatusCode" in metadata &&
+          metadata.httpStatusCode === 304
+        ) {
+          if (this.verified.get(key) !== prior)
+            throw Error("Verification invalidated during observation");
+          this.remember(key, prior);
+          return { info: { ...prior.info } };
+        }
+      }
+      this.verified.delete(key);
       // A missing bucket, denied request or generic proxy 404 is not missing data.
       if (
         error &&
@@ -161,8 +193,10 @@ export class S3CheckpointStore implements CheckpointStore {
       throw error;
     }
     const body = response.Body;
-    if (!(body instanceof Readable))
+    if (!(body instanceof Readable)) {
+      this.verified.delete(key);
       throw Error("Node readable response required");
+    }
     const timeout = setTimeout(
       () => body.destroy(Error("Object read deadline exceeded")),
       this.timeoutMs,
@@ -193,24 +227,43 @@ export class S3CheckpointStore implements CheckpointStore {
       }
       if (length !== bytes || hash.digest("hex") !== metadata.sha256)
         throw Error("Stored object integrity mismatch");
-      return {
-        info: { ...address, bytes, sha256: metadata.sha256! },
-        bytes: Buffer.concat(chunks),
-      };
+      const info = { ...address, bytes, sha256: metadata.sha256! };
+      this.verified.delete(key);
+      // Only strong, bounded entity tags from a fully hashed response qualify.
+      // ETags are validators, never substitutes for the SHA-256 integrity check.
+      if (
+        typeof response.ETag === "string" &&
+        /^"[\x21\x23-\x7e]{1,256}"$/.test(response.ETag)
+      )
+        this.remember(key, { info: { ...info }, etag: response.ETag });
+      return { info, bytes: Buffer.concat(chunks) };
+    } catch (error) {
+      this.verified.delete(key);
+      throw error;
     } finally {
       clearTimeout(timeout);
       body.destroy();
     }
   }
+  private remember(key: string, value: VerifiedObject) {
+    if (!this.verifiedCacheEntries) return;
+    this.verified.delete(key);
+    this.verified.set(key, value);
+    while (this.verified.size > this.verifiedCacheEntries) {
+      const oldest = this.verified.keys().next().value;
+      if (oldest !== undefined) this.verified.delete(oldest);
+    }
+  }
   async head(address: ObjectAddress): Promise<ObjectInfo | undefined> {
-    return (await this.fetch(address))?.info;
+    return (await this.fetch(address, this.verified.get(this.key(address))))
+      ?.info;
   }
   async *read(
     address: ObjectAddress,
     range?: { start: number; endExclusive: number },
   ): ByteStream {
     const object = await this.fetch(address);
-    if (!object) throw Error("Object unavailable");
+    if (!object?.bytes) throw Error("Object unavailable");
     const start = range?.start ?? 0,
       end = range?.endExclusive ?? object.info.bytes;
     if (
@@ -277,6 +330,7 @@ export class S3CheckpointStore implements CheckpointStore {
   }
   /** Only the core's fenced collector may invoke deletion. Identity stays reserved. */
   async delete(address: ObjectAddress): Promise<void> {
+    this.verified.delete(this.key(address));
     await this.client.send(
       new DeleteObjectCommand({
         Bucket: this.options.bucket,

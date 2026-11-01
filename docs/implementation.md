@@ -81,9 +81,11 @@ separate recovery experiment and budget while completing them.
 
 ## Next steps
 
-1. Reduce the verified R2 read amplification found in the
-   [default-configuration comparison](benchmarks.md), then repeat the hosted
+1. Conditional reads now avoid repeat body downloads for process-local, previously
+   hash-verified objects; wire fault tests and live R2 conformance pass. Repeat the hosted
    comparison with equal workload resource limits and frozen workload/oracles.
+   The [default-configuration comparison](benchmarks.md) remains the recorded baseline;
+   no end-to-end improvement is established yet.
 2. Finish active browser terminal/preview checks and the restart, rollback,
    isolation, cleanup and host-lifetime audits. The sleeping workspace UI is verified.
 3. Complete real-grace collection and retained-checkpoint recovery without changing
