@@ -44,7 +44,7 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 | Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                     |
 | Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                       |
 | Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                   |
-| Client integration               | Pinned artifact and downstream lifecycle adapters; scoped live qualification begun           | Complete client workflow and replacement recovery through the pinned dependency  |
+| Client integration               | Pinned artifact; live read/edit/publication, source-deleted recovery and resumed work pass   | Interactive client integration, lifecycle audit and final rollout qualification  |
 | Benchmarks and release           | Per-fixture measurements and preserved failures                                              | Matched comparison, owned-resource cleanup, documented limits and green final CI |
 
 ## Current work
@@ -64,15 +64,20 @@ Embedding support and built-package consumption passed CI, and initial
 client-side state/storage and lifecycle adapters pass local contracts. After the
 native edge fetch correction, scoped hosted preparation executed and published a
 checkpoint matching an independently observed source-archive identity; its host was
-retired. Full downstream workflow and filesystem replacement proof remain open.
+retired. The downstream read/edit/publication workflow and source-deleted filesystem
+replacement now pass. Resumed application work confirms the published revision and
+unchanged working tree using the retained session. Interactive integration remains open.
 Bounded parallel range reads passed a focused live comparison; whole-workload
 measurements remain required. The separate paid-host allowance is approved.
 Optional lifecycle observations report redacted phases and timings. Remaining gates
 include real-grace collection, matched hosted measurements and staging integration.
 Explicit recovery after confirmed host loss covers interrupted saves and placements
 with local restart and HTTP/SDK fault tests. A hosted selected checkpoint also
-passed an independent filesystem comparison; container startup and the complete
-downstream workflow remain open. Recovery retains the original uncertain outcome,
+passed an independent filesystem comparison. A fresh FUSE-overlay host now also
+completes the downstream publication workflow. After durable publication and source
+deletion, the replacement matches all 156 filesystem entries and 322,806,090 bytes,
+including modes and symlinks (this fixture has no hardlink groups). Recovery retains
+the original uncertain outcome,
 selects acknowledged data and discloses unavailable unpublished changes.
 Host runtime composition now has explicit lifecycle/execution contracts shared by
 control, command workers and forwarding. Podman remains the only supplied backend;
@@ -87,8 +92,10 @@ commands and receipt writes. Slow-storage startup and its hosted recovery remain
 unqualified; transport expiry still preserves an uncertain operation.
 An explicit fresh-store FUSE-overlay bootstrap option is implemented with
 configuration/replay guards. All seven CI jobs pass, including disposable SSH
-and Boat-adapter FUSE qualification and lost-acknowledgement replay. Hosted
-qualification and performance comparisons remain open. Host bundle changes
+and Boat-adapter FUSE qualification and lost-acknowledgement replay. A hosted
+replacement reached container execution, completed publication and passed an exact
+post-publication filesystem replacement oracle. Resumed application work also
+passes; matched performance comparisons remain open. Host bundle changes
 require draining old assignments before replacement; see [runtime configuration](runtime.md).
 Embedded transactional admission can now inspect owner-scoped sandbox state in
 the caller transaction without depending on internal keys. Client access wiring
