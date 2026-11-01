@@ -94,16 +94,16 @@ The already-running hosted comparison may finish and must clean its owned hosts.
 
 ## Next steps
 
-1. Finish the finite implementation audit and missing contracts in
-   [implementation closure](implementation-checklist.md). Durable opt-in standalone
-   collection is implemented; restart/fencing and real-collector tests pass.
-2. Finish API/SDK parity, embedded scheduling, runtime/policy and client rollback
-   source audits, then update the pinned staging artifact and freeze a candidate.
-3. Execute the consolidated release gates: active browser interaction, recovery,
-   lifecycle/isolation, real-grace collection, artifact provenance and final CI.
+1. Implementation candidate: public runtime `4187272`, qualification artifact 17,
+   and the published client pin/idle-maintenance integration. The finite source
+   checklist has implementations for all approved v1 areas; release acceptance is open.
+2. Execute one consolidated pass using the existing acceptance matrix and prior
+   valid evidence: exact-SHA CI, active browser interaction, lifecycle/isolation,
+   replacement recovery, real-grace GC, package provenance and cleanup accounting.
+3. Fix observed failures or omitted approved contracts, repeat affected checks,
+   then close the acceptance matrix. Do not add optional implementation or tuning.
 4. The equal-resource twenty-trial benchmark is complete; all recovery checks passed
-   and owned hosts are retired. Preserve the [measured limits](benchmarks.md), finish
-   cost accounting and cleanup reconciliation, then close the acceptance matrix.
+   and owned hosts are retired. Preserve the [measured limits](benchmarks.md).
 
 ## Keeping this plan useful
 
