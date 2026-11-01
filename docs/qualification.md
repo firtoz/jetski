@@ -201,5 +201,22 @@ A native Workers-runtime fixture reproduced that failure and also exposed unsupp
 class receiver, use manual redirects and reject redirect responses without following
 the destination. Rejected response bodies are released. Unit tests cover both
 receiver-sensitive implementations and redirect refusal; the native runtime fixture
-passes with external networking blocked. Hosted retry and replacement qualification
-remain required before counting the embedded workflow as passed.
+passes with external networking blocked. A subsequent hosted preparation executed,
+published an 897,443,388-byte checkpoint matching an independently hashed source
+archive, and released its host. This verifies archive identity and publication;
+full filesystem replacement and the downstream workflow remain open.
+
+## Bounded parallel checkpoint reads
+
+Commit `3f9db3f` passed [all five CI jobs](https://github.com/firtoz/jetski/actions/runs/41278043369).
+Checkpoint transfer can overlap four immutable 256 KiB reads, retaining ordered
+output, a 1 MiB batch bound and failure draining. Custom archive sources stay serial
+unless explicitly opted in. Existing integrity and publication checks remain.
+
+A live Boat probe alternated ten serial/four-way pairs over the same 1 MiB archive
+range. All twenty reads had identical hashes. Median read time was 1,012 ms serial
+and 407 ms parallel; the median paired time ratio was 0.400. Each arm made forty
+provider requests, with no new host starts. A background checkpoint save was active.
+This is a transport latency result, not a complete save, restore or session benchmark.
+Private receipts preserve failed probe setup attempts separately from the completed
+matrix. Full matched end-to-end qualification is still required.

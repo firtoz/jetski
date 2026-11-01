@@ -61,12 +61,15 @@ Explicit operator-selected outbound networking passed all five CI jobs, includin
 real outbound access and host-loopback denial on a disposable rootless host.
 Networking stays disabled by default; broader destination filtering is external.
 Embedding support and built-package consumption passed CI, and initial
-client-side state/storage and lifecycle adapters pass local contracts. Scoped live
-admission exposed native edge fetch incompatibilities; the corrected built artifact
-passes a native Workers-runtime fixture and awaits hosted requalification. The separate paid-host
-allowance is approved. Optional post-commit lifecycle observations now expose redacted phase events and
-operation timings without making telemetry part of execution success. Remaining gates include real-grace collection, matched
-hosted measurements and staging integration. See [qualification evidence](qualification.md).
+client-side state/storage and lifecycle adapters pass local contracts. After the
+native edge fetch correction, scoped hosted preparation executed and published a
+checkpoint matching an independently observed source-archive identity; its host was
+retired. Full downstream workflow and filesystem replacement proof remain open.
+Bounded parallel range reads passed a focused live comparison; whole-workload
+measurements remain required. The separate paid-host allowance is approved.
+Optional lifecycle observations report redacted phases and timings. Remaining gates
+include real-grace collection, matched hosted measurements and staging integration.
+See [qualification evidence](qualification.md).
 
 ## Next steps
 
