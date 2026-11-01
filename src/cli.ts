@@ -307,6 +307,15 @@ if (command === "serve") {
         `/v1/sandboxes/${required(positionals[1], "sandbox ID")}`,
       );
       break;
+    case "copy":
+      result = await client.copyCheckpoint(
+        required(values.id, "--id"),
+        required(values.image, "--image"),
+        required(values.operation, "--operation"),
+        required(positionals[1], "source sandbox ID"),
+        required(values.checkpoint, "--checkpoint"),
+      );
+      break;
     case "create":
       result = await client.request("/v1/sandboxes", "POST", {
         id: required(values.id, "--id"),

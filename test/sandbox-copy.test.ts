@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
 import { CheckpointRegistry } from "../src/core/checkpoints.js";
 import type { HostProvider, Json } from "../src/core/contracts.js";
@@ -195,6 +197,24 @@ test("checkpoint-backed sandbox admission, restart, cancellation and explicit re
     ),
     /unavailable/,
   );
+  const replay = await promisify(execFile)(
+    process.execPath,
+    [
+      "dist/cli.js",
+      "copy",
+      source.sandbox,
+      "--id",
+      id,
+      "--image",
+      image,
+      "--operation",
+      operation,
+      "--checkpoint",
+      checkpointId,
+    ],
+    { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
+  );
+  assert.equal(JSON.parse(replay.stdout).phase, "copying");
   const outsider = new JetskiClient(url, "b".repeat(32));
   await assert.rejects(
     outsider.copyCheckpoint(

@@ -510,3 +510,8 @@ retained history independently of the source. It does not share command history.
 Deletion during copying records cancellation and waits for the durable outcome;
 a publication that wins that race remains acknowledged history. This is a
 filesystem copy, not a memory snapshot or an automatically running clone.
+
+The thin CLI exposes the same admission with
+`jetski copy SOURCE --checkpoint ROOT --id DESTINATION --operation UUID --image DIGEST`.
+Replaying the same arguments observes the existing copy; use a separate stable
+operation ID for `jetski resume DESTINATION --operation UUID`.

@@ -1140,6 +1140,25 @@ try {
     (await client.operation(copied, copyOperation)).phase,
     "succeeded",
   );
+  const replayCopy = await promisify(execFile)(
+    process.execPath,
+    [
+      "dist/cli.js",
+      "copy",
+      id,
+      "--id",
+      copied,
+      "--image",
+      image,
+      "--operation",
+      copyOperation,
+      "--checkpoint",
+      stopId,
+    ],
+    { env: { ...process.env, JETSKI_URL: url, JETSKI_TOKEN: token } },
+  );
+  assert.equal(JSON.parse(replayCopy.stdout).phase, "stopped");
+
   assert.equal(
     (await client.request<Sandbox>(`/v1/sandboxes/${copied}`)).phase,
     "stopped",
