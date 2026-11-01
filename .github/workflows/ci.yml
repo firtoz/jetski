@@ -13,6 +13,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Install exact Git commit in an independent consumer
+        run: |
+          mkdir -p "$RUNNER_TEMP/jetski-consumer"
+          npm install --prefix "$RUNNER_TEMP/jetski-consumer" "git+https://github.com/firtoz/jetski.git#${{ github.sha }}"
+          node --input-type=module -e 'import {createRequire} from "node:module";import {pathToFileURL} from "node:url";const require=createRequire(process.argv[1]+"/package.json");for(const name of ["jetski/core","jetski/sdk"]){const m=await import(pathToFileURL(require.resolve(name)).href);if(!Object.keys(m).length)throw Error("Missing entrypoint");}' "$RUNNER_TEMP/jetski-consumer"
       - run: npm run typecheck
       - run: npm test
       - name: Qualify isolated browser preview sessions

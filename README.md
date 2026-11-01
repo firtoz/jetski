@@ -30,3 +30,12 @@ qualify replacement hosts, remote checkpoint stores, networking or the server AP
 The initial [standalone server and CLI](docs/standalone.md) support queued creation
 and command execution over an adopted SSH host. [OpenAPI](docs/openapi.json) covers
 currently implemented routes. Full lifecycle and interactive APIs remain in progress.
+
+## Pinned client dependency
+
+Before an npm release, clients can depend on a reviewed full Git commit:
+`npm install git+https://github.com/firtoz/jetski.git#<full-commit-sha>`. The Git
+prepare hook builds the exported JavaScript and declarations. Import `jetski/core`
+or `jetski/sdk` without loading provider SDKs, SSH servers or SQLite. CI verifies
+installation from its exact commit into an independent consumer. Use sibling-path
+links only for development; retain the pinned version in the client's lockfile.
