@@ -239,3 +239,14 @@ or still-ready provider state, corrupt storage, stale lease/generation, concurre
 readers and cross-owner requests are rejected. Registry tests also cover unrelated
 writers, unidentified writers, retired roots and transaction rollback. This does
 not establish that unpublished source bytes survived a real provider expiry.
+
+## Control-process loss
+
+A local fault experiment killed the control process while a host command was
+running. The original parent-only timeout left its child alive beyond the deadline.
+Host commands now run under an independent process-group deadline watchdog. Tests
+kill the controller and verify both the child and a descendant that ignores TERM
+are gone, while preserving normal exit/output and output-size bounds. This does
+not prove the outcome of a container operation or terminate detached workloads;
+creation uncertainty still requires reconciliation. Hosted qualification of the
+watchdog remains open.

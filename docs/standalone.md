@@ -11,7 +11,8 @@ or the [Boat configuration](boat.md#automatic-owned-machine-bootstrap) for autom
 owned-machine bootstrap. The instructions below describe the SSH path.
 
 Install Node from `.nvmrc`, then `npm ci && npm run build`. Prepare a dedicated
-Linux x86-64 host with rootless Podman prerequisites. As an operator on that host,
+Linux x86-64 host with rootless Podman prerequisites and GNU coreutils `timeout`.
+As an operator on that host,
 run `python3 host/bootstrap.py --config /path/to/host.json`; its configuration has
 `version: 1`, `machineId`, `poolId`, and an explicit `images` digest allowlist.
 The machine ID must match the SSH host ID and pool ID must match the server.
@@ -50,7 +51,11 @@ A server worker progresses queued work without an open browser. Its durable pool
 ledger reserves one host per owner by default and queues excess assignments.
 Unknown host effects quarantine the assignment; automatic recovery of every
 interrupted lifecycle stage is still being implemented. Do not retry uncertain
-commands with a new command ID.
+commands with a new command ID. Host-side administrative commands have an
+independent deadline watchdog: loss of the control process does not remove their
+timeout. This bounds the command process group; it does not prove a container
+creation or other remote effect failed. Uncertain effects still require observation
+and lifecycle reconciliation.
 
 `checkpoint ID --operation UUID` stops execution, retains terminal command output
 and publishes the persistent filesystem while retaining the host assignment.

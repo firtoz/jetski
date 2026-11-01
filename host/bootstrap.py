@@ -72,7 +72,16 @@ def bootstrap(config):
             r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image
         ):
             raise ValueError("digest_pinned_image_required")
-    for tool in ("podman", "newuidmap", "newgidmap", "runuser", "useradd", "loginctl", "systemctl"):
+    for tool in (
+        "podman",
+        "newuidmap",
+        "newgidmap",
+        "runuser",
+        "useradd",
+        "loginctl",
+        "systemctl",
+        "timeout",
+    ):
         if shutil.which(tool) is None:
             raise ValueError("missing_prerequisite:" + tool)
     if config.get("networkMode", "none") == "egress" and shutil.which("slirp4netns") is None:

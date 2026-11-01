@@ -1,6 +1,7 @@
 """Privileged host plumbing. Keep outside containers and writable workload paths."""
 
 import json
+import math
 import os
 import pathlib
 import platform
@@ -94,9 +95,17 @@ def runtime_argv(account):
 
 
 def bounded_command(argv, root, timeout=120, max_output=MAX_OUTPUT):
+    if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("invalid_host_command_timeout")
+    watchdog = shutil.which("timeout", path="/usr/bin:/bin")
+    if watchdog is None:
+        raise ValueError("host_command_watchdog_unavailable")
+    # The control process may be killed by its transport before our finally block.
+    # GNU timeout owns the same process group and enforces the deadline independently.
+    # SIGKILL also removes descendants that ignore termination; never use --foreground.
     with tempfile.TemporaryFile(dir=root) as out, tempfile.TemporaryFile(dir=root) as err:
         proc = subprocess.Popen(
-            argv,
+            [watchdog, "--signal=KILL", "--", str(timeout) + "s", *argv],
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=err,
@@ -117,8 +126,13 @@ def bounded_command(argv, root, timeout=120, max_output=MAX_OUTPUT):
                 time.sleep(0.01)
         finally:
             if proc.poll() is None:
-                os.killpg(proc.pid, signal.SIGKILL)
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 proc.wait(timeout=10)
+        if proc.returncode == -signal.SIGKILL and time.monotonic() >= deadline:
+            raise TimeoutError("host_command_timeout")
         out.seek(0)
         err.seek(0)
         stdout, stderr = out.read(max_output + 1), err.read(max_output + 1)
