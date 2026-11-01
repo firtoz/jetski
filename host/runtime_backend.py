@@ -5,6 +5,7 @@ The control plane and host journals retain lease, publication and replay authori
 Only Podman is installed and qualified by the supplied bootstrap.
 """
 
+import json
 from typing import Protocol
 
 
@@ -33,11 +34,28 @@ class ExecutionRuntime(Protocol):
 
 
 class RuntimeBackend(Protocol):
+    def probe(self, run) -> dict: ...
     def lifecycle(self, *args, **kwargs) -> SandboxRuntime: ...
     def execution(self, uid: int) -> ExecutionRuntime: ...
 
 
 class PodmanBackend:
+    def probe(self, run) -> dict:
+        result = run(["info", "--format", "json"])
+        if result["exitCode"]:
+            raise ValueError("rootless_runtime_unavailable")
+        info = json.loads(result["stdout"])
+        if not info["host"]["security"]["rootless"] or info["host"]["cgroupVersion"] != "v2":
+            raise ValueError("rootless_cgroup_v2_required")
+        major = int(info["version"]["Version"].split(".")[0])
+        if major < 4:
+            raise ValueError("unsupported_podman_version")
+        if info["store"]["graphDriverName"] not in ("overlay", "vfs"):
+            raise ValueError("unsupported_storage_driver")
+        return dict(
+            podmanVersion=info["version"]["Version"], storageDriver=info["store"]["graphDriverName"]
+        )
+
     def lifecycle(self, *args, **kwargs) -> SandboxRuntime:
         from runtime import PodmanRuntime
 

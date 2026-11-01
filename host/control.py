@@ -50,7 +50,7 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
         raise ValueError("invalid_request_id")
     action = request["action"]
     if action == "status":
-        return preflight(config, account, run)
+        return preflight(config, account, run, backend)
     payload = request["payload"]
     if not isinstance(payload, dict) or "lease" not in payload:
         raise ValueError("missing_lease")

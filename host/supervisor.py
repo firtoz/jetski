@@ -145,7 +145,7 @@ def bounded_command(argv, root, timeout=120, max_output=MAX_OUTPUT):
         )
 
 
-def preflight(config, account, run):
+def preflight(config, account, run, backend=None):
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise ValueError("unsupported_host_platform")
     if not pathlib.Path("/sys/fs/cgroup/cgroup.controllers").is_file():
@@ -162,17 +162,21 @@ def preflight(config, account, run):
     for namespace in ("user", "mnt", "pid", "net"):
         if not pathlib.Path("/proc/self/ns", namespace).exists():
             raise ValueError("required_namespace_unavailable")
-    result = run(["info", "--format", "json"])
-    if result["exitCode"]:
-        raise ValueError("rootless_runtime_unavailable")
-    info = json.loads(result["stdout"])
-    if not info["host"]["security"]["rootless"] or info["host"]["cgroupVersion"] != "v2":
-        raise ValueError("rootless_cgroup_v2_required")
-    major = int(info["version"]["Version"].split(".")[0])
-    if major < 4:
-        raise ValueError("unsupported_podman_version")
-    if info["store"]["graphDriverName"] not in ("overlay", "vfs"):
-        raise ValueError("unsupported_storage_driver")
+    if backend is None:
+        from runtime_backend import DEFAULT_BACKEND
+
+        backend = DEFAULT_BACKEND
+    details = backend.probe(run)
+    if not isinstance(details, dict) or set(details) & {
+        "ready",
+        "version",
+        "machineId",
+        "poolId",
+        "architecture",
+        "rootless",
+        "networkMode",
+    }:
+        raise ValueError("runtime_probe_authority_conflict")
     return dict(
         ready=True,
         version=1,
@@ -181,6 +185,5 @@ def preflight(config, account, run):
         architecture="x86_64",
         rootless=True,
         networkMode=config.get("networkMode", "none"),
-        podmanVersion=info["version"]["Version"],
-        storageDriver=info["store"]["graphDriverName"],
+        **details,
     )
