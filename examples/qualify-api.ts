@@ -1393,7 +1393,21 @@ try {
   qualificationError = error;
   throw error;
 } finally {
+  let cleanupStage = "worker";
+  // Unreferenced diagnostics cannot keep the process alive. Preserve which
+  // cleanup boundary stalls, or which resource classes survive completed cleanup.
+  const cleanupWatch = setInterval(() => {
+    console.error(
+      JSON.stringify({
+        cleanupStage,
+        activeResources: process.getActiveResourcesInfo(),
+      }),
+    );
+  }, 15000);
+  cleanupWatch.unref();
+  process.once("beforeExit", () => clearInterval(cleanupWatch));
   await stopWorker();
+  cleanupStage = "workload";
   let cleanupError: unknown;
   try {
     const sandbox = await manager.get({
@@ -1413,11 +1427,20 @@ try {
   } catch (error) {
     cleanupError = error;
   }
+  cleanupStage = "http-server";
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  cleanupStage = "local-state";
   state.close();
   clientJournal.close();
   await rm(directory, { recursive: true, force: true });
+  cleanupStage = "complete";
+  console.log(
+    JSON.stringify({
+      cleanupStage,
+      activeResources: process.getActiveResourcesInfo(),
+    }),
+  );
   if (cleanupError && qualificationError)
     throw new AggregateError(
       [qualificationError, cleanupError],

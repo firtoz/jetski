@@ -161,3 +161,9 @@ restore tests. Copying does not allocate a host; explicit resume uses the ordina
 restore path. The disposable API qualification also exercises real container
 restoration and complete archive re-publication equality. Its current-commit CI
 result is required before counting that added hosted check as passed.
+
+A subsequent [API/CLI run](https://github.com/firtoz/jetski/actions/runs/41265330389)
+completed the functional assertions but failed to exit before the job's 15-minute
+limit. This is preserved as a failed cleanup qualification, not a successful run.
+Cleanup-stage and remaining-resource diagnostics are being added to locate the
+hang; the previously qualified artifact is unchanged.
