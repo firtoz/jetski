@@ -43,14 +43,12 @@ def configuration():
         raise ValueError("host_configuration_limit")
     config = json.loads(CONFIG_PATH.read_text())
     if (
-        set(config)
-        not in (
-            {"version", "machineId", "poolId", "images"},
-            {"version", "machineId", "poolId", "images", "networkMode"},
-        )
+        set(config) - {"networkMode", "storageMode"} != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
         raise ValueError("unsupported_host_configuration")
+    if config.get("storageMode", "default") not in ("default", "fuse-overlayfs"):
+        raise ValueError("invalid_storage_policy")
     if config.get("networkMode", "none") not in ("none", "egress"):
         raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:
@@ -177,6 +175,11 @@ def preflight(config, account, run, backend=None):
         "networkMode",
     }:
         raise ValueError("runtime_probe_authority_conflict")
+    if config.get("storageMode", "default") == "fuse-overlayfs" and (
+        details.get("storageDriver") != "overlay"
+        or details.get("storageMountProgram") != "/usr/bin/fuse-overlayfs"
+    ):
+        raise ValueError("requested_storage_mode_unavailable")
     return dict(
         ready=True,
         version=1,

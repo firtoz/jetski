@@ -3,7 +3,9 @@ import type { StateStore } from "../core/contracts.js";
 import {
   identifier,
   RUNTIME_NETWORK_MODES,
+  RUNTIME_STORAGE_MODES,
   type RuntimeNetworkMode,
+  type RuntimeStorageMode,
 } from "../core/contracts.js";
 import { BoatControlChannel } from "../transport/boat-channel.js";
 import type { BoatApi } from "./boat.js";
@@ -47,8 +49,11 @@ export class EmbeddedBoatBootstrap {
     private readonly images: string[],
     private readonly loadAssets: () => Promise<BoatBootstrapAssets>,
     private readonly networkMode: RuntimeNetworkMode = "none",
+    private readonly storageMode: RuntimeStorageMode = "default",
   ) {
     identifier(poolId);
+    if (!RUNTIME_STORAGE_MODES.includes(storageMode))
+      throw Error("Unsupported runtime storage policy");
     if (!RUNTIME_NETWORK_MODES.includes(networkMode))
       throw Error("Unsupported runtime network policy");
     if (
@@ -97,6 +102,9 @@ export class EmbeddedBoatBootstrap {
           machineId: host,
           poolId: this.poolId,
           images: this.images,
+          ...(this.storageMode === "default"
+            ? {}
+            : { storageMode: this.storageMode }),
           ...(this.networkMode === "none"
             ? {}
             : { networkMode: this.networkMode }),

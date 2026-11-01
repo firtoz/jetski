@@ -21,6 +21,12 @@ class BackendProbeTests(unittest.TestCase):
             PodmanBackend().probe(run), dict(podmanVersion="4.9.3", storageDriver="overlay")
         )
         self.assertEqual(calls, [["info", "--format", "json"]])
+        info["store"]["graphOptions"] = {
+            "overlay.mount_program": {"Executable": "/usr/bin/fuse-overlayfs"}
+        }
+        self.assertEqual(
+            PodmanBackend().probe(run)["storageMountProgram"], "/usr/bin/fuse-overlayfs"
+        )
         for field, key, value in [
             ("version", "Version", "3.0"),
             ("store", "graphDriverName", "unknown"),
@@ -69,6 +75,14 @@ class BackendProbeTests(unittest.TestCase):
                 backend.probe.return_value = {key: "forged"}
                 with self.assertRaisesRegex(ValueError, "authority_conflict"):
                     preflight(config, account, None, backend)
+            backend.probe.return_value = dict(
+                storageDriver="overlay", storageMountProgram="/usr/bin/fuse-overlayfs"
+            )
+            config["storageMode"] = "fuse-overlayfs"
+            self.assertTrue(preflight(config, account, None, backend)["ready"])
+            backend.probe.return_value = dict(storageDriver="overlay")
+            with self.assertRaisesRegex(ValueError, "requested_storage_mode_unavailable"):
+                preflight(config, account, None, backend)
             backend.probe.reset_mock()
             path.is_file.return_value = False
             with self.assertRaisesRegex(ValueError, "cgroup_v2_required"):

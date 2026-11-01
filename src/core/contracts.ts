@@ -117,3 +117,7 @@ export interface HostProvider {
 /** Operator policy; workload requests cannot select host networking. */
 export const RUNTIME_NETWORK_MODES = ["none", "egress"] as const;
 export type RuntimeNetworkMode = (typeof RUNTIME_NETWORK_MODES)[number];
+
+/** Trusted bootstrap choice; never switched on an existing runtime store. */
+export const RUNTIME_STORAGE_MODES = ["default", "fuse-overlayfs"] as const;
+export type RuntimeStorageMode = (typeof RUNTIME_STORAGE_MODES)[number];

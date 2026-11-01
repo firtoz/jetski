@@ -151,9 +151,17 @@ try {
       stderr: result.stderr,
     });
   });
-  const bootstrap = new BoatBootstrap(state, api, "ci", [
-    process.env.JETSKI_TEST_IMAGE!,
-  ]);
+  const storageMode = process.env.JETSKI_TEST_STORAGE_MODE ?? "default";
+  if (storageMode !== "default" && storageMode !== "fuse-overlayfs")
+    throw Error("Unsupported fixture storage mode");
+  const bootstrap = new BoatBootstrap(
+    state,
+    api,
+    "ci",
+    [process.env.JETSKI_TEST_IMAGE!],
+    "none",
+    storageMode,
+  );
   await assert.rejects(bootstrap.ensure("bx_ci"), HostTransportError);
   assert.equal(
     loseBootstrapAck,

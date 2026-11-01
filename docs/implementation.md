@@ -85,6 +85,9 @@ encrypted binary round trip; full client transport wiring and hosted checks rema
 Default SSH and Boat control deadlines now leave room for bounded host runtime
 commands and receipt writes. Slow-storage startup and its hosted recovery remain
 unqualified; transport expiry still preserves an uncertain operation.
+An explicit fresh-store FUSE-overlay bootstrap option is implemented with
+configuration/replay guards; hosted qualification and performance comparisons
+remain open. See [runtime configuration](runtime.md).
 See [qualification evidence](qualification.md).
 
 ## Next steps

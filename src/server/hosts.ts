@@ -1,6 +1,7 @@
 import type {
   HostProvider,
   RuntimeNetworkMode,
+  RuntimeStorageMode,
   StateStore,
 } from "../core/contracts.js";
 import type { HostStreamTransport } from "../core/host-stream.js";
@@ -14,6 +15,7 @@ export type HostConfig =
       tokenEnv: string;
       machine?: BoatMachineType;
       networkMode?: RuntimeNetworkMode;
+      storageMode?: RuntimeStorageMode;
     };
 /** Selected adapters only. Boat installs on allocated machines, never locally. */
 export async function standaloneHosts(
@@ -68,6 +70,7 @@ export async function standaloneHosts(
     poolId,
     approvedImages,
     config.networkMode,
+    config.storageMode,
   );
   return {
     transport,

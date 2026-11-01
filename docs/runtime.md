@@ -35,3 +35,21 @@ another backend requires matching bootstrap/capability negotiation and the compl
 lifecycle, security, execution and recovery conformance tests; replacing a factory
 alone does not establish support. Managed-sandbox providers also require a distinct
 adapter contract and must not be assumed to permit host-runtime installation.
+
+## Experimental storage selection
+
+The trusted host configuration accepts `storageMode: "fuse-overlayfs"`; omission
+keeps Podman's default selection. Boat's standalone host configuration and both
+bootstrap constructors accept the same option. SSH operators put it in the host
+bootstrap JSON. This is an experimental option awaiting hosted qualification.
+
+Bootstrap requires `/usr/bin/fuse-overlayfs` and `/dev/fuse`, writes only the
+dedicated runtime account's configuration before pulling images, and refuses an
+existing store without the identical configuration. It never resets a store or
+changes a host-wide storage policy. Readiness must report overlay with the exact
+requested mount program; installing the binary alone is insufficient.
+
+This option targets the initial image-layer copying associated with rootless
+`keep-id` on native overlay, described in [Podman's performance guidance](https://github.com/containers/podman/blob/main/docs/tutorials/performance.md#choosing-a-storage-driver).
+It does not change persistent paths, checkpoint formats or user isolation. Measure
+startup and workload I/O before choosing it; there is no universal performance claim.

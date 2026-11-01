@@ -47,15 +47,61 @@ MODULES = (
 )
 
 
+STORAGE_CONFIG = '[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n'
+
+
+def configure_storage(account, mode):
+    """Fresh dedicated account only; never migrate or erase a runtime store."""
+    if mode == "default":
+        return
+    if mode != "fuse-overlayfs":
+        raise ValueError("invalid_storage_policy")
+    home = pathlib.Path(account.pw_dir)
+    directory = home / ".config" / "containers"
+    for path in (home, home / ".config", directory):
+        if not os.path.lexists(path):
+            path.mkdir(mode=0o700)
+            os.chown(path, account.pw_uid, account.pw_gid)
+        meta = path.lstat()
+        if (
+            not stat.S_ISDIR(meta.st_mode)
+            or meta.st_uid not in (0, account.pw_uid)
+            or meta.st_mode & 0o022
+        ):
+            raise ValueError("unsafe_runtime_storage_path")
+    target = directory / "storage.conf"
+    if os.path.lexists(target):
+        meta = target.lstat()
+        if (
+            not stat.S_ISREG(meta.st_mode)
+            or meta.st_uid not in (0, account.pw_uid)
+            or meta.st_mode & 0o022
+        ):
+            raise ValueError("unsafe_runtime_storage_config")
+        if target.read_text() != STORAGE_CONFIG:
+            raise ValueError("runtime_storage_configuration_conflict")
+        return
+    # Even an empty existing store may have selected another driver previously.
+    if os.path.lexists(home / ".local/share/containers/storage"):
+        raise ValueError("runtime_storage_requires_fresh_store")
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as output:
+        output.write(STORAGE_CONFIG)
+        os.fchown(output.fileno(), account.pw_uid, account.pw_gid)
+        output.flush()
+        os.fsync(output.fileno())
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def bootstrap(config):
     if os.geteuid() != 0:
         raise ValueError("root_required")
     if (
-        set(config)
-        not in (
-            {"version", "machineId", "poolId", "images"},
-            {"version", "machineId", "poolId", "images", "networkMode"},
-        )
+        set(config) - {"networkMode", "storageMode"} != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
         raise ValueError("invalid_host_configuration")
@@ -64,6 +110,8 @@ def bootstrap(config):
             r"[a-zA-Z0-9_-]{1,128}", config[name]
         ):
             raise ValueError("invalid_host_identity")
+    if config.get("storageMode", "default") not in ("default", "fuse-overlayfs"):
+        raise ValueError("invalid_storage_policy")
     if config.get("networkMode", "none") not in ("none", "egress"):
         raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:
@@ -126,6 +174,13 @@ def bootstrap(config):
             check=True,
         )
     account = runtime_account()
+    if config.get("storageMode", "default") == "fuse-overlayfs":
+        if (
+            not os.access("/usr/bin/fuse-overlayfs", os.X_OK)
+            or not pathlib.Path("/dev/fuse").is_char_device()
+        ):
+            raise ValueError("fuse_overlay_prerequisite_unavailable")
+    configure_storage(account, config.get("storageMode", "default"))
     subprocess.run(["loginctl", "enable-linger", ACCOUNT], check=True)
     subprocess.run(["systemctl", "start", f"user@{account.pw_uid}.service"], check=True)
 

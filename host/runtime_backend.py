@@ -52,9 +52,15 @@ class PodmanBackend:
             raise ValueError("unsupported_podman_version")
         if info["store"]["graphDriverName"] not in ("overlay", "vfs"):
             raise ValueError("unsupported_storage_driver")
-        return dict(
+        details = dict(
             podmanVersion=info["version"]["Version"], storageDriver=info["store"]["graphDriverName"]
         )
+        program = info["store"].get("graphOptions", {}).get("overlay.mount_program")
+        if isinstance(program, dict):
+            program = program.get("Executable")
+        if isinstance(program, str):
+            details["storageMountProgram"] = program
+        return details
 
     def lifecycle(self, *args, **kwargs) -> SandboxRuntime:
         from runtime import PodmanRuntime

@@ -1,5 +1,9 @@
 import { readFile } from "node:fs/promises";
-import type { RuntimeNetworkMode, StateStore } from "../core/contracts.js";
+import type {
+  RuntimeNetworkMode,
+  RuntimeStorageMode,
+  StateStore,
+} from "../core/contracts.js";
 import type { BoatApi } from "./boat.js";
 import {
   BOAT_BOOTSTRAP_MODULES,
@@ -14,6 +18,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
     poolId: string,
     images: string[],
     networkMode: RuntimeNetworkMode = "none",
+    storageMode: RuntimeStorageMode = "default",
   ) {
     super(
       state,
@@ -34,6 +39,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
         };
       },
       networkMode,
+      storageMode,
     );
   }
 }
