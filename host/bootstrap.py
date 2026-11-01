@@ -31,6 +31,7 @@ MODULES = (
     "frames.py",
     "fence.py",
     "runtime.py",
+    "runtime_backend.py",
     "supervisor.py",
     "control.py",
     "commands.py",

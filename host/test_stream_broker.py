@@ -126,9 +126,15 @@ class BrokerTests(unittest.TestCase):
         try:
             with (
                 patch("stream_broker.CONTROL_ROOT", self.base),
-                patch("stream_broker.ExecApi", return_value=api),
             ):
-                serve(self.request, self.config, self.account, source, destination)
+                serve(
+                    self.request,
+                    self.config,
+                    self.account,
+                    source,
+                    destination,
+                    backend=types.SimpleNamespace(execution=lambda uid: api),
+                )
             os.close(destination)
             destination = None
             return os.read(reader, 1024)

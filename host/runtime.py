@@ -44,6 +44,9 @@ class PodmanRuntime:
     def container(self, lease):
         return "jetski-" + lease["assignmentId"]
 
+    def absent(self, lease):
+        return self.run(["container", "exists", self.container(lease)])["exitCode"] == 1
+
     def create(self, raw, memory_mb=512, cpus=1):
         lease = identity(raw)
         if type(memory_mb) is not int or not 128 <= memory_mb <= 65536:

@@ -51,6 +51,34 @@ class ControlTests(unittest.TestCase):
             self.run_command,
         )
 
+    def test_injected_runtime_still_requires_current_host_lease(self):
+        self.request("claim", dict(lease=self.lease))
+        calls = []
+        runtime = types.SimpleNamespace(
+            create=lambda lease, memory, cpus: (
+                calls.append((lease, memory, cpus)) or {"phase": "running"}
+            )
+        )
+        backend = types.SimpleNamespace(lifecycle=lambda *args, **kwargs: runtime)
+        payload = dict(lease=self.lease, image=self.config["images"][0])
+        request = dict(version=1, id="injected", action="create", payload=payload)
+        result = control.dispatch(
+            request, self.config, self.account, self.run_command, backend=backend
+        )
+        self.assertEqual(result, {"phase": "running"})
+        self.assertEqual(calls, [(self.lease, 512, 1)])
+        for foreign in [dict(self.lease, owner="other"), dict(self.lease, generation=2)]:
+            with self.assertRaises(ValueError):
+                control.dispatch(
+                    {**request, "payload": {**payload, "lease": foreign}},
+                    self.config,
+                    self.account,
+                    self.run_command,
+                    backend=backend,
+                )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.calls, [])
+
     def test_single_host_fence_and_physical_identity(self):
         self.request("claim", dict(lease=self.lease))
         with self.assertRaisesRegex(ValueError, "physical_identity_conflict"):

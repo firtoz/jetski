@@ -34,6 +34,7 @@ MODULES = {
     "import_checkpoint.py",
     "local_checkpoint.py",
     "runtime.py",
+    "runtime_backend.py",
     "runtime_service.py",
     "supervisor.py",
 }

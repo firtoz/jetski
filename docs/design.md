@@ -57,3 +57,6 @@ and migration stay client-side; idle adoption follows independent restore proof.
 One authoritative backend per workspace; rollback must preserve acknowledged
 checkpoints and prevent competing writers. No production cutover, npm publication,
 or public hosted-compute service in this implementation.
+
+The [host runtime boundary](runtime.md) defines trusted lifecycle/execution
+composition and the remaining qualification requirements for alternate backends.

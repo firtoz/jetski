@@ -26,7 +26,7 @@ from file_upload import FileUpload  # noqa: E402
 from import_checkpoint import CheckpointImport  # noqa: E402
 from local_checkpoint import LocalCheckpoint  # noqa: E402
 from fence import Fence, identity  # noqa: E402
-from runtime import PodmanRuntime  # noqa: E402
+from runtime_backend import DEFAULT_BACKEND  # noqa: E402
 from supervisor import (  # noqa: E402
     ARCHIVE_ROOT,
     CONTROL_ROOT,
@@ -39,7 +39,7 @@ from supervisor import (  # noqa: E402
 )
 
 
-def dispatch(request, config, account, run, launch=None):
+def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND):
     if (
         not isinstance(request, dict)
         or set(request) != {"version", "id", "action", "payload"}
@@ -68,10 +68,10 @@ def dispatch(request, config, account, run, launch=None):
             return reconcile_workers_locked(fence, state)
     with fence.locked():
         state = fence.read()
-        if state and state["lease"] == lease:
-            reconcile_workers_locked(fence, state)
+        fence.match(state, lease)
+        reconcile_workers_locked(fence, state)
     image = payload.get("image")
-    runtime = PodmanRuntime(
+    runtime = backend.lifecycle(
         fence,
         run,
         image,
@@ -209,7 +209,7 @@ def dispatch(request, config, account, run, launch=None):
                 or state.get("runtime", {}).get("phase") != "removed"
             ):
                 return False
-            return run(["container", "exists", runtime.container(lease)])["exitCode"] == 1
+            return runtime.absent(lease)
 
         fence.release(lease, verified, receipt)
         LocalCheckpoint(fence, ARCHIVE_ROOT).publish(lease, receipt)

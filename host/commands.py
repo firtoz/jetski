@@ -268,10 +268,11 @@ def worker(command, expected_lease):
         run_worker(command, expected_lease, fence)
 
 
-def run_worker(command, expected_lease, fence):
+def run_worker(command, expected_lease, fence, backend=None):
     import secrets
     import threading
-    from podman_exec import ExecApi, CompletionDecoder
+    from podman_exec import CompletionDecoder
+    from runtime_backend import DEFAULT_BACKEND
     from terminal_input import TerminalInputs
     from supervisor import (
         CONTROL_ROOT,
@@ -280,12 +281,13 @@ def run_worker(command, expected_lease, fence):
         runtime_argv,
         bounded_command,
     )
-    from runtime import PodmanRuntime
 
     command_id(command)
     config = configuration()
     account = runtime_account()
-    api = ExecApi(account.pw_uid)
+    if backend is None:
+        backend = DEFAULT_BACKEND
+    api = backend.execution(account.pw_uid)
     with fence.locked():
         state = fence.read()
         fence.match(state, expected_lease)
@@ -305,7 +307,7 @@ def run_worker(command, expected_lease, fence):
     def run(args):
         return bounded_command(runtime_argv(account) + args, CONTROL_ROOT)
 
-    runtime = PodmanRuntime(
+    runtime = backend.lifecycle(
         fence,
         run,
         image,

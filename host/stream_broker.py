@@ -7,7 +7,7 @@ import signal
 import threading
 import time
 from fence import Fence, identity
-from podman_exec import ExecApi
+from runtime_backend import DEFAULT_BACKEND
 from stream_protocol import Decoder
 from streams import Streams
 from supervisor import CONTROL_ROOT
@@ -29,7 +29,7 @@ def write_frame(fd, data):
         at += count
 
 
-def serve(request, config, account, source=0, destination=1):
+def serve(request, config, account, source=0, destination=1, backend=DEFAULT_BACKEND):
     if (
         set(request) != {"version", "id", "action", "payload"}
         or request["version"] != 1
@@ -62,7 +62,7 @@ def serve(request, config, account, source=0, destination=1):
             raise ValueError("stream_image_conflict")
     identifier = payload["streamId"]
     streams.reserve(lease, identifier, payload["port"])
-    api = ExecApi(account.pw_uid)
+    api = backend.execution(account.pw_uid)
     admitted = streams.prepare(
         lease,
         identifier,

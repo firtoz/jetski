@@ -74,6 +74,9 @@ with local restart and HTTP/SDK fault tests. A hosted selected checkpoint also
 passed an independent filesystem comparison; container startup and the complete
 downstream workflow remain open. Recovery retains the original uncertain outcome,
 selects acknowledged data and discloses unavailable unpublished changes.
+Host runtime composition now has explicit lifecycle/execution contracts shared by
+control, command workers and forwarding. Podman remains the only supplied backend;
+bootstrap capability negotiation and the full runtime conformance audit remain open.
 See [qualification evidence](qualification.md).
 
 ## Next steps
