@@ -458,26 +458,15 @@ try {
       image,
     };
     await request("claim", { lease: activePayload.lease });
-    await request("import-begin", {
+    const cachedImport = (await request("import-begin", {
       ...activePayload,
       ...publication,
       bytes: manifest.bytes,
-    });
-    let importedOffset = 0;
-    for (const frame of saved.root.frames) {
-      for await (const part of store.read(frame)) {
-        const chunk = {
-          ...activePayload,
-          offset: importedOffset,
-          base64: Buffer.from(part).toString("base64"),
-          sha256: createHash("sha256").update(part).digest("hex"),
-        };
-        const receipt = await request("import-chunk", chunk);
-        if (importedOffset === 0)
-          assert.deepEqual(await request("import-chunk", chunk), receipt);
-        importedOffset += part.length;
-      }
-    }
+    })) as { phase: string; offset: number };
+    assert.equal(cachedImport.phase, "extracting");
+    assert.equal(cachedImport.offset, manifest.bytes);
+    // No store reads or import-chunk calls: published local archive survives
+    // source-tree purge and is checked again by the real host before extraction.
     await request("import-finish", activePayload);
     await request("create", activePayload);
     const recoveredCommand = randomUUID();

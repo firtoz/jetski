@@ -22,6 +22,7 @@ const modules = [
   "files.py",
   "frames.py",
   "import_checkpoint.py",
+  "local_checkpoint.py",
   "runtime.py",
   "runtime_service.py",
   "supervisor.py",

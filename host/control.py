@@ -24,6 +24,7 @@ from commands import Commands, reconcile_workers_locked  # noqa: E402
 from files import Files  # noqa: E402
 from file_upload import FileUpload  # noqa: E402
 from import_checkpoint import CheckpointImport  # noqa: E402
+from local_checkpoint import LocalCheckpoint  # noqa: E402
 from fence import Fence, identity  # noqa: E402
 from runtime import PodmanRuntime  # noqa: E402
 from supervisor import (  # noqa: E402
@@ -209,7 +210,9 @@ def dispatch(request, config, account, run, launch=None):
                 return False
             return run(["container", "exists", runtime.container(lease)])["exitCode"] == 1
 
-        return fence.release(lease, verified, receipt)
+        fence.release(lease, verified, receipt)
+        LocalCheckpoint(fence, ARCHIVE_ROOT).publish(lease, receipt)
+        return fence.read()
     if action == "purge-source":
         with fence.locked():
             state = fence.read()

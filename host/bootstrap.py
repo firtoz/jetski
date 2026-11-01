@@ -42,6 +42,7 @@ MODULES = (
     "files.py",
     "file_upload.py",
     "import_checkpoint.py",
+    "local_checkpoint.py",
 )
 
 
