@@ -140,3 +140,27 @@ compatibility remain qualification gates.
 
 Wire contract: [Boat's versioned OpenAPI](https://docs.boat.dev/openapi/boat-v1.yaml),
 `POST /sandboxes/{sandboxId}/sshkey`.
+
+## Bounded live recovery qualification
+
+`examples/qualify-live-boat.ts prepare PRIVATE_DIRECTORY CONFIG_JSON` writes a
+fresh resumable plan without contacting Boat. The config has `image` (approved
+OCI digest), `hosts` (the Boat host-provider configuration above), and `storage`
+(the standalone local/S3 configuration). The directory must not already exist;
+its parent must be private. Credentials remain environment references.
+
+After obtaining a separate paid-host allowance, run the same directory with
+`JETSKI_PAID_QUALIFICATION_APPROVED=1` and `qualify-live-boat.ts run PRIVATE_DIRECTORY`.
+The runner admits at most two allocation identities and uses normal one-hour host
+lifetimes. It checks a random binary and file/mode/link fixture, warm same-host
+resume, a changed save, and recovery after the source host is confirmed retired.
+It waits the real ten-minute idle retention for each retirement; no clocks are
+advanced. Expect more than twenty minutes plus provisioning and transfers.
+
+On interruption, preserve the directory and resume it, rather than creating a new
+plan. Stable command IDs observe uncertain work without blindly rerunning it.
+Failures retain checkpoints and diagnostics; host lifetimes remain bounded. On
+success it verifies retirement of both owned machines and removes only objects in
+its random fixture scope. The private result and step journal distinguish actual
+execution evidence from merely preparing the runner. This is a recovery test,
+not the full matched performance benchmark or release acceptance matrix.

@@ -53,8 +53,9 @@ The active-stream stop/recovery fix now passes all five CI jobs, including
 intentional worker-loss cleanup without promoting uncertain command outcomes.
 Real filesystem archives also pass exact source-deleted recovery through local
 storage and the isolated R2 bucket, including historical versions and links.
-The Boat SSH stream adapter is implemented; disposable encrypted transport
-qualification is next. Remaining gates include live-provider replacement, real-grace
+The Boat SSH stream adapter passed disposable encrypted transport and preview
+qualification. A resumable, two-host live recovery runner is prepared; its paid-host
+allowance is pending. Remaining gates include live-provider replacement, real-grace
 collection, matched hosted measurements and staging integration. See [qualification evidence](qualification.md).
 
 ## Next steps

@@ -5,8 +5,8 @@ The live acceptance checklist is in [implementation.md](implementation.md).
 
 ## Verified baseline
 
-[CI 41253785969](https://github.com/firtoz/jetski/actions/runs/41253785969)
-passed all five jobs at `ef46ab3`: TypeScript/Python checks, rootless runtime,
+[CI 41254369411](https://github.com/firtoz/jetski/actions/runs/41254369411)
+passed all five jobs at `1776ecb`: TypeScript/Python checks, rootless runtime,
 SSH control, standalone API and the Boat-adapter fixture. The Boat job emulates
 provider APIs on disposable Linux; it is not live Boat qualification.
 
@@ -40,6 +40,16 @@ The cleanup correction passed all five jobs in CI 41253785969, including the
 active API stream stop/resume and intentional SSH worker-loss tests. It does not promote uncertain commands to successful
 completion: publication/release still require resolved outcomes. Cancellation drain
 releases the fence lock while waiting and has a bounded timeout.
+
+## Boat encrypted stream adapter
+
+The Boat fixture in [CI 41254717679](https://github.com/firtoz/jetski/actions/runs/41254717679)
+passed on `72a489a`: actual non-root SSH registration, pinned host key, fixed sudo
+control entry point, bounded TCP streams and the shared HTTP/WebSocket/browser
+preview suite. Unit tests cover persistent key reuse after lost registration,
+changed-key rejection and owner/expiry/retirement denial. This uses an emulated
+Boat API around a disposable Linux host, not a live Boat allocation. Other jobs
+in that exact run were still pending when this result was recorded.
 
 ## Real filesystem storage recovery
 
