@@ -41,7 +41,7 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 | Independent repository           | Public MIT source, separate exports, standalone examples and CI                              | Final provenance/package independence audit                                          |
 | Core lifecycle and pooling       | Replay/fencing tests; real API stop/resume, warm reuse, held/historical restore, idle expiry | Full restart/placement matrix and matched hosted runs                                |
 | Execution and interactive access | Commands/output, PTY/SSH/TCP; Chrome HTTPS/container HTTP/WSS                                | Remaining interactive lifecycle/provider audit                                       |
-| Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Wire verified local-cache reuse; qualify both providers/stores and replacement       |
+| Filesystem and checkpoints       | Exact archive fixtures; incremental and source-deleted recovery tests                        | Complete provider/store and client integration qualification                         |
 | Storage and collection           | Local/S3 contracts, R2 functional evidence, fault/race tests                                 | Remote end-to-end recovery and real-grace collection gates                           |
 | Security                         | Owner/fence/credential isolation and cleanup checks                                          | Final capability and lifecycle isolation audit                                       |
 | Client integration               | Agreed staging-only adoption design                                                          | Implement client adapters, pinned dependency, real workflow and replacement recovery |
@@ -53,7 +53,11 @@ Live Boat/R2 qualification now passes same-host restore and physical replacement
 with an exact filesystem oracle, followed by both host retirements and scoped
 object cleanup. This baseline downloads checkpoints from remote storage.
 Verified local-cache reuse passes all five disposable CI jobs on its development
-branch; live cache and interactive qualification are next. The separate paid-host
+branch and the live warm-restore oracle. Live terminal controls, binary forwarding
+and replacement-host R2 restore passed, including final host retirement and owned
+object cleanup.
+Embedding support and built-package consumption passed CI, and initial
+client-side state/storage adapters pass unit contracts without deployed routing. The separate paid-host
 allowance is approved. Remaining gates include real-grace collection, matched
 hosted measurements and staging integration. See [qualification evidence](qualification.md).
 

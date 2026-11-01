@@ -69,6 +69,26 @@ replacement restore took 53,234 ms. Initial/changed saves took 23,842/18,988 ms.
 These are one-pilot observations, not a matched comparison. This baseline downloads
 remote checkpoint data; live cache and interactive transport remain separate gates.
 
+## Verified cache and embedding qualification
+
+The cache-enabled live Boat/R2 pilot passed exact warm and physical replacement
+recovery, terminal input/resizing/signals, 512-byte binary TCP forwarding and
+confirmed stream closure. Both VMs were retired after their real idle periods;
+scoped test objects were cleaned up. Warm restore returned a verified full-length
+cache receipt without import chunks (4,577 ms). Replacement restore transferred
+remote chunks and matched the changed filesystem oracle (51,633 ms).
+
+These remain single-pilot observations: changed save took 36,269 ms, compared with
+18,988 ms in the baseline. A matched workload comparison is still required.
+
+[CI 41258484368](https://github.com/firtoz/jetski/actions/runs/41258484368) passed all
+five jobs on `259402d`; the first API attempt timed out fetching Ubuntu packages,
+then passed on an isolated rerun. The built package installs with Bun without
+lifecycle scripts. Injected bootstrap assets preserve the exact Node-loader source
+identity, and the packed artifact verifies every bundled host-source byte. The
+[v0.0.0-qualification.1 artifact](https://github.com/firtoz/jetski/releases/tag/v0.0.0-qualification.1)
+is an experimental integration prerelease, not completion of the full goal.
+
 ## Real filesystem storage recovery
 
 `examples/qualify-filesystem-storage.ts` and `host/qualify_archive_store.py` capture
