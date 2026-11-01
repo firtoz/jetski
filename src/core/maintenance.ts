@@ -30,6 +30,13 @@ export class CheckpointMaintenance {
     const selected = await this.state.transaction((tx) => {
       const fence = this.eligible(tx, scope);
       if (!fence) return;
+      if (
+        fence.owner !== scope.owner ||
+        fence.sandbox !== scope.sandbox ||
+        !Number.isSafeInteger(fence.generation) ||
+        fence.generation < 1
+      )
+        throw Error("Invalid maintenance fence");
       const previous = tx.get<MaintenanceStatus>(key);
       if (
         previous &&
@@ -56,11 +63,23 @@ export class CheckpointMaintenance {
       };
       if (!previous) tx.put(key, record);
       if (record.dueAt > this.now()) return;
-      if (record.attempt && record.attempt.generation !== fence.generation)
-        throw Error(
-          "Maintenance generation changed; reconcile original collector",
+      if (record.attempt && record.attempt.generation > fence.generation)
+        throw Error("Maintenance generation regressed");
+      // The authoritative lifecycle advances generations only after the old
+      // collector releases its fence. A deferred, unadmitted attempt must not
+      // permanently block collection after an ordinary resume/stop cycle.
+      const superseded =
+        record.attempt !== null && record.attempt.generation < fence.generation;
+      if (superseded && record.attempt)
+        tx.put(
+          `checkpoint-maintenance-superseded/${scopeKey(scope)}/${record.attempt.id}`,
+          {
+            ...record.attempt,
+            supersededAt: this.now(),
+            nextGeneration: fence.generation,
+          },
         );
-      const attempt = record.attempt ?? {
+      const attempt = (!superseded && record.attempt) || {
         id: crypto.randomUUID(),
         generation: fence.generation,
       };

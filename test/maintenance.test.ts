@@ -53,8 +53,8 @@ test("maintenance preserves grace and uncertain identities across restart, and f
   await maintenance.run(scope);
   assert.equal(calls.length, 1, "Durable retry backoff");
   now += 5 * 60_000;
-  generation = 2;
-  await assert.rejects(maintenance.run(scope), /generation changed/);
+  generation = 0;
+  await assert.rejects(maintenance.run(scope), /Invalid maintenance fence/);
   assert.equal(calls.length, 1);
   generation = 1;
   fail = false;
@@ -85,7 +85,7 @@ test("scheduled real collection removes only retired bytes and preserves retaine
   let now = 1000;
   const objects = new LocalCheckpointStore(join(dir, "objects"));
   const registry = new CheckpointRegistry(state, objects, () => now);
-  const fence = { owner: "owner", sandbox: "sandbox", generation: 1 };
+  let fence = { owner: "owner", sandbox: "sandbox", generation: 1 };
   await registry.initialize(fence);
   const frames = [];
   for (const id of ["retired", "retained"]) {
@@ -114,6 +114,11 @@ test("scheduled real collection removes only retired bytes and preserves retaine
   await maintenance.run(fence);
   assert.ok(await objects.head(frames[0]!));
   now += DEFAULTS.gcGraceMs;
+  await registry.admit(fence, "held-reader", "reader", "retained");
+  await assert.rejects(maintenance.run(fence), /Active readers/);
+  await registry.close(fence, "held-reader");
+  fence = await state.transaction((tx) => registry.advanceIn(tx, fence));
+  now += 5 * 60_000;
   await maintenance.run(fence);
   assert.equal(await objects.head(frames[0]!), undefined);
   assert.ok(await objects.head(frames[1]!));

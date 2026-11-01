@@ -28,7 +28,8 @@ the next platform alarm, including when all hosts have been retired. Collection 
 restricted to stopped or deleted sandboxes without an assigned host or pending
 resume. The first pass waits 24 hours; subsequent successful passes are daily.
 Failures retain their collection identity and retry after five minutes, including
-after restart. A generation mismatch fails closed for operator reconciliation.
+after restart. An authoritative forward generation change starts a fresh attempt
+and retains a supersession receipt; a regressed or invalid fence fails closed.
 The collector independently enforces object grace, complete reachability and all
 reader/writer fences. Maintenance does not expire acknowledged checkpoint history.
 The option defaults to false until release qualification is complete.
