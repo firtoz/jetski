@@ -491,6 +491,22 @@ export class JetskiClient {
     if (offset !== spec.bytes) throw Error("Upload source ended early");
     return this.finishUpload(sandbox, id);
   }
+  /** Copy into a new stopped sandbox; explicitly resume after publication. */
+  copyCheckpoint(
+    id: string,
+    image: string,
+    operationId: string,
+    sourceSandbox: string,
+    checkpointId: string,
+  ): Promise<import("./core/manager.js").Sandbox> {
+    return this.request("/v1/sandboxes", "POST", {
+      id,
+      image,
+      operationId,
+      sourceSandbox,
+      checkpointId,
+    });
+  }
   resume(sandbox: string, operationId: string, checkpointId?: string) {
     const body: { [key: string]: Json } = { operationId };
     if (checkpointId !== undefined)

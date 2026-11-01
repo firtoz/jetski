@@ -1128,6 +1128,26 @@ try {
     0,
   );
   assert.ok(await client.checkpoint(id, newerStop));
+  const copied = randomUUID(),
+    copyOperation = randomUUID();
+  await client.copyCheckpoint(copied, image, copyOperation, id, stopId);
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if ((await client.operation(copied, copyOperation)).phase === "succeeded")
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(
+    (await client.operation(copied, copyOperation)).phase,
+    "succeeded",
+  );
+  assert.equal(
+    (await client.request<Sandbox>(`/v1/sandboxes/${copied}`)).phase,
+    "stopped",
+  );
+  assert.equal(
+    (await client.request<Sandbox>(`/v1/sandboxes/${id}`)).phase,
+    "running",
+  );
   fence.generation = 4;
   const deletion = randomUUID();
   await client.request(`/v1/sandboxes/${id}`, "DELETE", {
@@ -1164,6 +1184,45 @@ try {
     operationId: deletion,
   });
   assert.ok(await registry.root(fence, secondStop));
+  cleanupId = copied;
+  const copyResume = randomUUID();
+  await client.resume(copied, copyResume);
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if ((await client.operation(copied, copyResume)).phase === "succeeded")
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal((await client.operation(copied, copyResume)).phase, "succeeded");
+  assert.equal(
+    Buffer.from(
+      (await client.readFile(copied, "/workspace/api-counter")).base64,
+      "base64",
+    ).toString(),
+    "1",
+  );
+  const copiedUpload: Uint8Array[] = [];
+  for await (const part of client.readFileStream(copied, uploadSpec.path))
+    copiedUpload.push(part);
+  assert.deepEqual(Buffer.concat(copiedUpload), uploadBytes);
+  const copyDeletion = randomUUID();
+  await client.request(`/v1/sandboxes/${copied}`, "DELETE", {
+    operationId: copyDeletion,
+  });
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if ((await client.operation(copied, copyDeletion)).phase === "succeeded")
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(
+    (await client.operation(copied, copyDeletion)).phase,
+    "succeeded",
+  );
+  // Repacking the real restored tree must preserve the complete archive, not
+  // merely the files sampled through the HTTP API above.
+  assert.equal(
+    (await client.checkpoint(copied, copyDeletion)).sha256,
+    (await client.checkpoint(id, stopId)).sha256,
+  );
   // Advance only this controller's injected clock; no provider clocks or GC
   // grace periods are modified. SSH retirement must leave the machine alive.
   clockOffset = DEFAULTS.idleMs;
@@ -1306,6 +1365,7 @@ try {
       incompleteUploadAbortedOnStop: true,
       checkpointHistoryAndReplaySafePins: true,
       historicalCheckpointSelection: true,
+      independentCheckpointCopyRestore: true,
       activeStreamStopAndGenerationFencing: true,
       completeLifecycle: false,
     }),

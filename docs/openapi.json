@@ -66,7 +66,7 @@
         }
       },
       "post": {
-        "summary": "Queue a sandbox creation with stable operation identity",
+        "summary": "Create an empty sandbox, or copy an owned checkpoint into a stopped sandbox",
         "responses": {
           "202": {
             "description": "Successful response",
@@ -107,7 +107,18 @@
                   },
                   "image": {
                     "type": "string"
+                  },
+                  "sourceSandbox": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "checkpointId": {
+                    "type": "string"
                   }
+                },
+                "dependentRequired": {
+                  "sourceSandbox": ["checkpointId"],
+                  "checkpointId": ["sourceSandbox"]
                 }
               }
             }
@@ -1924,6 +1935,7 @@
           "phase": {
             "type": "string",
             "enum": [
+              "copying",
               "queued",
               "starting",
               "running",
@@ -2042,6 +2054,9 @@
           },
           "previewSessions": {
             "type": "boolean"
+          },
+          "checkpointCopy": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -2063,7 +2078,8 @@
           "version",
           "cancellationScope",
           "host",
-          "previewSessions"
+          "previewSessions",
+          "checkpointCopy"
         ],
         "additionalProperties": false
       },

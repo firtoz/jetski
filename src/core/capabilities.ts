@@ -10,6 +10,7 @@ export type ApiCapabilities = {
   fileList: boolean;
   fileWrite: boolean;
   checkpointHistory: boolean;
+  checkpointCopy: boolean;
   retentionPins: boolean;
   pty: boolean;
   previews: boolean;

@@ -154,3 +154,10 @@ row only when it changes a qualification conclusion.
 ## Opt-in outbound networking
 
 Commit `dcb4e64` passed [all five CI jobs](https://github.com/firtoz/jetski/actions/runs/41261217878). The rootless runtime fixture verified public HTTP access, rejected the host-loopback route, and removed its container. Default networking remains disabled. This is disposable CI evidence, not a live provider or general destination-filtering claim.
+
+Checkpoint-backed sandbox admission is covered by SQLite restart, authenticated
+HTTP/SDK, owner denial, bounded copy, queued cancellation and source-object-deleted
+restore tests. Copying does not allocate a host; explicit resume uses the ordinary
+restore path. The disposable API qualification also exercises real container
+restoration and complete archive re-publication equality. Its current-commit CI
+result is required before counting that added hosted check as passed.

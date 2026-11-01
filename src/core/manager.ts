@@ -1,3 +1,4 @@
+import { CheckpointCopy } from "./checkpoint-copy.js";
 import { CheckpointHistory } from "./checkpoint-history.js";
 import { CheckpointRegistry } from "./checkpoints.js";
 import { CommandOutputStore, type OutputChannel } from "./command-output.js";
@@ -40,6 +41,7 @@ export type Sandbox = {
   restoreCheckpoint: string | null;
   pendingResume: string | null;
   phase:
+    | "copying"
     | "queued"
     | "starting"
     | "running"
@@ -79,6 +81,7 @@ export class SandboxManager {
   private readonly pool: PoolJournal;
   private readonly operations: OperationJournal;
   private readonly checkpoints: CheckpointRegistry;
+  private readonly copies: CheckpointCopy;
   private readonly outputs: CommandOutputStore;
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
@@ -135,6 +138,7 @@ export class SandboxManager {
         this.now,
       );
     this.checkpoints = new CheckpointRegistry(state, objects, this.now);
+    this.copies = new CheckpointCopy(state, this.checkpoints, objects);
     this.outputs = new CommandOutputStore(objects, this.checkpoints);
     this.history = new CheckpointHistory(
       state,
@@ -240,6 +244,114 @@ export class SandboxManager {
       this.pool.enqueueIn(tx, owner, id, operationId, { image });
       return record;
     });
+  }
+  /** Create a stopped sandbox from an independent copy of a retained filesystem
+   * checkpoint. No host is allocated until an explicit resume. */
+  async copyCheckpoint(
+    owner: string,
+    id: string,
+    image: string,
+    operationId: string,
+    sourceSandbox: string,
+    checkpointId: string,
+  ): Promise<Sandbox> {
+    identifier(owner);
+    this.uuid(id);
+    this.uuid(operationId);
+    this.uuid(sourceSandbox);
+    identifier(checkpointId);
+    if (!this.images.has(image)) throw Error("Image not approved");
+    if (id === sourceSandbox) throw Error("Copy requires a distinct sandbox");
+    const scope = { owner, sandbox: id };
+    return this.state.transaction((tx) => {
+      const fence = this.operations.generationIn(tx, scope);
+      const operation = this.operations.admitIn(
+        tx,
+        fence,
+        operationId,
+        "copy",
+        {
+          image,
+          sourceSandbox,
+          checkpointId,
+        },
+      );
+      const previous = tx.get<Sandbox>(this.key(scope));
+      if (previous) {
+        if (
+          previous.createOperation !== operationId ||
+          previous.image !== image
+        )
+          throw Error("Sandbox identity conflict");
+        return previous;
+      }
+      const source = tx.get<Sandbox>(
+        this.key({ owner, sandbox: sourceSandbox }),
+      );
+      if (!source || source.phase === "deleted")
+        throw Error("Copy source sandbox unavailable");
+      this.copies.startIn(
+        tx,
+        { owner, sandbox: sourceSandbox, generation: source.generation },
+        fence,
+        operationId,
+        checkpointId,
+      );
+      if (operation.phase !== "queued")
+        throw Error("Copy admission unavailable");
+      this.operations.claimIn(tx, fence, operationId);
+      const record: Sandbox = {
+        id,
+        owner,
+        image,
+        createOperation: operationId,
+        placementOperation: operationId,
+        restoreCheckpoint: null,
+        pendingResume: null,
+        phase: "copying",
+        lease: null,
+        checkpoint: null,
+        generation: fence.generation,
+      };
+      tx.put(this.key(scope), record);
+      return record;
+    });
+  }
+  private async reconcileCopies(owner: string) {
+    for (const sandbox of await this.list(owner)) {
+      if (sandbox.phase !== "copying") continue;
+      const scope = { owner, sandbox: sandbox.id },
+        fence = { ...scope, generation: sandbox.generation };
+      const copy = await this.copies.advance(fence, sandbox.createOperation);
+      if (copy.phase === "copying") continue;
+      await this.state.transaction((tx) => {
+        const current = tx.get<Sandbox>(this.key(scope));
+        if (
+          !current ||
+          current.phase !== "copying" ||
+          current.generation !== fence.generation
+        )
+          throw Error("Copy authority changed");
+        const deletion = tx.get<string>(`copy-delete/${scopeKey(scope)}`);
+        const checkpoint = copy.phase === "published" ? copy.id : null;
+        tx.put(this.key(scope), {
+          ...current,
+          phase: deletion ? "deleted" : "stopped",
+          checkpoint,
+        });
+        this.operations.finishIn(tx, fence, current.createOperation, {
+          phase: checkpoint ? "succeeded" : "failed",
+          result: checkpoint ? { checkpointId: checkpoint } : null,
+          error: checkpoint ? null : "Checkpoint copy cancelled",
+        });
+        if (deletion)
+          this.operations.finishIn(tx, fence, deletion, {
+            phase: "succeeded",
+            result: { checkpointId: checkpoint },
+            error: null,
+          });
+      });
+    }
   }
   async get(scope: Scope): Promise<Sandbox | undefined> {
     return this.state.transaction((tx) => tx.get<Sandbox>(this.key(scope)));
@@ -435,6 +547,7 @@ export class SandboxManager {
       await this.drainExpiringHosts(owner);
       await this.shutdown.reconcile(owner);
       await this.uploads.reconcile(owner);
+      await this.reconcileCopies(owner);
       await this.reconcileHeldResumes(owner);
       await this.retireIdleHosts(owner);
       // Repair admission interrupted between sandbox, operation and queue commits.
@@ -669,6 +782,21 @@ export class SandboxManager {
     this.uuid(id);
     const sandbox = await this.get(scope);
     if (!sandbox) throw Error("Sandbox unavailable");
+    if (sandbox.phase === "copying")
+      return this.state.transaction((tx) => {
+        const current = tx.get<Sandbox>(this.key(scope));
+        if (!current || current.phase !== "copying")
+          throw Error("Copy transition changed; retry deletion");
+        const fence = { ...scope, generation: current.generation };
+        const key = `copy-delete/${scopeKey(scope)}`,
+          prior = tx.get<string>(key);
+        if (prior && prior !== id) throw Error("Deletion identity conflict");
+        const operation = this.operations.admitIn(tx, fence, id, "delete", {});
+        this.operations.claimIn(tx, fence, id);
+        this.copies.cancelIn(tx, fence, current.createOperation);
+        tx.put(key, id);
+        return operation;
+      });
     if (sandbox.pendingResume) throw Error("Resume transition pending");
     if (sandbox.lease) return this.shutdown.admit(scope, id, "delete");
     const fence = await this.operations.generation(scope);

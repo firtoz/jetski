@@ -111,6 +111,7 @@ export function createHttpServer(
           fileList: true,
           fileWrite: true,
           checkpointHistory: true,
+          checkpointCopy: true,
           retentionPins: true,
           pty: true,
           host: manager.hostCapabilities(),
@@ -139,13 +140,37 @@ export function createHttpServer(
         }
         if (request.method === "POST") {
           const input = await body(request);
-          fields(input, ["id", "image", "operationId"]);
-          const sandbox = await manager.create(
-            principal.owner,
-            string(input.id),
-            string(input.image),
-            string(input.operationId),
-          );
+          fields(input, [
+            "id",
+            "image",
+            "operationId",
+            "sourceSandbox",
+            "checkpointId",
+          ]);
+          const id = string(input.id),
+            image = string(input.image),
+            operationId = string(input.operationId);
+          let sandbox;
+          if (
+            input.sourceSandbox !== undefined ||
+            input.checkpointId !== undefined
+          ) {
+            sandbox = await manager.copyCheckpoint(
+              principal.owner,
+              id,
+              image,
+              operationId,
+              string(input.sourceSandbox),
+              string(input.checkpointId),
+            );
+          } else {
+            sandbox = await manager.create(
+              principal.owner,
+              id,
+              image,
+              operationId,
+            );
+          }
           send(response, 202, sandbox);
           return;
         }

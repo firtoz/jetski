@@ -7,6 +7,7 @@ import {
   type ObjectInfo,
   type StateStore,
   scopeKey,
+  type Transaction,
 } from "./contracts.js";
 import { validateRootPayload } from "./root-payload.js";
 import { parseArchive } from "./transfer.js";
@@ -41,13 +42,24 @@ export class CheckpointCopy {
     id: string,
     rootId: string,
   ): Promise<CheckpointCopyRecord> {
+    return this.state.transaction((tx) =>
+      this.startIn(tx, source, target, id, rootId),
+    );
+  }
+  startIn(
+    tx: Transaction,
+    source: Fence,
+    target: Fence,
+    id: string,
+    rootId: string,
+  ): CheckpointCopyRecord {
     identifier(id);
     identifier(rootId);
     scopeKey(source);
     scopeKey(target);
     if (source.owner !== target.owner || source.sandbox === target.sandbox)
       throw Error("Copy requires distinct same-owner scopes");
-    return this.state.transaction((tx) => {
+    {
       const key = this.key(target, id),
         prior = tx.get<CheckpointCopyRecord>(key);
       if (prior) {
@@ -96,7 +108,7 @@ export class CheckpointCopy {
       };
       tx.put(key, record);
       return record;
-    });
+    }
   }
   async inspect(target: Fence, id: string): Promise<CheckpointCopyRecord> {
     return this.state.transaction((tx) => {
@@ -107,14 +119,15 @@ export class CheckpointCopy {
     });
   }
   async cancel(target: Fence, id: string): Promise<void> {
-    await this.state.transaction((tx) => {
-      const key = this.key(target, id),
-        record = tx.get<CheckpointCopyRecord>(key);
-      if (!record || canonical(record.target) !== canonical(target))
-        throw Error("Checkpoint copy unavailable");
-      if (record.phase === "copying")
-        tx.put(key, { ...record, cancelRequested: true });
-    });
+    await this.state.transaction((tx) => this.cancelIn(tx, target, id));
+  }
+  cancelIn(tx: Transaction, target: Fence, id: string): void {
+    const key = this.key(target, id),
+      record = tx.get<CheckpointCopyRecord>(key);
+    if (!record || canonical(record.target) !== canonical(target))
+      throw Error("Checkpoint copy unavailable");
+    if (record.phase === "copying")
+      tx.put(key, { ...record, cancelRequested: true });
   }
   private async finish(
     record: CheckpointCopyRecord,

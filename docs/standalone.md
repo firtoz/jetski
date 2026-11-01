@@ -497,3 +497,16 @@ options or host networking. This blocks slirp's host-loopback route, **not** all
 private networks, metadata services or public host interfaces. Use `none` unless
 outbound access is required; broader destination restrictions require an external
 network policy. See [Podman's network options](https://docs.podman.io/en/v5.7.0/markdown/podman-run.1.html).
+
+### Create from a retained checkpoint
+
+`JetskiClient.copyCheckpoint(id, image, operationId, sourceSandbox, checkpointId)`
+creates an independent same-owner copy. The HTTP equivalent is `POST /v1/sandboxes`
+with the usual creation fields plus both `sourceSandbox` and `checkpointId`.
+Admission returns `copying`; the worker transfers bounded frame batches without
+allocating a host. Observe the stable operation until it succeeds, then explicitly
+`resume` the resulting stopped sandbox. The destination owns its objects and
+retained history independently of the source. It does not share command history.
+Deletion during copying records cancellation and waits for the durable outcome;
+a publication that wins that race remains acknowledged history. This is a
+filesystem copy, not a memory snapshot or an automatically running clone.
