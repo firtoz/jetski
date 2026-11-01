@@ -22,7 +22,7 @@ export type Fence = Scope & { generation: number };
 /** Format acceptance is independent of current capture tuning. */
 export const CHECKPOINT_FORMAT = Object.freeze({
   maxExpandedFrameBytes: 4 * 1024 * 1024,
-  maxFrames: 18 * 1024,
+  maxFrames: 8192,
 });
 export const DEFAULTS = Object.freeze({
   idleMs: 10 * 60_000,

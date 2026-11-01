@@ -91,7 +91,7 @@ def capture(roots, target, limits=None):
     count = total = 0
     try:
         with os.fdopen(fd, "wb") as output:
-            with FrameWriter(output) as compressed:
+            with FrameWriter(output, adaptive=True) as compressed:
                 with tarfile.open(
                     fileobj=compressed, mode="w|", dereference=False, format=tarfile.PAX_FORMAT
                 ) as archive:

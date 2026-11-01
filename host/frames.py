@@ -5,12 +5,16 @@ import hashlib
 
 MAX_FRAME_BYTES = 4 * 1024 * 1024
 FRAME_BYTES = 1024 * 1024
+FRAMES_PER_LEVEL = 1024
 
 
 class FrameWriter:
-    def __init__(self, output, frame_bytes=FRAME_BYTES):
+    def __init__(self, output, frame_bytes=FRAME_BYTES, adaptive=False):
         if type(frame_bytes) is not int or not 1024 <= frame_bytes <= MAX_FRAME_BYTES:
             raise ValueError("invalid_frame_bound")
+        if type(adaptive) is not bool:
+            raise ValueError("invalid_frame_policy")
+        self.adaptive = adaptive
         self.output = output
         self.frame_bytes = frame_bytes
         self.pending = bytearray()
@@ -52,3 +56,7 @@ class FrameWriter:
         )
         self.offset += len(compressed)
         self.pending.clear()
+        # Keep the manifest within the existing bounded control response even
+        # for large archives. Geometry depends only on the archive byte stream.
+        if self.adaptive and len(self.frames) in (FRAMES_PER_LEVEL, 2 * FRAMES_PER_LEVEL):
+            self.frame_bytes = min(MAX_FRAME_BYTES, 2 * self.frame_bytes)

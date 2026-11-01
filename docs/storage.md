@@ -179,7 +179,9 @@ never exceeding four concurrent range reads and two storage transfers. It drains
 all started transfers on failure and preserves per-frame upload identities for
 replay after lost acknowledgements. A serial-only source also serializes uploads.
 
-New captures use 1 MiB independent gzip frames. Readers continue accepting the
+New captures start with 1 MiB independent gzip frames. After 1,024 frames and
+again after 2,048, capture doubles the bound up to 4 MiB. This deterministic
+large-archive policy keeps metadata within the bounded control-response envelope. Readers continue accepting the
 previous 4 MiB frames, independently of capture defaults. The smaller default
 reduces changed-byte amplification but increases object counts; hosted latency
 and request-count acceptance remains part of the performance qualification.

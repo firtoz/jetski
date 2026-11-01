@@ -78,7 +78,8 @@ class ArchiveTests(unittest.TestCase):
     def test_acknowledged_old_frame_geometry_recovers_after_source_deletion(self):
         original = oracle(self.source)
         with patch(
-            "archive.FrameWriter", side_effect=lambda output: FrameWriter(output, 4 * 1024 * 1024)
+            "archive.FrameWriter",
+            side_effect=lambda output, **_kwargs: FrameWriter(output, 4 * 1024 * 1024),
         ):
             receipt = capture(self.roots, self.archive)
         self.assertEqual(receipt["frames"][0]["expandedBytes"], 4 * 1024 * 1024)
