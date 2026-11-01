@@ -184,7 +184,7 @@ export class OperationJournal {
       ...operation,
       phase: "failed",
       result: null,
-      error: "Placement cancelled by deletion",
+      error: "Placement cancelled before assignment",
       updatedAt: this.now(),
     });
   }

@@ -167,3 +167,10 @@ completed the functional assertions but failed to exit before the job's 15-minut
 limit. This is preserved as a failed cleanup qualification, not a successful run.
 Cleanup-stage and remaining-resource diagnostics are being added to locate the
 hang; the previously qualified artifact is unchanged.
+
+Queued resumes can now stop without compute allocation while retaining their prior
+checkpoint. SQLite tests cover lost stop acknowledgements, restart, stale stop/resume
+replays, and rejection when pool assignment already won. Pool assignment, operation
+claim and sandbox ownership commit atomically; injected rollback and lost-ACK tests
+recover the same lease with one workload creation. This is local fault-injection
+evidence; disposable-host CI and downstream pinned-artifact adoption remain required.

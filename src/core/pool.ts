@@ -266,6 +266,7 @@ export class PoolJournal {
   }
   async assign(
     owner: string,
+    prepare?: (tx: Transaction, ticket: Ticket, lease: HostLease) => void,
   ): Promise<{ ticket: Ticket; slot: PoolSlot; lease: HostLease } | undefined> {
     identifier(owner);
     return this.state.transaction((tx) => {
@@ -312,6 +313,7 @@ export class PoolJournal {
         ...ticket,
         phase: "assigned",
       });
+      prepare?.(tx, ticket, lease);
       return { ticket, slot: next, lease };
     });
   }

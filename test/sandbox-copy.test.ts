@@ -9,8 +9,9 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
 import { CheckpointRegistry } from "../src/core/checkpoints.js";
-import type { HostProvider, Json } from "../src/core/contracts.js";
+import type { HostProvider, Json, StateStore } from "../src/core/contracts.js";
 import { type Sandbox, SandboxManager } from "../src/core/manager.js";
+import { PoolJournal } from "../src/core/pool.js";
 import type { HostTransport } from "../src/core/transport.js";
 import { JetskiClient } from "../src/sdk.js";
 import { bearerAuthentication, createHttpServer } from "../src/server/http.js";
@@ -76,8 +77,8 @@ test("checkpoint-backed sandbox admission, restart, cancellation and explicit re
       return { version: 1, id: request.id, result };
     },
   };
-  const manager = () =>
-    new SandboxManager(state, provider, transport, objects, {
+  const manager = (store: StateStore = state) =>
+    new SandboxManager(store, provider, transport, objects, {
       poolId: "pool",
       approvedImages: [image],
     });
@@ -311,13 +312,98 @@ test("checkpoint-backed sandbox admission, restart, cancellation and explicit re
 
   await registry().retire(source, checkpointId);
   for (const frame of frames) await objects.delete(frame);
+  const cancelledResume = randomUUID(),
+    cancelledStop = randomUUID();
+  const retainedCheckpoint = (await manager().get(scope))!.checkpoint;
+  await manager().resume(scope, cancelledResume);
+  assert.equal((await manager().get(scope))?.phase, "queued");
+  const lostAck: StateStore = {
+    async transaction(run) {
+      await state.transaction(run);
+      throw Error("stop acknowledgement lost");
+    },
+  };
+  await assert.rejects(
+    manager(lostAck).stop(scope, cancelledStop),
+    /acknowledgement lost/,
+  );
+  const stopped = await manager().stop(scope, cancelledStop);
+  assert.equal(stopped?.phase, "succeeded");
+  assert.deepEqual(stopped?.result, { checkpointId: retainedCheckpoint });
+  state.close();
+  state = new SqliteState(path);
+  await manager().reconcile("alice");
+  assert.equal(allocations, 0, "cancelled resume must not allocate compute");
+  assert.equal(
+    (await manager().operation(scope, cancelledResume))?.phase,
+    "failed",
+  );
+  assert.equal((await manager().get(scope))?.phase, "stopped");
+  assert.equal((await manager().get(scope))?.checkpoint, retainedCheckpoint);
+  assert.deepEqual(await manager().stop(scope, cancelledStop), stopped);
+  assert.equal(
+    (await manager().resume(scope, cancelledResume))?.phase,
+    "stopped",
+    "old resume ID cannot revive cancelled demand",
+  );
   await manager().resume(scope, randomUUID());
   await manager().reconcile("alice");
+  assert.equal((await manager().get(scope))?.phase, "running");
+  assert.deepEqual(
+    await manager().stop(scope, cancelledStop),
+    stopped,
+    "old stop replay cannot drain a newer assignment",
+  );
   assert.equal((await manager().get(scope))?.phase, "running");
   assert.equal(allocations, 1);
   assert.deepEqual(
     Buffer.concat(received),
     Buffer.concat(compressed),
     "target restore reads its independent exact bytes after source deletion",
+  );
+
+  // Exercise the assignment-winning race through the actual pool journal, not
+  // a fake stop receipt. No physical provider is invoked by this ledger fixture.
+  const racing = { owner: "alice", sandbox: randomUUID() };
+  await manager().copyCheckpoint(
+    "alice",
+    racing.sandbox,
+    image,
+    randomUUID(),
+    scope.sandbox,
+    retainedCheckpoint!,
+  );
+  await manager().reconcile("alice");
+  await manager().reconcile("alice");
+  const racingResume = randomUUID();
+  await manager().resume(racing, racingResume);
+  const pool = new PoolJournal(state, "pool", Date.now, randomUUID, 2);
+  await pool.enqueue("alice", racing.sandbox, racingResume, { image });
+  const slot = await pool.reserve("alice");
+  assert.ok(slot);
+  await pool.dispatchAllocation(slot.id, "alice");
+  await pool.provisioned(
+    slot.id,
+    "alice",
+    "assigned-race-host",
+    slot.allocationId,
+  );
+  const assignment = await pool.assign("alice");
+  assert.ok(assignment);
+  const raceStop = randomUUID();
+  await assert.rejects(manager().stop(racing, raceStop), /already assigned/);
+  assert.equal(
+    await manager().operation(racing, raceStop),
+    undefined,
+    "rejected cancellation is atomic",
+  );
+  assert.equal(
+    (await manager().operation(racing, racingResume))?.phase,
+    "queued",
+  );
+  assert.equal((await manager().get(racing))?.phase, "queued");
+  assert.equal(
+    (await pool.inspect("alice")).find((s) => s.id === slot.id)?.phase,
+    "assigned",
   );
 });

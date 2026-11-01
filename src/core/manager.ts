@@ -401,6 +401,9 @@ export class SandboxManager {
         continue;
       let observed: Json;
       try {
+        // Assignment may have committed before the first host RPC. Claim is
+        // idempotent for this exact lease and never reopens a closed generation.
+        await this.request(lease, "claim", { lease });
         observed = await this.request(lease, "inspect", { lease });
       } catch {
         continue;
@@ -592,20 +595,27 @@ export class SandboxManager {
           allocated.allocationId,
         );
       }
-      const assignment = await this.pool.assign(owner);
+      const assignment = await this.pool.assign(owner, (tx, ticket, lease) => {
+        const scope = { owner, sandbox: ticket.sandboxId };
+        const sandbox = tx.get<Sandbox>(this.key(scope));
+        if (
+          !sandbox ||
+          sandbox.phase !== "queued" ||
+          sandbox.lease ||
+          sandbox.placementOperation !== ticket.id
+        )
+          throw Error("Placement sandbox authority changed");
+        const fence = this.operations.generationIn(tx, scope);
+        if (!this.operations.claimIn(tx, fence, ticket.id))
+          throw Error("Placement operation already dispatched");
+        tx.put(this.key(scope), { ...sandbox, phase: "starting", lease });
+      });
       if (!assignment) return;
       const { lease, ticket } = assignment;
       const scope = { owner, sandbox: ticket.sandboxId };
       const sandbox = await this.get(scope);
       if (!sandbox) throw new Error("Placement sandbox missing");
       const operationFence = await this.operations.generation(scope);
-      if (!(await this.operations.claim(operationFence, ticket.id))) {
-        await this.pool.transition(lease, "quarantined");
-        return;
-      }
-      await this.state.transaction((tx) =>
-        tx.put(this.key(scope), { ...sandbox, phase: "starting", lease }),
-      );
       try {
         await this.checkpoints.initialize({
           ...scope,
@@ -836,7 +846,61 @@ export class SandboxManager {
     this.uuid(id);
     if (mode !== "stop" && mode !== "checkpoint")
       throw Error("Invalid shutdown mode");
-    return this.shutdown.admit(scope, id, mode);
+    const completed = await this.state.transaction((tx) => {
+      const fence = this.operations.generationIn(tx, scope);
+      const prior = this.operations.getIn(tx, scope, id);
+      if (prior) {
+        if (prior.kind !== mode || canonical(prior.input) !== canonical({}))
+          throw Error("Operation identity conflict");
+        // A replay observes the old outcome even if a newer resume now runs.
+        if (prior.phase === "succeeded" || prior.phase === "failed")
+          return prior;
+      }
+      const sandbox = tx.get<Sandbox>(this.key(scope));
+      if (
+        !sandbox ||
+        sandbox.lease ||
+        sandbox.pendingResume ||
+        !["queued", "stopped"].includes(sandbox.phase) ||
+        !sandbox.checkpoint
+      )
+        return null;
+      const root = this.checkpoints
+        .rootsIn(tx, fence)
+        .find(
+          (entry) =>
+            entry.id === sandbox.checkpoint && entry.retiredAt === null,
+        );
+      if (!root) throw Error("Stopped checkpoint unavailable");
+      this.operations.admitIn(tx, fence, id, mode, {});
+      if (sandbox.phase === "queued") {
+        if (!sandbox.restoreCheckpoint)
+          throw Error("Queued creation has no durable checkpoint");
+        // This shares the pool assignment transaction. An assigned ticket rejects
+        // cancellation, retaining ownership until ordinary fenced teardown.
+        this.pool.cancelQueuedIn(
+          tx,
+          scope.owner,
+          scope.sandbox,
+          sandbox.placementOperation,
+          { image: sandbox.image },
+        );
+        this.operations.cancelQueuedIn(tx, fence, sandbox.placementOperation);
+        this.checkpoints.releaseIn(tx, fence, sandbox.placementOperation);
+      }
+      this.operations.claimIn(tx, fence, id);
+      tx.put(this.key(scope), {
+        ...sandbox,
+        phase: "stopped",
+        restoreCheckpoint: null,
+      });
+      return this.operations.finishIn(tx, fence, id, {
+        phase: "succeeded",
+        result: { checkpointId: sandbox.checkpoint },
+        error: null,
+      });
+    });
+    return completed ?? this.shutdown.admit(scope, id, mode);
   }
   async startCommand(
     scope: Scope,

@@ -22,9 +22,13 @@ test("creation rollback and lost ACK preserve one durable placement across resta
   });
   let failQueue = true,
     loseAck = false,
-    allocations = 0;
+    allocations = 0,
+    failAssignment = false,
+    loseAssignmentAck = false,
+    creates = 0;
   const fault: StateStore = {
     async transaction(body) {
+      let assignment = false;
       const result = await state.transaction((tx) =>
         body({
           ...tx,
@@ -33,10 +37,33 @@ test("creation rollback and lost ACK preserve one durable placement across resta
               failQueue = false;
               throw Error("queue write failed");
             }
+            if (
+              failAssignment &&
+              key.startsWith("sandbox/") &&
+              value &&
+              typeof value === "object" &&
+              !Array.isArray(value) &&
+              value.phase === "starting"
+            ) {
+              failAssignment = false;
+              throw Error("assignment projection failed");
+            }
+            if (
+              key.startsWith("sandbox/") &&
+              value &&
+              typeof value === "object" &&
+              !Array.isArray(value) &&
+              value.phase === "starting"
+            )
+              assignment = true;
             tx.put(key, value);
           },
         }),
       );
+      if (assignment && loseAssignmentAck) {
+        loseAssignmentAck = false;
+        throw Error("assignment acknowledgement lost");
+      }
       if (loseAck) {
         loseAck = false;
         throw Error("commit acknowledgement lost");
@@ -57,12 +84,26 @@ test("creation rollback and lost ACK preserve one durable placement across resta
     inspect: async () => ({ state: "ready" }),
     retire: async () => {},
   };
+  let running = false;
   const transport: HostTransport = {
-    request: async (_host, request) => ({
-      version: 1,
-      id: request.id,
-      result: { phase: "running" },
-    }),
+    request: async (_host, request) => {
+      const payload = request.payload as {
+        lease: import("../src/core/contracts.js").Json;
+      };
+      if (request.action === "create") {
+        creates++;
+        running = true;
+      }
+      const result =
+        request.action === "inspect"
+          ? {
+              phase: "open",
+              lease: payload.lease,
+              runtime: running ? { phase: "running", image } : null,
+            }
+          : { phase: "running" };
+      return { version: 1, id: request.id, result };
+    },
   };
   const manager = (store: StateStore = state) =>
     new SandboxManager(
@@ -112,10 +153,43 @@ test("creation rollback and lost ACK preserve one durable placement across resta
   );
   state.close();
   state = new SqliteState(path);
-  await manager().reconcile(scope.owner);
+  failAssignment = true;
+  await assert.rejects(
+    manager(fault).reconcile(scope.owner),
+    /assignment projection failed/,
+  );
+  const nextScope = { owner: scope.owner, sandbox: next };
+  assert.equal((await manager().get(nextScope))?.phase, "queued");
   assert.equal(
-    (await manager().get({ owner: scope.owner, sandbox: next }))?.phase,
+    (await manager().operation(nextScope, nextOperation))?.phase,
+    "queued",
+  );
+  const slots = await state.transaction((tx) => tx.scan("pool/pool/slot/"));
+  assert.equal(slots.length, 1);
+  assert.equal((slots[0]!.value as { phase: string }).phase, "idle");
+  loseAssignmentAck = true;
+  await assert.rejects(
+    manager(fault).reconcile(scope.owner),
+    /assignment acknowledgement lost/,
+  );
+  assert.equal((await manager().get(nextScope))?.phase, "starting");
+  assert.equal(
+    (await manager().operation(nextScope, nextOperation))?.phase,
     "running",
+  );
+  assert.equal(
+    creates,
+    0,
+    "lost assignment ACK occurs before any workload RPC",
+  );
+  state.close();
+  state = new SqliteState(path);
+  await manager().reconcile(scope.owner);
+  assert.equal((await manager().get(nextScope))?.phase, "running");
+  assert.equal(
+    creates,
+    1,
+    "restart resumes the recorded lease without duplicate creation",
   );
   await manager().create(scope.owner, next, image, nextOperation);
   await manager().reconcile(scope.owner);
