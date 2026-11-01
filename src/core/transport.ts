@@ -1,5 +1,11 @@
 import type { Json } from "./contracts.js";
 export const HOST_PROTOCOL_VERSION = 1;
+/** The larger envelope is reserved for negotiated checkpoint chunks. Ordinary
+ * control requests retain their existing bound. */
+export const HOST_IMPORT_CHUNK_BYTES = 4 * 1024 * 1024;
+export function hostRequestByteLimit(action: string): number {
+  return action === "import-chunk" ? 6 * 1024 * 1024 : 1024 * 1024;
+}
 /** Leave room for two bounded 120-second runtime calls plus receipt/cleanup I/O.
  * A shorter outer deadline can terminate control before its outcome is recorded.
  * Expiry still means uncertainty, never permission to replay remote work. */

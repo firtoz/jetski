@@ -15,6 +15,7 @@ import {
   type HostResponse,
   type HostTransport,
   HostTransportError,
+  hostRequestByteLimit,
 } from "../core/transport.js";
 import { attachHostStream } from "./host-stream.js";
 
@@ -158,7 +159,7 @@ export class SshTransport implements HostTransport, HostStreamTransport {
     identifier(request.id);
     identifier(request.action);
     const input = JSON.stringify(request);
-    if (Buffer.byteLength(input) > 1024 * 1024)
+    if (Buffer.byteLength(input) > hostRequestByteLimit(request.action))
       throw new Error("Host request too large");
     signal?.throwIfAborted();
     return new Promise((resolve, reject) => {

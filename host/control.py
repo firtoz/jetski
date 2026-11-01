@@ -23,7 +23,7 @@ from terminal_input import TerminalInputs  # noqa: E402
 from commands import Commands, reconcile_workers_locked  # noqa: E402
 from files import Files  # noqa: E402
 from file_upload import FileUpload  # noqa: E402
-from import_checkpoint import CheckpointImport  # noqa: E402
+from import_checkpoint import CheckpointImport, IMPORT_REQUEST_BYTES  # noqa: E402
 from local_checkpoint import LocalCheckpoint  # noqa: E402
 from fence import Fence, identity  # noqa: E402
 from runtime_backend import DEFAULT_BACKEND  # noqa: E402
@@ -290,6 +290,17 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
     raise ValueError("unsupported_host_action")
 
 
+def decode_request(raw):
+    if len(raw) > IMPORT_REQUEST_BYTES:
+        raise ValueError("host_request_limit")
+    request = json.loads(raw)
+    if not isinstance(request, dict):
+        raise ValueError("invalid_protocol_request")
+    if request.get("action") != "import-chunk" and len(raw) > 1024 * 1024:
+        raise ValueError("host_request_limit")
+    return request
+
+
 def main():
     if not select.select([0], [], [], 10)[0]:
         raise ValueError("host_header_deadline")
@@ -319,10 +330,8 @@ def main():
             raise ValueError("stream_header_bound")
         serve(json.loads(exact(length)), configuration(), runtime_account())
         return
-    raw = first + sys.stdin.buffer.read(1024 * 1024 + 1)
-    if len(raw) > 1024 * 1024:
-        raise ValueError("host_request_limit")
-    request = json.loads(raw)
+    raw = first + sys.stdin.buffer.read(IMPORT_REQUEST_BYTES + 1)
+    request = decode_request(raw)
     config = configuration()
     account = runtime_account()
 

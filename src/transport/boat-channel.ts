@@ -24,9 +24,14 @@ export class BoatControlChannel {
     input: Buffer,
     program: string[],
     signal?: AbortSignal,
+    inputLimit = 1024 * 1024,
   ): Promise<string> {
     identifier(host);
-    if (input.length > 1024 * 1024) throw Error("Host request too large");
+    if (
+      ![1024 * 1024, 6 * 1024 * 1024].includes(inputLimit) ||
+      input.length > inputLimit
+    )
+      throw Error("Host request too large");
     // Program names/arguments are private fixed controller instructions; apostrophes
     // are excluded because the large-input verifier encloses its JSON in a literal.
     if (
@@ -115,7 +120,7 @@ export class BoatControlChannel {
           throw Error("Invalid control upload receipt");
         const digest = createHash("sha256").update(input).digest("hex");
         stdout = await execute(
-          `env -i PATH=/usr/bin:/bin python3 -I -c 'import hashlib,os,subprocess,sys; f=os.open("${path}",os.O_RDONLY|os.O_NOFOLLOW); data=os.fdopen(f,"rb").read(1048577); assert len(data)==${input.length} and hashlib.sha256(data).hexdigest()=="${digest}"; sys.exit(subprocess.run(${JSON.stringify(program)},input=data,env={"PATH":"/usr/bin:/bin"}).returncode)'`,
+          `env -i PATH=/usr/bin:/bin python3 -I -c 'import hashlib,os,subprocess,sys; f=os.open("${path}",os.O_RDONLY|os.O_NOFOLLOW); data=os.fdopen(f,"rb").read(${inputLimit + 1}); assert len(data)==${input.length} and hashlib.sha256(data).hexdigest()=="${digest}"; sys.exit(subprocess.run(${JSON.stringify(program)},input=data,env={"PATH":"/usr/bin:/bin"}).returncode)'`,
           signal,
         );
       }

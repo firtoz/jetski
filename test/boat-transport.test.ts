@@ -131,8 +131,8 @@ test("large Boat control inputs use private file transfer and verified short com
   const input: HostRequest = {
     version: 1,
     id: "large",
-    action: "import_chunk",
-    payload: "b".repeat(350000),
+    action: "import-chunk",
+    payload: "b".repeat(5 * 1024 * 1024),
   };
   let uploadedPath = "",
     uploadedBytes = Buffer.alloc(0),
@@ -183,6 +183,17 @@ test("large Boat control inputs use private file transfer and verified short com
     });
   });
   const transport = new BoatTransport(state, api);
+  await assert.rejects(
+    transport.request("bx_owned", { ...input, action: "create" }),
+    /too large/,
+  );
+  await assert.rejects(
+    transport.request("bx_owned", {
+      ...input,
+      payload: "x".repeat(6 * 1024 * 1024),
+    }),
+    /too large/,
+  );
   assert.equal((await transport.request("bx_owned", input)).result, true);
   assert.equal(dispatch, true);
   assert.equal(cleanup, true);

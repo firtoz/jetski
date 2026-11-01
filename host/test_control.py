@@ -1,4 +1,5 @@
 import os
+import json
 import pathlib
 import tempfile
 import types
@@ -50,6 +51,16 @@ class ControlTests(unittest.TestCase):
             self.account,
             self.run_command,
         )
+
+    def test_bulk_envelope_is_import_only_and_bounded(self):
+        raw = dict(version=1, id="large", action="import-chunk", payload="x" * (5 * 1024**2))
+        encoded = json.dumps(raw).encode()
+        self.assertEqual(control.decode_request(encoded), raw)
+        raw["action"] = "create"
+        with self.assertRaisesRegex(ValueError, "host_request_limit"):
+            control.decode_request(json.dumps(raw).encode())
+        with self.assertRaisesRegex(ValueError, "host_request_limit"):
+            control.decode_request(b"x" * (control.IMPORT_REQUEST_BYTES + 1))
 
     def test_injected_runtime_still_requires_current_host_lease(self):
         self.request("claim", dict(lease=self.lease))

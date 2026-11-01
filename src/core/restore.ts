@@ -4,6 +4,7 @@ import { encodeBase64 } from "./command-output.js";
 import type { CheckpointStore, Fence, Json } from "./contracts.js";
 import { sameObject } from "./inventory.js";
 import { validateRootPayload } from "./root-payload.js";
+import { HOST_IMPORT_CHUNK_BYTES } from "./transport.js";
 
 const sha = async (bytes: Uint8Array<ArrayBuffer>) =>
   Array.from(
@@ -59,10 +60,15 @@ export async function restoreCheckpoint(
     )
       throw Error("Invalid import receipt");
     // Older immutable hosts omit the advertised bound and retain 256 KiB.
-    // Larger durable chunks amortize host-control and fsync costs without
-    // changing acknowledgement or replay semantics, within the 1 MiB envelope.
+    // Larger durable chunks amortize host-control and fsync costs. Their larger
+    // envelope is restricted to checkpoint import; durability/replay is unchanged.
     const chunkBytes = receipt.chunkBytes ?? 256 * 1024;
-    if (chunkBytes !== 256 * 1024 && chunkBytes !== 512 * 1024)
+    if (
+      ![256 * 1024, 512 * 1024, HOST_IMPORT_CHUNK_BYTES].includes(
+        Number(chunkBytes),
+      ) ||
+      typeof chunkBytes !== "number"
+    )
       throw Error("Invalid import chunk bound");
     const finish = async () => {
       const done = await request("import-finish", {});

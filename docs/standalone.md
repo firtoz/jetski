@@ -648,3 +648,9 @@ Save journals persist the selected layout, so reconnects continue their original
 operation even if configuration changes. Both layouts remain readable. Local
 and remote-store source-deleted filesystem recovery are qualified; hosted
 performance parity and downstream rollout remain pending.
+
+New host bundles advertise 4 MiB durable restore chunks. Larger control envelopes
+are accepted only for checkpoint import; ordinary requests remain limited to
+1 MiB. Previously begun imports retain their recorded 256/512 KiB limits. The
+host still hashes each chunk, synchronizes data and progress before replying,
+and verifies the complete archive before making the restored workload available.

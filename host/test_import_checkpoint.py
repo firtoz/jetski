@@ -9,7 +9,7 @@ from unittest.mock import patch
 import uuid
 from archive import capture
 from fence import Fence
-from import_checkpoint import CheckpointImport
+from import_checkpoint import CheckpointImport, IMPORT_CHUNK_BYTES
 from test_archive import oracle
 
 
@@ -80,7 +80,7 @@ class ImportTests(unittest.TestCase):
         )
 
     def test_large_chunk_is_durable_before_progress_and_replays_after_lost_journal(self):
-        raw = os.urandom(700000)
+        raw = os.urandom(IMPORT_CHUNK_BYTES + 700000)
         with self.fence.locked():
             state = self.fence.read()
             receipt = {
@@ -93,16 +93,18 @@ class ImportTests(unittest.TestCase):
         with patch("import_checkpoint.os.fsync", wraps=fsync) as synced:
             with patch.object(self.fence, "write", side_effect=OSError("journal interrupted")):
                 with self.assertRaisesRegex(OSError, "journal interrupted"):
-                    self.send(0, raw[: 512 * 1024])
+                    self.send(0, raw[:IMPORT_CHUNK_BYTES])
             self.assertGreaterEqual(synced.call_count, 1)
         self.assertEqual(self.fence.read()["import"]["offset"], 0)
-        self.assertEqual(self.importer.path(self.lease).read_bytes(), raw[: 512 * 1024])
-        self.assertEqual(self.send(0, raw[: 512 * 1024])["offset"], 512 * 1024)
-        self.assertEqual(self.send(0, raw[: 512 * 1024])["offset"], 512 * 1024)
-        self.assertEqual(self.send(512 * 1024, raw[512 * 1024 :])["offset"], len(raw))
+        self.assertEqual(self.importer.path(self.lease).read_bytes(), raw[:IMPORT_CHUNK_BYTES])
+        self.assertEqual(self.send(0, raw[:IMPORT_CHUNK_BYTES])["offset"], IMPORT_CHUNK_BYTES)
+        self.assertEqual(self.send(0, raw[:IMPORT_CHUNK_BYTES])["offset"], IMPORT_CHUNK_BYTES)
+        self.assertEqual(
+            self.send(IMPORT_CHUNK_BYTES, raw[IMPORT_CHUNK_BYTES:])["offset"], len(raw)
+        )
         self.assertEqual(self.importer.path(self.lease).read_bytes(), raw)
         with self.assertRaisesRegex(ValueError, "integrity"):
-            self.send(0, raw[: 512 * 1024 + 1])
+            self.send(0, raw[: IMPORT_CHUNK_BYTES + 1])
 
     def test_legacy_import_receipt_keeps_its_chunk_limit(self):
         with self.fence.locked():
@@ -112,6 +114,16 @@ class ImportTests(unittest.TestCase):
             self.fence.write({**state, "import": receipt})
         with self.assertRaisesRegex(ValueError, "extent"):
             self.send(0, b"x" * (256 * 1024 + 1))
+        self.assertFalse(self.importer.path(self.lease).exists())
+
+    def test_previous_negotiated_receipt_preserves_its_bound(self):
+        with self.fence.locked():
+            state = self.fence.read()
+            self.fence.write(
+                {**state, "import": {**state["import"], "chunkBytes": 512 * 1024, "bytes": 600000}}
+            )
+        with self.assertRaisesRegex(ValueError, "extent"):
+            self.send(0, b"x" * (512 * 1024 + 1))
         self.assertFalse(self.importer.path(self.lease).exists())
 
     def test_digest_corruption_and_conflicting_replay_fail_closed(self):

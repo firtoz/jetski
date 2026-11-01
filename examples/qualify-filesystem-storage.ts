@@ -195,7 +195,7 @@ try {
             assert.equal(input.sha256, receipt.sha256);
             assert.equal(input.bytes, receipt.bytes);
             assert.equal(input.checkpointId, receipt.id);
-            return { ...receipt, chunkBytes: 512 * 1024 };
+            return { ...receipt, chunkBytes: 4 * 1024 * 1024 };
           }
           if (action === "import-chunk") {
             const part = payload as {

@@ -7,6 +7,7 @@ import {
   type HostResponse,
   type HostTransport,
   HostTransportError,
+  hostRequestByteLimit,
 } from "../core/transport.js";
 import type { BoatApi } from "../providers/boat.js";
 import { BoatControlChannel } from "./boat-channel.js";
@@ -44,6 +45,7 @@ export class BoatTransport implements HostTransport {
         "/opt/jetski/host/control.py",
       ],
       signal,
+      hostRequestByteLimit(request.action),
     );
     try {
       const response = JSON.parse(stdout) as HostResponse;

@@ -13,6 +13,10 @@ from fence import identity
 from local_checkpoint import LocalCheckpoint
 
 
+IMPORT_CHUNK_BYTES = 4 * 1024**2
+IMPORT_REQUEST_BYTES = 6 * 1024**2
+
+
 class CheckpointImport:
     def __init__(self, fence, archives, data, account):
         self.fence, self.archives, self.data, self.account = (
@@ -57,7 +61,12 @@ class CheckpointImport:
                 self.path(lease)
             ):
                 raise ValueError("import_destination_exists")
-            receipt = {**expected, "offset": 0, "phase": "receiving", "chunkBytes": 512 * 1024}
+            receipt = {
+                **expected,
+                "offset": 0,
+                "phase": "receiving",
+                "chunkBytes": IMPORT_CHUNK_BYTES,
+            }
             state = {**state, "import": receipt}
             self.fence.write(state)
             return self.cached(lease, state, receipt)
@@ -77,14 +86,14 @@ class CheckpointImport:
             type(offset) is not int
             or offset < 0
             or not isinstance(encoded, str)
-            or len(encoded) > 700000
+            or len(encoded) > ((IMPORT_CHUNK_BYTES + 2) // 3) * 4
         ):
             raise ValueError("invalid_import_chunk")
         try:
             data = base64.b64decode(encoded, validate=True)
         except ValueError:
             raise ValueError("invalid_import_encoding") from None
-        if not 1 <= len(data) <= 512 * 1024 or hashlib.sha256(data).hexdigest() != sha256:
+        if not 1 <= len(data) <= IMPORT_CHUNK_BYTES or hashlib.sha256(data).hexdigest() != sha256:
             raise ValueError("import_chunk_integrity")
         with self.fence.locked():
             state = self.state(lease)

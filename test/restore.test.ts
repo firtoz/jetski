@@ -14,7 +14,7 @@ import { LocalCheckpointStore } from "../src/storage/local.js";
 
 const sha = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
-for (const chunkBytes of [undefined, 512 * 1024]) {
+for (const chunkBytes of [undefined, 512 * 1024, 4 * 1024 * 1024]) {
   test(`restore coalesces frames and resumes across boundaries with chunk bound ${chunkBytes ?? "legacy"}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "jetski-restore-"));
     const state = new SqliteState(join(directory, "state.sqlite"));
@@ -26,9 +26,10 @@ for (const chunkBytes of [undefined, 512 * 1024]) {
     const registry = new CheckpointRegistry(state, objects),
       fence = { owner: "alice", sandbox: "box", generation: 1 };
     await registry.initialize(fence);
-    const raw = randomBytes(900000);
-    const compressed = [0, 300000, 600000].map((offset) =>
-      gzipSync(raw.subarray(offset, offset + 300000)),
+    const frameBytes = chunkBytes === 4 * 1024 * 1024 ? 2_000_000 : 300000;
+    const raw = randomBytes(frameBytes * 3);
+    const compressed = [0, frameBytes, frameBytes * 2].map((offset) =>
+      gzipSync(raw.subarray(offset, offset + frameBytes)),
     );
     const archive = Buffer.concat(compressed),
       id = randomUUID();
@@ -44,9 +45,9 @@ for (const chunkBytes of [undefined, 512 * 1024]) {
           offset: frameOffset,
           bytes: frame.length,
           sha256: sha(frame),
-          expandedBytes: 300000,
+          expandedBytes: frameBytes,
           expandedSha256: sha(
-            raw.subarray(index * 300000, (index + 1) * 300000),
+            raw.subarray(index * frameBytes, (index + 1) * frameBytes),
           ),
         };
         frameOffset += frame.length;
