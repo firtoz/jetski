@@ -49,58 +49,33 @@ physical-host replacement, remote-store parity or downstream staging behavior.
 
 ## Current work
 
-Live Boat/R2 qualification now passes same-host restore and physical replacement
-with an exact filesystem oracle, followed by both host retirements and scoped
-object cleanup. This baseline downloads checkpoints from remote storage.
-Verified local-cache reuse passes all five disposable CI jobs on its development
-branch and the live warm-restore oracle. Live terminal controls, binary forwarding
-and replacement-host R2 restore passed, including final host retirement and owned
-object cleanup. Confirmed idle-host disappearance now also passes live Boat/R2
-replacement with exact bytes, modes and links; both test hosts were retired.
-Explicit operator-selected outbound networking passed all five CI jobs, including
-real outbound access and host-loopback denial on a disposable rootless host.
-Networking stays disabled by default; broader destination filtering is external.
-Embedding support and built-package consumption passed CI, and initial
-client-side state/storage and lifecycle adapters pass local contracts. After the
-native edge fetch correction, scoped hosted preparation executed and published a
-checkpoint matching an independently observed source-archive identity; its host was
-retired. The downstream read/edit/publication workflow and source-deleted filesystem
-replacement now pass. Resumed application work confirms the published revision and
-unchanged working tree using the retained session. Interactive integration remains open.
-Bounded parallel range reads passed a focused live comparison; whole-workload
-measurements remain required. The separate paid-host allowance is approved.
-Optional lifecycle observations report redacted phases and timings. Remaining gates
-include real-grace collection, matched hosted measurements and staging integration.
-Explicit recovery after confirmed host loss covers interrupted saves and placements
-with local restart and HTTP/SDK fault tests. A hosted selected checkpoint also
-passed an independent filesystem comparison. A fresh FUSE-overlay host now also
-completes the downstream publication workflow. After durable publication and source
-deletion, the replacement matches all 156 filesystem entries and 322,806,090 bytes,
-including modes and symlinks (this fixture has no hardlink groups). Recovery retains
-the original uncertain outcome,
-selects acknowledged data and discloses unavailable unpublished changes.
-Host runtime composition now has explicit lifecycle/execution contracts shared by
-control, command workers and forwarding. Podman remains the only supplied backend;
-runtime-specific readiness probing is injectable, while alternate bootstrap
-capability negotiation and the full runtime conformance audit remain open.
-New command admission reserves the existing checkpoint drain interval before host
-expiry; measured save headroom and full hosted lifetime qualification remain open.
-An explicit authenticated stream crypto suite passes a local embedded-runtime
-encrypted binary round trip; full client transport wiring and hosted checks remain open.
-Default SSH and Boat control deadlines now leave room for bounded host runtime
-commands and receipt writes. Slow-storage startup and its hosted recovery remain
-unqualified; transport expiry still preserves an uncertain operation.
-An explicit fresh-store FUSE-overlay bootstrap option is implemented with
-configuration/replay guards. All seven CI jobs pass, including disposable SSH
-and Boat-adapter FUSE qualification and lost-acknowledgement replay. A hosted
-replacement reached container execution, completed publication and passed an exact
-post-publication filesystem replacement oracle. Resumed application work also
-passes; matched performance comparisons remain open. Host bundle changes
-require draining old assignments before replacement; see [runtime configuration](runtime.md).
-Embedded transactional admission can now inspect owner-scoped sandbox state in
-the caller transaction without depending on internal keys. Client access wiring
-and hosted qualification remain open.
-See [qualification evidence](qualification.md).
+Live Boat/R2 qualification covers warm reuse, incremental saves, idle-host loss,
+physical replacement, exact filesystem recovery and owned-resource cleanup.
+Standalone terminal, SSH, HTTP/WebSocket preview and TCP evidence is recorded in
+[qualification.md](qualification.md). Matched whole-workload measurements remain
+required; focused improvements do not establish a universal speedup.
+
+The downstream staging read/edit/publication workflow passes with the pinned
+artifact. Source-deleted replacement matches 156 filesystem entries and
+322,806,090 bytes, including modes and symlinks. Resumed work retains the original
+session and confirms the published revision with a clean tree. Interactive
+product integration, hosted restart/rollback checks and final rollout remain open.
+
+Portable HTTP and WebSocket transports now pass binary/failure tests and local
+Workers probes. A Fetch preview gateway reuses durable preview sessions, enforces
+isolated origins and cookie authentication, and aborts active streams on revocation.
+SQLite-backed tests and the combined authenticated Workers HTTP/WebSocket probe
+pass, including revocation. Hosted client integration still needs qualification. See [runtime limits](runtime.md#embedded-preview-compatibility).
+
+Podman is the only supplied runtime. Explicit FUSE-overlay bootstrap is qualified;
+changing immutable host assets still requires draining old assignments. Remaining
+runtime gates include alternate-bootstrap capability auditing, slow-storage and
+host-lifetime headroom checks. Uncertain work retains its journal and source;
+recovery selects acknowledged checkpoints without claiming unpublished changes.
+
+Real-grace collection, matched benchmarks, final provenance/isolation audits,
+main CI and owned-resource reconciliation remain release gates. Preserve the
+separate recovery experiment and budget while completing them.
 
 ## Next steps
 

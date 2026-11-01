@@ -266,3 +266,20 @@ requires positive provider absence, and atomically fences the old placement. It
 refuses active storage actors and preserves the original uncertain outcome. SQLite
 restart/replay, HTTP/SDK owner denial, corrupt storage, stale authority and a
 separate replacement restore are covered locally. Hosted adoption remains open.
+
+## Portable embedded preview gateway
+
+The Fetch gateway passes SQLite-backed grant redemption, isolated-origin checks,
+duplicate-cookie denial, bounded bodies and revocation during response streaming.
+A local Workers probe composes the real session registry, gateway, HTTP/WebSocket
+transports and platform socket adapter with a simulated host connection. It
+verifies exact binary HTTP and WebSocket traffic, zero stream opens before
+authentication, denied cross-origin redemption, absent workload credentials,
+and socket closure after revocation. This is not live-provider qualification.
+
+The probe exposed the runtime's default Blob binary messages; explicitly selecting
+ArrayBuffer mode corrected the empty-payload failure. The platform adapter now
+rejects unexpected message types and enforces cumulative output bounds even when
+`bufferedAmount` is unavailable. Node's HTTP custom-connection option remains
+unsupported in the tested Workers runtime; the optional portable exports avoid it.
+See [runtime contracts and limits](runtime.md#embedded-preview-compatibility).

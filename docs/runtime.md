@@ -72,3 +72,45 @@ upgrade or treat a transport timeout as host disappearance.
 Adopted SSH machines remain operator-owned. Apply host changes only after workloads
 are safely stopped and released; replacing an installation does not authorize
 deleting or powering off the machine.
+
+## Embedded preview compatibility
+
+The standalone Node preview server uses HTTP custom connections. A local Workers
+probe with compatibility date `2026-10-01` rejected `http.request`'s
+`createConnection` option before invoking it. Node compatibility flags alone do
+not qualify that server for an embedded platform.
+
+Optional `jetski/transport/http`, `jetski/transport/websocket` and
+`jetski/server/preview-fetch` exports provide portable alternatives without loading
+host SDKs or the Node server. Transports consume already-authorized core host
+connections. The Fetch gateway uses durable preview sessions, a separate configured
+preview origin, secure HttpOnly cookies and recurring authority checks. The caller
+supplies the platform socket upgrade and request-lifetime supervision.
+
+HTTP requests have a 30-second total deadline, 32 KiB headers and 64 MiB bodies.
+The strict [RFC 9112](https://www.rfc-editor.org/rfc/rfc9112.html) response decoder
+rejects ambiguous framing, unsupported transfer codings, malformed fields and
+truncation. Credentials and hop-by-hop headers are filtered. Response completion
+requires the independent host receipt; errors and cancellation abort the stream.
+
+WebSocket helpers validate the handshake, disable extensions, preserve coalesced
+bytes and text BOMs, and enforce 8 MiB messages and 4,096 fragments. Client input
+queues are bounded to 16 MiB/256 frames; close exchange has a five-second deadline.
+The event-socket adapter sets `binaryType` to `arraybuffer` and limits cumulative
+output to 64 MiB or 65,536 messages. It also checks `bufferedAmount` when available;
+the tested Workers runtime lacks that metric. Limits reject before sending rather
+than silently dropping or replaying bytes. Connections have a one-hour maximum,
+and the gateway's session expiry or revocation can close them earlier.
+
+The gateway rejects cross-origin redemption and duplicate cookies before opening
+workload streams. Authentication revalidation runs once per second with a
+three-second authority-call deadline. The default response policy prevents preview content from being embedded
+and blocks its service workers. `frameAncestors` can explicitly allow configured
+control origins to embed a preview; other parents are rejected. Cookie policy
+remains SameSite=Strict, so embedding must account for browser site boundaries. Do not
+serve untrusted workload HTML at the control origin.
+
+Real local HTTP binary transfers, Workers socket-pair exchanges and SQLite-backed
+authentication/revocation tests pass. The combined authenticated Workers gateway also passes binary HTTP/WebSocket
+traffic, credential isolation and live-session revocation with a simulated host.
+Client integration and hosted behavior remain qualification requirements.

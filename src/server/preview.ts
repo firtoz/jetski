@@ -15,7 +15,8 @@ import type { PreviewSessions } from "../core/preview-sessions.js";
 import type { StreamCoordinator } from "../core/streams.js";
 import { HostDuplex } from "../transport/duplex.js";
 import type { Authenticate } from "./http.js";
-import { previewAuthRequest, previewCookie } from "./preview-auth.js";
+import { previewAuthRequest } from "./preview-auth.js";
+import { previewCookie } from "./preview-browser.js";
 
 export type PreviewRoute = {
   origin: string;

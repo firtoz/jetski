@@ -30,7 +30,10 @@
     "./server/preview": "./dist/server/preview.js",
     "./transport/duplex": "./dist/transport/duplex.js",
     "./providers/boat-bootstrap-embedded": "./dist/providers/boat-bootstrap-embedded.js",
-    "./host-assets": "./dist/host-assets.js"
+    "./host-assets": "./dist/host-assets.js",
+    "./transport/http": "./dist/transport/http-forward.js",
+    "./transport/websocket": "./dist/transport/websocket.js",
+    "./server/preview-fetch": "./dist/server/preview-fetch.js"
   },
   "files": [
     "dist",
