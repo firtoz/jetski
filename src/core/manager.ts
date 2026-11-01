@@ -169,6 +169,8 @@ export class SandboxManager {
       objects,
       transfer: new CheckpointTransfer(objects, this.checkpoints),
       request: (lease, action, payload) => this.request(lease, action, payload),
+      hostAbsent: async (lease) =>
+        (await provider.inspect(lease.machineId)).state === "absent",
       retainCommands: async (scope, lease) => {
         await this.streams?.settleStopped(scope, lease);
         await this.terminalInputs.settle(scope);

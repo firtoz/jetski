@@ -220,3 +220,12 @@ provider requests, with no new host starts. A background checkpoint save was act
 This is a transport latency result, not a complete save, restore or session benchmark.
 Private receipts preserve failed probe setup attempts separately from the completed
 matrix. Full matched end-to-end qualification is still required.
+
+## Host loss after publication
+
+Local SQLite restart tests cover host disappearance during removal, release and
+source cleanup. A fully verified publication can finish release after positive
+provider absence, without further workload commands. Unknown provider state,
+interrupted upload and corrupt or missing retained objects remain quarantined.
+These fault-injection checks do not qualify live expiration recovery; that gate
+remains open.

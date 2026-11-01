@@ -53,6 +53,7 @@ type Dependencies = {
   transfer: CheckpointTransfer;
   request: (lease: HostLease, action: string, payload: Json) => Promise<Json>;
   retainCommands: (scope: Scope, lease: HostLease) => Promise<boolean>;
+  hostAbsent: (lease: HostLease) => Promise<boolean>;
   settleUploads: (scope: Scope) => Promise<void>;
 };
 const sandboxKey = (scope: Scope) => `sandbox/${scopeKey(scope)}`;
@@ -119,7 +120,7 @@ export class ShutdownCoordinator {
     for (const record of records)
       if (record.stage !== "done" && !record.blocked) await this.run(record);
   }
-  private async run(initial: Shutdown) {
+  private async run(initial: Shutdown): Promise<void> {
     const {
       state,
       operations,
@@ -251,6 +252,17 @@ export class ShutdownCoordinator {
         await this.advance(record, "done");
       }
     } catch (error) {
+      // A verified publication survives loss of its execution host. Absence
+      // proves no local workload remains, but never substitutes for publication.
+      if (["remove", "release", "purge"].includes(record.stage)) {
+        try {
+          if (await this.deps.hostAbsent(record.lease)) {
+            return await this.run(await this.advance(record, "finish"));
+          }
+        } catch {
+          // Keep the original failure and quarantine if recovery is ambiguous.
+        }
+      }
       await state.transaction((tx) => {
         const key = this.key(record, record.id),
           current = tx.get<Shutdown>(key);
