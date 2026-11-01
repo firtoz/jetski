@@ -49,13 +49,22 @@ MODULES = (
 def bootstrap(config):
     if os.geteuid() != 0:
         raise ValueError("root_required")
-    if set(config) != {"version", "machineId", "poolId", "images"} or config["version"] != 1:
+    if (
+        set(config)
+        not in (
+            {"version", "machineId", "poolId", "images"},
+            {"version", "machineId", "poolId", "images", "networkMode"},
+        )
+        or config["version"] != 1
+    ):
         raise ValueError("invalid_host_configuration")
     for name in ("machineId", "poolId"):
         if not isinstance(config[name], str) or not re.fullmatch(
             r"[a-zA-Z0-9_-]{1,128}", config[name]
         ):
             raise ValueError("invalid_host_identity")
+    if config.get("networkMode", "none") not in ("none", "egress"):
+        raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:
         raise ValueError("invalid_image_policy")
     for image in config["images"]:
@@ -66,6 +75,8 @@ def bootstrap(config):
     for tool in ("podman", "newuidmap", "newgidmap", "runuser", "useradd", "loginctl", "systemctl"):
         if shutil.which(tool) is None:
             raise ValueError("missing_prerequisite:" + tool)
+    if config.get("networkMode", "none") == "egress" and shutil.which("slirp4netns") is None:
+        raise ValueError("missing_prerequisite:slirp4netns")
     if (CONTROL_ROOT / "slot" / "state.json").exists():
         raise ValueError("existing_host_assignment_requires_managed_upgrade")
     for path in (

@@ -56,6 +56,9 @@ Verified local-cache reuse passes all five disposable CI jobs on its development
 branch and the live warm-restore oracle. Live terminal controls, binary forwarding
 and replacement-host R2 restore passed, including final host retirement and owned
 object cleanup.
+An explicit operator-selected outbound network policy is implemented with unit
+coverage; disposable runtime qualification remains pending. Networking stays
+disabled by default.
 Embedding support and built-package consumption passed CI, and initial
 client-side state/storage adapters pass unit contracts without deployed routing. The separate paid-host
 allowance is approved. Remaining gates include real-grace collection, matched

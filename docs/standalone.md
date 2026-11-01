@@ -482,3 +482,18 @@ issuance or an operator's reverse-proxy deployment. See CI run41252297444 at
 commit fc3298b and the evidence in implementation.md. Other browsers, application
 cookies, embedding and full live-provider lifecycle qualification remain outside
 this evidence. No universal browser or production-readiness claim is implied.
+
+### Outbound networking
+
+Workloads default to `networkMode: "none"`. Operators may explicitly select
+`"egress"` in the Boat host-provider configuration, or in an adopted host's
+bootstrap JSON. The policy is part of the immutable installation receipt; changing
+it requires a fresh host installation, never an in-place change on an assigned host.
+The embedded bootstrap accepts the same policy as its final constructor argument.
+
+Egress uses rootless `slirp4netns:allow_host_loopback=false`; prerequisites fail
+closed when slirp4netns is unavailable. Workload requests cannot select network
+options or host networking. This blocks slirp's host-loopback route, **not** all
+private networks, metadata services or public host interfaces. Use `none` unless
+outbound access is required; broader destination restrictions require an external
+network policy. See [Podman's network options](https://docs.podman.io/en/v5.7.0/markdown/podman-run.1.html).

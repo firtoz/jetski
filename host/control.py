@@ -79,6 +79,7 @@ def dispatch(request, config, account, run, launch=None):
         config["images"],
         "/opt/jetski/command-supervisor",
         "/opt/jetski/tcp-relay",
+        network_mode=config.get("networkMode", "none"),
     )
     streams = Streams(fence)
     if action == "stream-reserve":

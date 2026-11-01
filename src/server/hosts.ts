@@ -1,11 +1,20 @@
-import type { HostProvider, StateStore } from "../core/contracts.js";
+import type {
+  HostProvider,
+  RuntimeNetworkMode,
+  StateStore,
+} from "../core/contracts.js";
 import type { HostStreamTransport } from "../core/host-stream.js";
 import type { HostTransport } from "../core/transport.js";
 import type { BoatMachineType } from "../providers/boat.js";
 import type { SshHost } from "../transport/ssh.js";
 export type HostConfig =
   | { kind: "ssh"; hosts: SshHost[] }
-  | { kind: "boat"; tokenEnv: string; machine?: BoatMachineType };
+  | {
+      kind: "boat";
+      tokenEnv: string;
+      machine?: BoatMachineType;
+      networkMode?: RuntimeNetworkMode;
+    };
 /** Selected adapters only. Boat installs on allocated machines, never locally. */
 export async function standaloneHosts(
   state: StateStore,
@@ -53,7 +62,13 @@ export async function standaloneHosts(
   ]);
   const api = new BoatApi(environment[config.tokenEnv]!);
   const transport = new BoatTransport(state, api);
-  const bootstrap = new BoatBootstrap(state, api, poolId, approvedImages);
+  const bootstrap = new BoatBootstrap(
+    state,
+    api,
+    poolId,
+    approvedImages,
+    config.networkMode,
+  );
   return {
     transport,
     streamTransport: new BoatStreamTransport(state, api),

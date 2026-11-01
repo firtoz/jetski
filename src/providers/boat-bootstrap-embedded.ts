@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import type { StateStore } from "../core/contracts.js";
-import { identifier } from "../core/contracts.js";
+import {
+  identifier,
+  RUNTIME_NETWORK_MODES,
+  type RuntimeNetworkMode,
+} from "../core/contracts.js";
 import { BoatControlChannel } from "../transport/boat-channel.js";
 import type { BoatApi } from "./boat.js";
 
@@ -41,8 +45,11 @@ export class EmbeddedBoatBootstrap {
     private readonly poolId: string,
     private readonly images: string[],
     private readonly loadAssets: () => Promise<BoatBootstrapAssets>,
+    private readonly networkMode: RuntimeNetworkMode = "none",
   ) {
     identifier(poolId);
+    if (!RUNTIME_NETWORK_MODES.includes(networkMode))
+      throw Error("Unsupported runtime network policy");
     if (
       !Array.isArray(images) ||
       images.length < 1 ||
@@ -89,6 +96,9 @@ export class EmbeddedBoatBootstrap {
           machineId: host,
           poolId: this.poolId,
           images: this.images,
+          ...(this.networkMode === "none"
+            ? {}
+            : { networkMode: this.networkMode }),
         },
         files,
       }),

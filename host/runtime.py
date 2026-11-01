@@ -12,13 +12,26 @@ from streams import stopped_streams
 
 
 class PodmanRuntime:
-    def __init__(self, fence, run, image, data_root, approved_images, supervisor=None, relay=None):
+    def __init__(
+        self,
+        fence,
+        run,
+        image,
+        data_root,
+        approved_images,
+        supervisor=None,
+        relay=None,
+        network_mode="none",
+    ):
         if not isinstance(image, str) or not re.fullmatch(
             r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image
         ):
             raise ValueError("digest_pinned_image_required")
         if image not in approved_images:
             raise ValueError("image_not_approved")
+        if network_mode not in ("none", "egress"):
+            raise ValueError("invalid_network_policy")
+        self.network_mode = network_mode
         self.relay = relay
         self.supervisor = supervisor
         self.fence = fence
@@ -46,6 +59,8 @@ class PodmanRuntime:
             requested = dict(
                 image=self.image, memoryMb=memory_mb, cpus=cpus, relay=self.relay is not None
             )
+            if self.network_mode != "none":
+                requested["networkMode"] = self.network_mode
             if existing:
                 if existing.get("configuration") != requested:
                     raise ValueError("runtime_configuration_conflict")
@@ -88,7 +103,12 @@ class PodmanRuntime:
                     str(memory_mb) + "m",
                     "--cpus",
                     str(cpus),
-                    "--network=none",
+                    "--network="
+                    + (
+                        "none"
+                        if self.network_mode == "none"
+                        else "slirp4netns:allow_host_loopback=false"
+                    ),
                     "--pull=never",
                     "--tmpfs",
                     "/tmp:rw,nosuid,nodev,size=128m",

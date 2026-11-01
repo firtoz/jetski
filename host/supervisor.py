@@ -41,8 +41,17 @@ def configuration():
     if meta.st_size > 65536:
         raise ValueError("host_configuration_limit")
     config = json.loads(CONFIG_PATH.read_text())
-    if set(config) != {"version", "machineId", "poolId", "images"} or config["version"] != 1:
+    if (
+        set(config)
+        not in (
+            {"version", "machineId", "poolId", "images"},
+            {"version", "machineId", "poolId", "images", "networkMode"},
+        )
+        or config["version"] != 1
+    ):
         raise ValueError("unsupported_host_configuration")
+    if config.get("networkMode", "none") not in ("none", "egress"):
+        raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:
         raise ValueError("invalid_image_policy")
     private_root(CONTROL_ROOT)
@@ -157,6 +166,7 @@ def preflight(config, account, run):
         poolId=config["poolId"],
         architecture="x86_64",
         rootless=True,
+        networkMode=config.get("networkMode", "none"),
         podmanVersion=info["version"]["Version"],
         storageDriver=info["store"]["graphDriverName"],
     )

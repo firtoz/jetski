@@ -83,6 +83,14 @@ test("Boat bootstrap journals code and policy, resumes uncertainty and rejects c
   assert.equal(pending?.ready, false);
   await new BoatBootstrap(state, api, "pool", [image]).ensure("bx_boot");
   const completedCalls = calls;
+  await assert.rejects(
+    new BoatBootstrap(state, api, "pool", [image], "egress").ensure("bx_boot"),
+    /identity changed/,
+  );
+  assert.throws(
+    () => new BoatBootstrap(state, api, "pool", [image], "host" as never),
+    /network policy/,
+  );
   await new BoatBootstrap(state, api, "pool", [image]).ensure("bx_boot");
   assert.equal(calls, completedCalls);
   const files: Record<string, Uint8Array> = {};

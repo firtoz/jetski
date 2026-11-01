@@ -113,3 +113,7 @@ export interface HostProvider {
   ): Promise<{ state: "ready" | "starting" | "absent" | "unknown" }>;
   retire(id: string, allocationId: string): Promise<void>;
 }
+
+/** Operator policy; workload requests cannot select host networking. */
+export const RUNTIME_NETWORK_MODES = ["none", "egress"] as const;
+export type RuntimeNetworkMode = (typeof RUNTIME_NETWORK_MODES)[number];

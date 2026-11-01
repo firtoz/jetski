@@ -118,6 +118,21 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not_approved"):
             PodmanRuntime(self.fence, self.fake_run, IMAGE, self.base / "data", [])
 
+    def test_egress_is_explicit_bounded_and_fenced_against_policy_change(self):
+        runtime = PodmanRuntime(
+            self.fence, self.fake_run, IMAGE, self.base / "data", [IMAGE], network_mode="egress"
+        )
+        runtime.create(self.lease)
+        self.assertIn("--network=slirp4netns:allow_host_loopback=false", self.calls[0])
+        self.assertNotIn("--network=host", self.calls[0])
+        with self.assertRaisesRegex(ValueError, "configuration_conflict"):
+            self.adapter().create(self.lease)
+        for mode in ("host", "bridge", "egress:allow_host_loopback=true", True, None):
+            with self.assertRaisesRegex(ValueError, "invalid_network_policy"):
+                PodmanRuntime(
+                    self.fence, self.fake_run, IMAGE, self.base / "data", [IMAGE], network_mode=mode
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

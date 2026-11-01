@@ -306,7 +306,12 @@ def run_worker(command, expected_lease, fence):
         return bounded_command(runtime_argv(account) + args, CONTROL_ROOT)
 
     runtime = PodmanRuntime(
-        fence, run, image, pathlib.Path("/var/lib/jetski/data"), config["images"]
+        fence,
+        run,
+        image,
+        pathlib.Path("/var/lib/jetski/data"),
+        config["images"],
+        network_mode=config.get("networkMode", "none"),
     )
     root = CONTROL_ROOT / "commands" / lease["assignmentId"] / command
     spec = receipt["spec"]
