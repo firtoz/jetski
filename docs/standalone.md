@@ -521,7 +521,8 @@ Workloads default to `networkMode: "none"`. Operators may explicitly select
 `"egress"` in the Boat host-provider configuration, or in an adopted host's
 bootstrap JSON. The policy is part of the immutable installation receipt; changing
 it requires a fresh host installation, never an in-place change on an assigned host.
-The embedded bootstrap accepts the same policy as its final constructor argument.
+The embedded bootstrap accepts `networkMode` after its asset loader, followed by
+the optional `storageMode`; see [host runtime configuration](runtime.md).
 
 Egress uses rootless `slirp4netns:allow_host_loopback=false`; prerequisites fail
 closed when slirp4netns is unavailable. Workload requests cannot select network

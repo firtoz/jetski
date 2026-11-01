@@ -86,10 +86,10 @@ Default SSH and Boat control deadlines now leave room for bounded host runtime
 commands and receipt writes. Slow-storage startup and its hosted recovery remain
 unqualified; transport expiry still preserves an uncertain operation.
 An explicit fresh-store FUSE-overlay bootstrap option is implemented with
-configuration/replay guards. Disposable SSH qualification passed; the Boat
-fixture now preserves storage selection when reconstructing after a lost
-acknowledgement, pending CI verification. Hosted qualification and performance
-comparisons remain open. See [runtime configuration](runtime.md).
+configuration/replay guards. All seven CI jobs pass, including disposable SSH
+and Boat-adapter FUSE qualification and lost-acknowledgement replay. Hosted
+qualification and performance comparisons remain open. Host bundle changes
+require draining old assignments before replacement; see [runtime configuration](runtime.md).
 See [qualification evidence](qualification.md).
 
 ## Next steps

@@ -53,3 +53,22 @@ This option targets the initial image-layer copying associated with rootless
 `keep-id` on native overlay, described in [Podman's performance guidance](https://github.com/containers/podman/blob/main/docs/tutorials/performance.md#choosing-a-storage-driver).
 It does not change persistent paths, checkpoint formats or user isolation. Measure
 startup and workload I/O before choosing it; there is no universal performance claim.
+
+## Host bundle upgrades
+
+Boat bootstrap receipts bind both the host source bytes and installation policy.
+Changing either requires host replacement. The provider checks this identity
+during inspection too, so deploying a changed bundle while old hosts remain
+assigned can prevent their normal reconciliation. In-place host upgrades are not
+supported.
+
+Keep the old controller build available while draining its assignments. Verify
+durable checkpoint publication, release assignments and retire owned hosts before
+activating the new bundle. If a save or placement is uncertain, retain its journal
+and source; use explicit recovery only after provider-confirmed loss and selection
+of a verified retained checkpoint. Never clear bootstrap receipts to force an
+upgrade or treat a transport timeout as host disappearance.
+
+Adopted SSH machines remain operator-owned. Apply host changes only after workloads
+are safely stopped and released; replacing an installation does not authorize
+deleting or powering off the machine.
