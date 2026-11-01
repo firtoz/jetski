@@ -1,6 +1,7 @@
 import type { StateStore } from "../core/contracts.js";
 import { identifier } from "../core/contracts.js";
 import {
+  HOST_CONTROL_TIMEOUT_MS,
   HOST_PROTOCOL_VERSION,
   type HostRequest,
   type HostResponse,
@@ -13,7 +14,11 @@ import { BoatControlChannel } from "./boat-channel.js";
 /** Fixed privileged control program; workload bytes enter only through stdin. */
 export class BoatTransport implements HostTransport {
   private readonly channel: BoatControlChannel;
-  constructor(state: StateStore, api: BoatApi, timeoutSeconds = 60) {
+  constructor(
+    state: StateStore,
+    api: BoatApi,
+    timeoutSeconds = HOST_CONTROL_TIMEOUT_MS / 1000,
+  ) {
     this.channel = new BoatControlChannel(state, api, timeoutSeconds);
   }
   async request(

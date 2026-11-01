@@ -9,6 +9,7 @@ import type {
 import { tcpPort } from "../core/ports.js";
 import { STREAM_MAGIC } from "../core/stream-protocol.js";
 import {
+  HOST_CONTROL_TIMEOUT_MS,
   HOST_PROTOCOL_VERSION,
   type HostRequest,
   type HostResponse,
@@ -76,7 +77,7 @@ export class SshTransport implements HostTransport, HostStreamTransport {
   private readonly hosts: Map<string, SshHost>;
   constructor(
     hosts: SshHost[],
-    private readonly timeoutMs = 60_000,
+    private readonly timeoutMs = HOST_CONTROL_TIMEOUT_MS,
   ) {
     if (
       !Number.isSafeInteger(timeoutMs) ||

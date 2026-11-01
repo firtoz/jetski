@@ -587,3 +587,10 @@ An embedded runtime must also bundle Node dependencies against its native Node
 compatibility APIs, rather than browser crypto shims. Runtime import alone is not
 qualification: verify authenticated binary transfer, close, abort and host-key
 rejection in the target runtime before enabling interactive access.
+
+Host-control requests default to a five-minute transport deadline. Individual
+host runtime commands retain their two-minute watchdog; multi-step operations
+need time to record their outcome and clean up. A timeout remains an uncertain
+remote result and must not trigger blind replay. Operators can explicitly set
+transport deadlines; shorter values can interrupt outcome recording. This is
+separate from workload execution limits and does not extend host lifetimes.

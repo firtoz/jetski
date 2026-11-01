@@ -40,7 +40,7 @@ test("Boat control uses only owned hosts, encoded fixed dispatch and matching re
       { ...body, command: "omitted" },
       {
         command: "omitted",
-        timeoutSeconds: 60,
+        timeoutSeconds: 300,
         detached: false,
         stream: false,
       },

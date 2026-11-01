@@ -82,6 +82,9 @@ New command admission reserves the existing checkpoint drain interval before hos
 expiry; measured save headroom and full hosted lifetime qualification remain open.
 An explicit authenticated stream crypto suite passes a local embedded-runtime
 encrypted binary round trip; full client transport wiring and hosted checks remain open.
+Default SSH and Boat control deadlines now leave room for bounded host runtime
+commands and receipt writes. Slow-storage startup and its hosted recovery remain
+unqualified; transport expiry still preserves an uncertain operation.
 See [qualification evidence](qualification.md).
 
 ## Next steps
