@@ -3,7 +3,7 @@
 The current server implements creation, inspection/listing, operation receipts,
 command admission/status and resumable output, checkpoint, stop, resume and deletion.
 Experimental SSH terminal, TCP and HTTP/WebSocket preview transports are described
-below; browser preview sessions remain under development. Do not
+below, including scoped browser preview sessions. Do not
 use this preview as a durable hosted service; use disposable qualification hosts.
 The full release gates remain in [implementation.md](implementation.md).
 Select `hostProvider: { "kind": "ssh", "hosts": [...] }` for an adopted host,
@@ -22,7 +22,8 @@ Use a dedicated SSH key with a forced command:
 `env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py`.
 Disable port/agent/X11 forwarding on this administrative key and explicitly pin
 the host key in the configured known-hosts file. This key is private control-plane
-access; it is not the planned user SSH gateway.
+access. Workload users connect through the separate public-key gateway described
+below; that gateway never grants an outer-host shell.
 
 Adapt [the example configuration](../examples/server.json) to that host. Supply a
 random bearer token of at least 32 characters through `JETSKI_API_TOKEN`; no token
@@ -185,8 +186,8 @@ terminalOutput and closeTerminal. Thin CLI commands use the same terminal names;
 terminal-input reads bounded JSON from stdin with `--id` for replay identity.
 Initial rows/columns default to 24/80 (each 1–4096); they are applied before the
 workload starts and bound to terminal identity. CLI terminal-start accepts
---rows and --columns. Broader host-restart qualification and public gateways
-remain under development. These endpoints are experimental: pty reports implemented
+--rows and --columns. Public gateway configuration is described below; broader
+host-restart qualification remains open. These endpoints are experimental: pty reports implemented
 API support, while releaseQualified stays false until the full release gates pass.
 
 
@@ -312,8 +313,9 @@ its original outcome. Revocation is permanent for that exposure ID, survives
 controller restart and does not erase history. At most 64 permissions may be
 available per sandbox. The experimental SSH gateway uses these permissions and
 the core stream coordinator for active-stream revocation and generation fencing.
-Full gateway lifecycle/replacement qualification and HTTP/WebSocket previews remain
-open release gates.
+HTTP/WebSocket previews use the same stream coordinator, as described below.
+The remaining gateway lifecycle/replacement gates are tracked in
+[qualification evidence](qualification.md).
 
 ## SSH workload TCP forwarding (experimental)
 
@@ -400,7 +402,9 @@ requires an explicitly configured SSH gateway; an embedded HTTP server defaults
 that declaration to false. These are feature declarations, not host health,
 per-owner authorization or per-sandbox readiness. The Boat host factory supplies
 an SSH stream adapter with provider-authenticated host-key pinning. Previews still
-require a configured preview listener; live Boat qualification remains pending.
+require a configured preview listener. Live Boat terminal, forwarding and restore
+pilots are recorded in [qualification evidence](qualification.md); they do not
+qualify every interactive lifecycle or operator deployment.
 
 
 ## Isolated HTTP/WebSocket preview transport (experimental)
@@ -492,8 +496,8 @@ loads a page and asset from a real rootless container through encrypted host
 control, verifies exact binary HTTP/WSS payloads and durable closed receipts, and
 rejects revoked requests without a new host admission. The fixture pins its
 one-day certificate key in a fresh browser profile; this does not test public CA
-issuance or an operator's reverse-proxy deployment. See CI run41252297444 at
-commit fc3298b and the evidence in implementation.md. Other browsers, application
+issuance or an operator's reverse-proxy deployment. See the consolidated
+[qualification evidence](qualification.md). Other browsers, application
 cookies, embedding and full live-provider lifecycle qualification remain outside
 this evidence. No universal browser or production-readiness claim is implied.
 
