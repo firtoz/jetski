@@ -39,3 +39,16 @@ prepare hook builds the exported JavaScript and declarations. Import `jetski/cor
 or `jetski/sdk` without loading provider SDKs, SSH servers or SQLite. CI verifies
 installation from its exact commit into an independent consumer. Use sibling-path
 links only for development; retain the pinned version in the client's lockfile.
+
+### Embedded bootstrap assets
+
+`jetski/providers/boat-bootstrap-embedded` exports `EmbeddedBoatBootstrap` and
+`BOAT_BOOTSTRAP_MODULES`. Supply a loader returning `{ files, installer }`, where
+`files` maps every listed filename to its original `Uint8Array` source and
+`installer` contains `host/install_bundle.py`. Bundle these assets from the same
+pinned package at build time; do not download unpinned executable source. This
+entrypoint avoids controller filesystem access and database/provider-SDK loading;
+it still requires Node-compatible crypto, path and Buffer support. The normal
+`BoatBootstrap` remains the Node filesystem-backed default. Both paths validate
+the complete module set, size limits and identical persisted bootstrap identity.
+Changing installed code or policy requires explicit host replacement.

@@ -51,6 +51,13 @@ test("packed artifact excludes local/test files and independently imports portab
     assert.equal(typeof core.SandboxManager, 'function');
     assert.equal(typeof sdk.JetskiClient, 'function');
     hook.deregister();
+    const embeddedHook = registerHooks({resolve(specifier, context, next) {
+      if (specifier.includes('fs') || specifier.includes('sqlite') || specifier.includes('ssh2') || specifier.includes('@aws-sdk')) throw Error('Embedded bootstrap loaded forbidden dependency: ' + specifier);
+      return next(specifier, context);
+    }});
+    const embedded = await import(root + 'dist/providers/boat-bootstrap-embedded.js');
+    assert.equal(typeof embedded.EmbeddedBoatBootstrap, 'function');
+    embeddedHook.deregister();
     const { BoatBootstrap } = await import(root + 'dist/providers/boat-bootstrap.js');
     let calls = 0;
     const tx = {get(key) {
