@@ -181,7 +181,7 @@ if (mode === "prepare") {
     assert.equal(output.terminal, true);
     return Buffer.from(output.base64, "base64").toString("utf8");
   }
-  const oracle = `cd /workspace; sha256sum binary run.sh .git/config; stat -c '%a %s %n' binary run.sh empty .git/config; stat -c '%a %n' directory; test "$(stat -c %i binary)" = "$(stat -c %i /home/sandbox/hard)"; test "$(stat -c %h binary)" = 2; test "$(readlink link)" = binary; test "$(readlink dangling)" = missing; find . /home/sandbox -mindepth 1 -print | sort`;
+  const oracle = `cd /workspace; sha256sum binary run.sh .git/config /home/sandbox/identity; stat -c '%a %s %n' binary run.sh empty .git/config; stat -c '%a %n' directory; test "$(stat -c %i binary)" = "$(stat -c %i hard)"; test "$(stat -c %h binary)" = 2; test "$(readlink link)" = binary; test "$(readlink dangling)" = missing; find . /home/sandbox -mindepth 1 -print | sort`;
   async function stopped(id: string) {
     await manager.stop(scope, id);
     await observe(async () => (await manager.get(scope))?.phase === "stopped");
@@ -224,7 +224,7 @@ if (mode === "prepare") {
     await step("seed", (id) =>
       command(
         id,
-        "cd /workspace; dd if=/dev/urandom of=binary bs=1048576 count=5 2>/dev/null; chmod 640 binary; ln binary /home/sandbox/hard; ln -s binary link; ln -s missing dangling; mkdir directory .git; chmod 751 directory; printf '#!/bin/sh\\nexit 0\\n' > run.sh; chmod 755 run.sh; : > empty; printf '[core]\\n bare = false\\n' > .git/config",
+        "cd /workspace; dd if=/dev/urandom of=binary bs=1048576 count=5 2>/dev/null; chmod 640 binary; ln binary hard; printf home > /home/sandbox/identity; ln -s binary link; ln -s missing dangling; mkdir directory .git; chmod 751 directory; printf '#!/bin/sh\\nexit 0\\n' > run.sh; chmod 755 run.sh; : > empty; printf '[core]\\n bare = false\\n' > .git/config",
       ),
     );
     const before = await step("oracle-initial", (id) => command(id, oracle));
