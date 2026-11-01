@@ -60,7 +60,8 @@ artifact. Source-deleted replacement matches 156 filesystem entries and
 322,806,090 bytes, including modes and symlinks. Resumed work retains the original
 session and confirms the published revision with a clean tree. Live embedded
 terminal input/replay, binary HTTP/WebSocket preview, timed access
-revocation and durable release now pass. Browser UI, hosted restart/rollback checks
+revocation and durable release now pass. Browser UI found an embedded missing-input mapping failure; the typed absence
+fix passes targeted checks and awaits deployment. Hosted restart/rollback checks
 and final rollout remain open.
 
 Portable HTTP and WebSocket transports now pass binary/failure tests and local
@@ -94,7 +95,7 @@ The already-running hosted comparison may finish and must clean its owned hosts.
 
 ## Next steps
 
-1. Implementation candidate: public runtime `ad1f5e5`, qualification artifact 18,
+1. Implementation candidate: public runtime `7240e47`, qualification artifact 19,
    and the published client pin/idle-maintenance integration. The finite source
    checklist has implementations for all approved v1 areas; release acceptance is open.
 2. Execute one consolidated pass using the existing acceptance matrix and prior

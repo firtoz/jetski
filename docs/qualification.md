@@ -316,4 +316,13 @@ exited without intervention before host retirement. No assignment mounts or
 fixture server remained, but this run does not establish an instantaneous clean
 process slate for warm reuse. A [default-configuration hosted comparison](benchmarks.md)
 completed twenty exact-recovery trials and exposed excessive R2 rereads.
-Equal-resource performance qualification remains outstanding.
+The [equal-resource comparison](benchmarks.md) is complete; all twenty recovery
+trials passed, with slower saves and faster resumes for this fixture.
+
+The final browser check restored 167 entries and 322,866,475 bytes on a fresh
+host, but terminal input failed before admission: the embedded adapter propagated
+the typed missing-input exception instead of representing absence. The core now
+exports that error for precise adapter handling. Standalone HTTP behavior is
+unchanged. Browser requalification remains required; safe close published the
+unchanged archive, released access, and left no observed workload processes or
+assignment mounts at the final cleanup check.
