@@ -32,6 +32,7 @@ test("Boat bootstrap journals code and policy, resumes uncertainty and rejects c
       assert.deepEqual(bundle.config, {
         version: 1,
         machineId: "bx_boot",
+        archiveTransferUser: "user",
         poolId: "pool",
         images: [image],
       });

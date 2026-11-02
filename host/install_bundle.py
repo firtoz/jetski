@@ -33,6 +33,7 @@ MODULES = {
     "frames.py",
     "import_checkpoint.py",
     "local_checkpoint.py",
+    "checkpoint_export.py",
     "runtime.py",
     "runtime_backend.py",
     "runtime_service.py",

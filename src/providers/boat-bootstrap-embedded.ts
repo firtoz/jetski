@@ -28,6 +28,7 @@ export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "frames.py",
   "import_checkpoint.py",
   "local_checkpoint.py",
+  "checkpoint_export.py",
   "runtime.py",
   "runtime_backend.py",
   "runtime_service.py",
@@ -100,6 +101,7 @@ export class EmbeddedBoatBootstrap {
         config: {
           version: 1,
           machineId: host,
+          archiveTransferUser: "user",
           poolId: this.poolId,
           images: this.images,
           ...(this.storageMode === "default"

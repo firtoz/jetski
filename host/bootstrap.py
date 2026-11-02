@@ -46,6 +46,7 @@ MODULES = (
     "file_upload.py",
     "import_checkpoint.py",
     "local_checkpoint.py",
+    "checkpoint_export.py",
 )
 
 
@@ -103,10 +104,18 @@ def bootstrap(config):
     if os.geteuid() != 0:
         raise ValueError("root_required")
     if (
-        set(config) - {"networkMode", "storageMode"} != {"version", "machineId", "poolId", "images"}
+        set(config) - {"networkMode", "storageMode", "archiveTransferUser"}
+        != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
         raise ValueError("invalid_host_configuration")
+    if "archiveTransferUser" in config:
+        name = config["archiveTransferUser"]
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", name):
+            raise ValueError("invalid_archive_reader")
+        reader = pwd.getpwnam(name)
+        if min(reader.pw_uid, reader.pw_gid) <= 0:
+            raise ValueError("invalid_archive_reader")
     for name in ("machineId", "poolId"):
         if not isinstance(config[name], str) or not re.fullmatch(
             r"[a-zA-Z0-9_-]{1,128}", config[name]

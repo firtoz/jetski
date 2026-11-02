@@ -1,4 +1,7 @@
+import type { CapturedArchive } from "./archive-format.js";
+import type { ArchiveSource } from "./archive-source.js";
 import type { Json } from "./contracts.js";
+import type { HostLease } from "./pool.js";
 export const HOST_PROTOCOL_VERSION = 1;
 /** The larger envelope is reserved for negotiated checkpoint chunks. Ordinary
  * control requests retain their existing bound. */
@@ -22,6 +25,13 @@ export type HostResponse = {
   result: Json;
 };
 export interface HostTransport {
+  /** Optional immutable binary binding. It cannot authorize checkpoint publication. */
+  checkpointSource?(
+    host: string,
+    lease: HostLease,
+    archive: CapturedArchive,
+  ): Promise<ArchiveSource | undefined>;
+
   request(
     host: string,
     request: HostRequest,

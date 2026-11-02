@@ -7,6 +7,8 @@ export interface ArchiveSource {
   /** Negotiated range size; omission preserves legacy 256 KiB host bounds. */
   readChunkBytes?: number | undefined;
   read(offset: number, bytes: number): Promise<Uint8Array>;
+  /** Release only source handles after all started reads have settled. */
+  close?(): Promise<void>;
 }
 export function archiveReadConcurrency(source: ArchiveSource): number {
   const limit = source.readConcurrency ?? 1;

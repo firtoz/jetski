@@ -1,4 +1,7 @@
-import { MAX_CHECKPOINT_READ_BYTES } from "./archive-source.js";
+import {
+  type ArchiveSource,
+  MAX_CHECKPOINT_READ_BYTES,
+} from "./archive-source.js";
 import {
   checkpointArchive,
   checkpointObjectRanges,
@@ -105,6 +108,10 @@ export function missingSourceRecovery(value: unknown): MissingSourceRecovery {
 }
 type Dependencies = {
   captureFrameBytes: number;
+  checkpointSource?: (
+    lease: HostLease,
+    archive: CapturedArchive,
+  ) => Promise<ArchiveSource | undefined>;
   state: StateStore;
   operations: OperationJournal;
   pool: PoolJournal;
@@ -395,33 +402,54 @@ export class ShutdownCoordinator {
       }
       if (record.stage === "publish") {
         if (!record.archive) throw Error("Missing archive receipt");
-        await transfer.save(
-          fence,
-          record.id,
+        const boundSource = await this.deps.checkpointSource?.(
+          record.lease,
           record.archive,
-          {
-            readConcurrency: 4,
-            readChunkBytes: record.readChunkBytes,
-            read: async (offset, bytes) => {
-              const value = await request(record.lease, "read-checkpoint", {
-                ...payload,
-                offset,
-                bytes,
-              });
-              if (
-                !value ||
-                typeof value !== "object" ||
-                Array.isArray(value) ||
-                value.offset !== offset ||
-                value.bytes !== bytes ||
-                typeof value.base64 !== "string"
-              )
-                throw Error("Invalid archive segment");
-              return decodeBase64(value.base64, bytes);
-            },
-          },
-          record.previous ?? undefined,
         );
+        let failure: { reason: unknown } | undefined;
+        try {
+          await transfer.save(
+            fence,
+            record.id,
+            record.archive,
+            boundSource ?? {
+              readConcurrency: 4,
+              readChunkBytes: record.readChunkBytes,
+              read: async (offset, bytes) => {
+                const value = await request(record.lease, "read-checkpoint", {
+                  ...payload,
+                  offset,
+                  bytes,
+                });
+                if (
+                  !value ||
+                  typeof value !== "object" ||
+                  Array.isArray(value) ||
+                  value.offset !== offset ||
+                  value.bytes !== bytes ||
+                  typeof value.base64 !== "string"
+                )
+                  throw Error("Invalid archive segment");
+                return decodeBase64(value.base64, bytes);
+              },
+            },
+            record.previous ?? undefined,
+          );
+        } catch (reason) {
+          failure = { reason };
+          throw reason;
+        } finally {
+          try {
+            await boundSource?.close?.();
+          } catch (reason) {
+            if (failure)
+              throw new AggregateError(
+                [failure.reason, reason],
+                "Checkpoint transfer and source cleanup failed",
+              );
+            throw reason;
+          }
+        }
         record = await this.advance(
           record,
           record.mode === "checkpoint" ? "finish" : "remove",

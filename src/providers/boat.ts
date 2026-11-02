@@ -97,6 +97,109 @@ export class BoatApi {
     await uploaded.body?.cancel();
     if (!uploaded.ok) throw Error("Boat capability upload not acknowledged");
   }
+  /** One short-lived authorization, then bounded binary ranges without a bearer. */
+  async openDownload(host: string, path: string, length: number) {
+    identifier(host);
+    if (
+      !path.startsWith("/") ||
+      path.includes("\0") ||
+      path.split("/").includes("..") ||
+      !Number.isSafeInteger(length) ||
+      length < 1
+    )
+      throw Error("Invalid Boat download");
+    const reply = await this.call(
+      `/sandboxes/${host}/files/download-url`,
+      "POST",
+      { path, ttlSeconds: 900 },
+    );
+    const value = reply.value;
+    if (
+      reply.status !== 200 ||
+      value.ok === false ||
+      value.success === false ||
+      value.method !== "GET" ||
+      typeof value.url !== "string" ||
+      typeof value.expiresAt !== "string"
+    )
+      throw Error("Invalid Boat download capability");
+    const url = new URL(value.url),
+      expiry = Date.parse(value.expiresAt);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      !Number.isFinite(expiry) ||
+      expiry <= Date.now()
+    )
+      throw Error("Invalid Boat download capability");
+    return {
+      read: async (offset: number, count: number): Promise<Uint8Array> => {
+        if (
+          !Number.isSafeInteger(offset) ||
+          offset < 0 ||
+          !Number.isSafeInteger(count) ||
+          count < 1 ||
+          count > 8 * 1024 * 1024 ||
+          offset + count > length ||
+          Date.now() >= expiry
+        )
+          throw Error("Invalid Boat download range");
+        const response = await this.request(url.href, {
+          method: "GET",
+          redirect: "manual",
+          signal: AbortSignal.timeout(60_000),
+          headers: {
+            Range: `bytes=${offset}-${offset + count - 1}`,
+            "Accept-Encoding": "identity",
+          },
+        });
+        try {
+          if (response.status === 206) {
+            if (
+              response.headers.get("content-range") !==
+              `bytes ${offset}-${offset + count - 1}/${length}`
+            )
+              throw Error("Boat download range mismatch");
+          } else if (
+            response.status !== 200 ||
+            offset !== 0 ||
+            count !== length
+          )
+            throw Error("Boat download range unsupported");
+          const encoding = response.headers.get("content-encoding"),
+            size = response.headers.get("content-length");
+          if (
+            (encoding && encoding !== "identity") ||
+            (size !== null && size !== String(count)) ||
+            !response.body
+          )
+            throw Error("Boat download metadata mismatch");
+          const bytes = new Uint8Array(count),
+            reader = response.body.getReader();
+          let received = 0;
+          try {
+            for (;;) {
+              const part = await reader.read();
+              if (part.done) break;
+              if (received + part.value.length > count)
+                throw Error("Oversized Boat download");
+              bytes.set(part.value, received);
+              received += part.value.length;
+            }
+          } finally {
+            await reader.cancel();
+          }
+          if (received !== count) throw Error("Short Boat download");
+          return bytes;
+        } finally {
+          if (response.body && !response.body.locked)
+            await response.body.cancel();
+        }
+      },
+    };
+  }
   async call(
     path: string,
     method = "GET",
@@ -109,7 +212,7 @@ export class BoatApi {
     } = {},
   ): Promise<Reply> {
     if (
-      !/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+(?:\/(?:commands|files(?:\/upload-url)?|sshkey))?)?$/.test(
+      !/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+(?:\/(?:commands|files(?:\/(?:upload|download)-url)?|sshkey))?)?$/.test(
         path,
       )
     )

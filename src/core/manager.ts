@@ -1,3 +1,4 @@
+import type { CapturedArchive } from "./archive-format.js";
 import { CheckpointCopy } from "./checkpoint-copy.js";
 import { CheckpointHistory } from "./checkpoint-history.js";
 import { checkpointArchive } from "./checkpoint-layout.js";
@@ -258,6 +259,12 @@ export class SandboxManager {
       (lease, action, payload) => this.request(lease, action, payload),
     );
     this.shutdown = new ShutdownCoordinator({
+      ...(transport.checkpointSource
+        ? {
+            checkpointSource: (lease: HostLease, archive: CapturedArchive) =>
+              transport.checkpointSource!(lease.machineId, lease, archive),
+          }
+        : {}),
       captureFrameBytes: frameBytes,
       settleUploads: (scope) => this.uploads.settle(scope),
       state,

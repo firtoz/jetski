@@ -43,7 +43,8 @@ def configuration():
         raise ValueError("host_configuration_limit")
     config = json.loads(CONFIG_PATH.read_text())
     if (
-        set(config) - {"networkMode", "storageMode"} != {"version", "machineId", "poolId", "images"}
+        set(config) - {"networkMode", "storageMode", "archiveTransferUser"}
+        != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
         raise ValueError("unsupported_host_configuration")

@@ -651,6 +651,22 @@ remote result and must not trigger blind replay. Operators can explicitly set
 transport deadlines; shorter values can interrupt outcome recording. This is
 separate from workload execution limits and does not extend host lifetimes.
 
+### Binary checkpoint source binding
+
+New Boat host bundles configure the outer-host `user` account for read-only archive
+transfer. Trusted embedded compositions can enable `new BoatTransport(state, api,
+300, { archiveReads: true })`. Small changed ranges keep the control path; larger
+reads share a short-lived download capability and bounded HTTP ranges. Exported
+links remain supervisor-owned and group-readable, with no workload mount or write
+access. Handles close after all reads settle, including failed saves. Source bytes
+still pass the core's frame, object and publication verification.
+
+The optional `HostTransport.checkpointSource` binding is storage-independent.
+Other transports keep their existing bounded control reads. Explicitly managed
+Linux hosts can configure `archiveTransferUser` in their trusted host config;
+workload requests cannot select the account. Enable binary reads only on a
+qualified host/transport pair; unsupported or inconsistent ranges fail closed.
+
 ### Verified local checkpoint reuse
 
 A host retains one owner-scoped archive only after verified durable publication.

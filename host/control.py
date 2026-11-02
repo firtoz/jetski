@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import pwd
 import json
 import os
 import stat
@@ -26,6 +27,7 @@ from files import Files  # noqa: E402
 from file_upload import FileUpload  # noqa: E402
 from import_checkpoint import CheckpointImport, IMPORT_REQUEST_BYTES  # noqa: E402
 from local_checkpoint import LocalCheckpoint  # noqa: E402
+from checkpoint_export import CheckpointExport  # noqa: E402
 from fence import Fence, identity  # noqa: E402
 from runtime_backend import DEFAULT_BACKEND, WORKLOAD_USER_NAMESPACE, read_workload_identity  # noqa: E402
 from supervisor import (  # noqa: E402
@@ -359,6 +361,16 @@ def dispatch(
             )
             fence.write({**state, "checkpoint": receipt})
             return receipt
+    if action in ("checkpoint-source", "checkpoint-source-close"):
+        name = config.get("archiveTransferUser")
+        if name is None:
+            return dict(supported=False)
+        exporter = CheckpointExport(
+            fence, ARCHIVE_ROOT, DATA_ROOT.parent / "exports", pwd.getpwnam(name)
+        )
+        if action == "checkpoint-source-close":
+            return exporter.close(lease)
+        return exporter.prepare(lease, payload.get("sha256"), payload.get("bytes"))
     if action == "read-checkpoint":
         offset, count = payload.get("offset"), payload.get("bytes")
         if (

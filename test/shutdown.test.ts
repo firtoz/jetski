@@ -26,6 +26,8 @@ for (const failure of [
   "none",
   "missing-idle",
   "packed",
+  "binary",
+  "binary-corrupt",
 ] as const)
   test(`shutdown publication and restart: ${failure}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "jetski-stop-"));
@@ -102,7 +104,24 @@ for (const failure of [
         }
       },
     };
+    let sourceClosed = 0;
     const transport: HostTransport = {
+      ...(failure.startsWith("binary")
+        ? {
+            checkpointSource: async () => ({
+              read: async (offset: number, count: number) => {
+                const bytes = Buffer.from(
+                  archive.subarray(offset, offset + count),
+                );
+                if (failure === "binary-corrupt") bytes[0] = bytes[0]! ^ 1;
+                return bytes;
+              },
+              close: async () => {
+                sourceClosed++;
+              },
+            }),
+          }
+        : {}),
       request: async (_host, request) => {
         if (_host === "host" && oldHostState !== "ready")
           throw Error("Unavailable host received workload effects");
@@ -221,6 +240,15 @@ for (const failure of [
       manager.startCommand(scope, randomUUID(), ["true"]),
       /not running/,
     );
+    if (failure === "binary-corrupt") {
+      await assert.rejects(manager.reconcile("alice"));
+      assert.equal(sourceClosed, 1);
+      assert.equal(actions.includes("read-checkpoint"), false);
+      assert.equal(actions.includes("remove"), false);
+      assert.equal(actions.includes("release"), false);
+      assert.equal((await manager.get(scope))?.phase, "quarantined");
+      return;
+    }
     if (
       failure === "release-ack" ||
       failure === "finalize-ack" ||
@@ -231,6 +259,10 @@ for (const failure of [
         failure === "upload" ? /interrupted upload/ : /release ACK lost/,
       );
     else await manager.reconcile("alice");
+    if (failure === "binary") {
+      assert.equal(sourceClosed, 1);
+      assert.equal(actions.includes("read-checkpoint"), false);
+    }
     manager = new SandboxManager(state, provider, transport, objects, options);
     if (failure === "upload") {
       await assert.rejects(manager.reconcile("alice"), /interrupted upload/);

@@ -54,10 +54,10 @@ as a substitute for a contemporaneous comparison.
 | Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                           |
 | Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.                             |
 | Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; frozen comparison completed; per-host ranking reverses, so reliable parity stays open. |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.                           |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 232 TypeScript/121 Python tests and live R2 recovery pass; new hosted replacement open.                                        |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Signed uploads qualify durable4 MiB chunks; old256/512 KiB receipts and large source-deleted/lost-ACK recovery pass.           |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 236 TypeScript/124 Python tests, all seven host CI jobs and large source-deleted/lost-ACK recovery pass.                       |
 | Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Frozen ten-per-arm comparison completed with all20 exact; opposite host rankings leave performance parity open.                |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Large source published and deleted; import-envelope limit diagnosed; recovery pending.                                         |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Source-deleted large recovery passes; uninterrupted matched comparison and first-save parity remain open.                      |
 | Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.                              |
 
 ## Current candidate and evidence
@@ -75,7 +75,7 @@ inline output disabled. Geometry is persisted per shutdown; large captures grow
 toward4 MiB. Old4 MiB archives and output format1 remain readable. Format2 inline
 bytes require a supporting reader when rolling back controller binaries.
 
-Local quality passes232 TypeScript and121 Python tests, build, types, lint and
+Local quality passes236 TypeScript and124 Python tests, build, types, lint and
 Ruff. Fault checks cover lost acknowledgements, restart/settings changes, missing
 sources, exact bytes/modes/links, corrupt proofs blocking publication/read/GC and
 drained parallel failures. Mixed inline/object output also recovers exactly with
@@ -127,13 +127,22 @@ The next local candidate removes warm-cache copying by persisting a fenced,
 read-only source selection before extraction. Chunk uploads retain separate writable
 inodes; complete archive verification remains required. Lost selection/ready ACKs,
 corruption, scope changes, partial uploads and old staging receipts pass121 Python
-tests. All232 TypeScript checks, build, types and lint pass. New host CI, clean
-comparative timings and downstream adoption still gate this change.
+tests. All232 TypeScript checks, build, types and lint pass. All seven host CI jobs now pass for this change; clean comparative timings and
+downstream adoption remain open.
 
-The next step is one frozen replicated comparison of the combined candidate,
-followed by the large cold/replacement and pinned-client staging gates. Whole
-request timings govern performance decisions; phase traces alone are not CPU
-accounting. Keep private receipts and recovery handles in the private QA handoff.
+The binary source-transfer implementation now provides an optional transport
+binding. Large reads share a bounded HTTPS capability; small deltas keep the
+existing control path to avoid extra setup requests. Supervisor-owned read-only
+links are lease-fenced, and cleanup runs after all reads settle. The core retains
+full frame/object verification, durable publication and failure barriers. Focused
+checks cover incorrect/truncated ranges, credential separation, cleanup, corrupted
+source rejection and interrupted export setup. Live Boat range qualification is
+still required; this implementation is not a measured performance result.
+
+Finish the combined build and CI, then run the consolidated matched warm/large
+comparison and pinned-client staging qualification. Reuse valid evidence and repeat
+only checks affected by a failure or change. Whole request timings govern the
+result; retain failed trials and the first-save gap until evidence closes it.
 
 ## Execution order
 
