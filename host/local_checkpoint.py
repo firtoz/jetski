@@ -109,8 +109,8 @@ class LocalCheckpoint:
             if os.path.lexists(pending):
                 os.unlink(pending)
 
-    def seed_locked(self, lease, state, expected, destination):
-        """Caller holds fence and has checked an unpublished fresh import target."""
+    def candidate_locked(self, lease, state, expected):
+        """Scope lookup only; the caller must verify bytes before using the path."""
         cached = state.get("localCheckpoint")
         if (
             not isinstance(cached, dict)
@@ -120,26 +120,16 @@ class LocalCheckpoint:
             or cached["sha256"] != expected["sha256"]
             or cached["bytes"] != expected["bytes"]
         ):
-            return False
-        # Two retained roots may publish identical archive bytes under different
-        # IDs. The controller has admitted the requested root; full content and
-        # owner/sandbox identity, not the cache's earlier root ID, governs reuse.
-        source = self.directory()
-        if not self.verified(source, expected):
-            return False
-        if os.path.lexists(destination):
-            return self.verified(destination, expected)
-        # Keep import staging independent of the cache: a replayed partial upload
-        # must never write into the cached inode. A full digest also recovers a
-        # crash after copy/fsync but before the import offset is journaled.
-        fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, "wb") as output, source.open("rb") as input_file:
-            shutil.copyfileobj(input_file, output)
-            output.flush()
-            os.fsync(output.fileno())
-        sync_dir(self.archives)
-        if not self.verified(destination, expected):
-            destination.unlink()
-            sync_dir(self.archives)
-            return False
-        return True
+            return None
+        return self.directory()
+
+    def source_locked(self, lease, state, expected):
+        """Select verified immutable bytes under a fresh import's fence lock.
+
+        No writable import path aliases this inode. A persisted cache selection
+        disables chunks before extraction; lost selection ACKs cannot mutate it.
+        """
+        source = self.candidate_locked(lease, state, expected)
+        if source is None or not self.verified(source, expected):
+            return None
+        return source

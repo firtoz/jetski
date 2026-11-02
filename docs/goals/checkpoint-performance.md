@@ -55,7 +55,7 @@ as a substitute for a contemporaneous comparison.
 | Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.                             |
 | Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; frozen comparison completed; per-host ranking reverses, so reliable parity stays open. |
 | Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.                           |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 232 TypeScript/116 Python tests and live R2 recovery pass; new hosted replacement open.                                        |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 232 TypeScript/121 Python tests and live R2 recovery pass; new hosted replacement open.                                        |
 | Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Frozen ten-per-arm comparison completed with all20 exact; opposite host rankings leave performance parity open.                |
 | Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Large source published and deleted; import-envelope limit diagnosed; recovery pending.                                         |
 | Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.                              |
@@ -75,7 +75,7 @@ inline output disabled. Geometry is persisted per shutdown; large captures grow
 toward4 MiB. Old4 MiB archives and output format1 remain readable. Format2 inline
 bytes require a supporting reader when rolling back controller binaries.
 
-Local quality passes232 TypeScript and116 Python tests, build, types, lint and
+Local quality passes232 TypeScript and121 Python tests, build, types, lint and
 Ruff. Fault checks cover lost acknowledgements, restart/settings changes, missing
 sources, exact bytes/modes/links, corrupt proofs blocking publication/read/GC and
 drained parallel failures. Mixed inline/object output also recovers exactly with
@@ -110,8 +110,25 @@ archive and independent oracle are protected. Larger control files now use a
 short-lived HTTPS upload capability without forwarding API credentials; exact host
 length/hash verification still precedes execution. Lost acknowledgements and
 invalid, expired or redirected capabilities cannot dispatch an uncertain command.
-All232 TypeScript checks, build, types and lint pass locally. Existing-host recovery
-and a fresh uninterrupted comparison remain open; no source-loss success is claimed.
+The unchanged replacement host subsequently recovered all24 filesystem entries and
+436,219,624 logical bytes, including modes/links and saved command output. Repeated
+saves and deliberately lost four-MiB import ACK recovery also passed; its VMs and
+controller are retired. The original failed attempt is preserved, so this is not
+an uninterrupted cold benchmark.
+
+The reference also recovered its18-entry fixture exactly after a harness correction:
+a fresh physical host's first lease is generation1, independently of the logical
+sandbox generation. Source-deleted recovery and repeated saves pass; the initial
+rejected claim remains recorded. Its clean data-cold transfer/readiness measured
+23.190 s and initial durable save12.853 s, excluding the correction pause. The
+candidate's initial full save was55.133 s. That first-save gap remains open.
+
+The next local candidate removes warm-cache copying by persisting a fenced,
+read-only source selection before extraction. Chunk uploads retain separate writable
+inodes; complete archive verification remains required. Lost selection/ready ACKs,
+corruption, scope changes, partial uploads and old staging receipts pass121 Python
+tests. All232 TypeScript checks, build, types and lint pass. New host CI, clean
+comparative timings and downstream adoption still gate this change.
 
 The next step is one frozen replicated comparison of the combined candidate,
 followed by the large cold/replacement and pinned-client staging gates. Whole

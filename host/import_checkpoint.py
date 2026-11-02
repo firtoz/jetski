@@ -73,10 +73,18 @@ class CheckpointImport:
 
     def cached(self, lease, state, receipt):
         expected = {key: receipt[key] for key in ("id", "sha256", "bytes")}
-        if LocalCheckpoint(self.fence, self.archives).seed_locked(
-            lease, state, expected, self.path(lease)
-        ):
+        cache = LocalCheckpoint(self.fence, self.archives)
+        selected = None
+        if os.path.lexists(self.path(lease)):
+            # Preserve complete staging left by an older host or a lost receipt.
+            reusable = cache.verified(self.path(lease), expected)
+        else:
+            selected = cache.source_locked(lease, state, expected)
+            reusable = selected is not None
+        if reusable:
             receipt = {**receipt, "offset": receipt["bytes"], "phase": "extracting"}
+            if selected is not None:
+                receipt["cacheSource"] = state["localCheckpoint"]
             self.fence.write({**state, "import": receipt})
         return receipt
 
@@ -141,7 +149,25 @@ class CheckpointImport:
             if receipt["phase"] == "ready":
                 return receipt
             source = self.path(lease)
-            if source.stat().st_size != receipt["bytes"] or digest(source) != receipt["sha256"]:
+            if "cacheSource" in receipt:
+                expected = {key: receipt[key] for key in ("id", "sha256", "bytes")}
+                source = LocalCheckpoint(self.fence, self.archives).candidate_locked(
+                    lease, state, expected
+                )
+                if source is None or receipt["cacheSource"] != state.get("localCheckpoint"):
+                    raise ValueError("import_cache_identity_changed")
+                meta = source.lstat()
+                if (
+                    not stat.S_ISREG(meta.st_mode)
+                    or meta.st_uid != os.geteuid()
+                    or meta.st_mode & 0o022
+                    or meta.st_size != receipt["bytes"]
+                ):
+                    raise ValueError("import_archive_integrity")
+                # restore() independently verifies the whole SHA before extracting.
+                # The fence prevents cache publication/eviction throughout this
+                # unpublished restore. No copy, hardlink or writable alias exists.
+            elif source.stat().st_size != receipt["bytes"] or digest(source) != receipt["sha256"]:
                 raise ValueError("import_archive_integrity")
             destination = self.data / lease["assignmentId"]
             if receipt["phase"] == "receiving" and os.path.lexists(destination):

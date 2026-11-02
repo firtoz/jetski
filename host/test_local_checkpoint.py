@@ -121,7 +121,7 @@ class LocalCheckpointTests(unittest.TestCase):
                 finally:
                     case.doCleanups()
 
-    def test_crash_after_cache_copy_before_import_receipt_recovers(self):
+    def test_crash_after_cache_selection_before_import_receipt_recovers(self):
         self.publish()
         lease, importer = self.next()
         write = self.fence.write
@@ -131,13 +131,14 @@ class LocalCheckpointTests(unittest.TestCase):
             nonlocal lost
             if lost and state.get("import", {}).get("phase") == "extracting":
                 lost = False
-                raise OSError("injected crash after cache copy")
+                raise OSError("injected crash after cache selection")
             write(state)
 
         with patch.object(self.fence, "write", side_effect=interrupted):
             with self.assertRaisesRegex(OSError, "injected"):
                 self.begin(lease, importer)
-        self.assertEqual(importer.path(lease).read_bytes(), self.bytes)
+        self.assertFalse(importer.path(lease).exists())
+        self.assertEqual((self.archives / "cache/archive.tgz").read_bytes(), self.bytes)
         self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
         self.assert_restored(lease, importer)
 
@@ -218,6 +219,105 @@ class LocalCheckpointTests(unittest.TestCase):
         receipt = importer.begin(lease, other_id, self.archive["sha256"], len(self.bytes))
         self.assertEqual(receipt["id"], other_id)
         self.assertEqual(receipt["phase"], "extracting")
+        self.assert_restored(lease, importer)
+
+    def test_borrowed_cache_cannot_be_written_by_chunk_replay(self):
+        self.publish()
+        path = self.archives / "cache/archive.tgz"
+        inode = path.stat().st_ino
+        lease, importer = self.next()
+        self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
+        self.assertFalse(importer.path(lease).exists())
+        with self.assertRaisesRegex(ValueError, "import_chunk_extent"):
+            importer.chunk(
+                lease,
+                0,
+                base64.b64encode(self.bytes).decode(),
+                hashlib.sha256(self.bytes).hexdigest(),
+            )
+        self.assertEqual(path.stat().st_ino, inode)
+        self.assertEqual(path.read_bytes(), self.bytes)
+        self.assert_restored(lease, importer)
+
+    def test_borrowed_cache_corruption_or_scope_change_blocks_readiness(self):
+        for changed in ("bytes", "owner"):
+            case = LocalCheckpointTests()
+            case.setUp()
+            try:
+                case.publish()
+                lease, importer = case.next()
+                case.begin(lease, importer)
+                if changed == "bytes":
+                    path = case.archives / "cache/archive.tgz"
+                    data = bytearray(path.read_bytes())
+                    data[len(data) // 2] ^= 1
+                    path.write_bytes(data)
+                else:
+                    with case.fence.locked():
+                        state = case.fence.read()
+                        case.fence.write(
+                            {
+                                **state,
+                                "localCheckpoint": {**state["localCheckpoint"], "owner": "foreign"},
+                            }
+                        )
+                with self.assertRaises(ValueError):
+                    importer.finish(lease)
+                self.assertEqual(case.fence.read()["import"]["phase"], "extracting")
+                self.assertFalse((case.data / lease["assignmentId"]).exists())
+            finally:
+                case.doCleanups()
+
+    def test_borrowed_cache_replays_lost_ready_receipt_without_losing_original(self):
+        self.publish()
+        lease, importer = self.next()
+        self.begin(lease, importer)
+        write = self.fence.write
+
+        def interrupted(state):
+            if state.get("import", {}).get("phase") == "ready":
+                raise OSError("ready ACK lost")
+            write(state)
+
+        with patch.object(self.fence, "write", side_effect=interrupted):
+            with self.assertRaisesRegex(OSError, "ready ACK lost"):
+                importer.finish(lease)
+        self.assertEqual((self.archives / "cache/archive.tgz").read_bytes(), self.bytes)
+        self.assertFalse(importer.path(lease).exists())
+        self.assert_restored(lease, importer)
+
+    def test_complete_legacy_import_staging_stays_independent_and_readable(self):
+        self.publish()
+        lease, importer = self.next()
+        with patch.object(LocalCheckpoint, "source_locked", return_value=None):
+            self.assertEqual(self.begin(lease, importer)["phase"], "receiving")
+        importer.path(lease).write_bytes(self.bytes)
+        receipt = self.begin(lease, importer)
+        self.assertEqual(receipt["phase"], "extracting")
+        self.assertNotIn("cacheSource", receipt)
+        self.assert_restored(lease, importer)
+
+    def test_partial_upload_after_lost_selection_cannot_alias_cached_bytes(self):
+        self.publish()
+        lease, importer = self.next()
+        write = self.fence.write
+
+        def interrupted(state):
+            if state.get("import", {}).get("phase") == "extracting":
+                raise OSError("selection journal lost")
+            write(state)
+
+        with patch.object(self.fence, "write", side_effect=interrupted):
+            with self.assertRaisesRegex(OSError, "selection journal lost"):
+                self.begin(lease, importer)
+        midpoint = len(self.bytes) // 2
+        for offset, part in [(0, self.bytes[:midpoint]), (midpoint, self.bytes[midpoint:])]:
+            importer.chunk(
+                lease, offset, base64.b64encode(part).decode(), hashlib.sha256(part).hexdigest()
+            )
+        cached = self.archives / "cache/archive.tgz"
+        self.assertNotEqual(importer.path(lease).stat().st_ino, cached.stat().st_ino)
+        self.assertEqual(cached.read_bytes(), self.bytes)
         self.assert_restored(lease, importer)
 
     def test_foreign_owner_cannot_claim_cached_host(self):

@@ -651,6 +651,16 @@ remote result and must not trigger blind replay. Operators can explicitly set
 transport deadlines; shorter values can interrupt outcome recording. This is
 separate from workload execution limits and does not extend host lifetimes.
 
+### Verified local checkpoint reuse
+
+A host retains one owner-scoped archive only after verified durable publication.
+Warm restore can select those immutable bytes under its lease fence without copying
+the archive into upload staging. The durable selection disables chunk writes before
+extraction; the complete archive hash is still checked before any workload starts.
+Misses and corrupt cache entries use independently writable upload staging. Legacy
+complete staging files remain readable. The cache is an accelerator, never a
+replacement for the durable checkpoint store or retained history.
+
 ### Experimental checkpoint packing
 
 Set optional server configuration `checkpointPackBytes` to a positive integer
