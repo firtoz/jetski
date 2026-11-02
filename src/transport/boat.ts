@@ -74,7 +74,7 @@ export class BoatTransport implements HostTransport {
         value.supported === false
       )
         return undefined;
-      const path = `/var/lib/jetski/exports/${lease.assignmentId}/archive.tgz`;
+      const path = `/tmp/jetski-checkpoint-exports/${lease.assignmentId}/archive.tgz`;
       if (
         !value ||
         typeof value !== "object" ||

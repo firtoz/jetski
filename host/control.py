@@ -366,7 +366,7 @@ def dispatch(
         if name is None:
             return dict(supported=False)
         exporter = CheckpointExport(
-            fence, ARCHIVE_ROOT, DATA_ROOT.parent / "exports", pwd.getpwnam(name)
+            fence, ARCHIVE_ROOT, pathlib.Path("/tmp/jetski-checkpoint-exports"), pwd.getpwnam(name)
         )
         if action == "checkpoint-source-close":
             return exporter.close(lease)

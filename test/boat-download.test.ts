@@ -38,7 +38,7 @@ test("authorized binary ranges are bounded, exact and never forward API credenti
   });
   const download = await api.openDownload(
     "bx_owned",
-    "/var/lib/jetski/exports/capture/archive.tgz",
+    "/tmp/jetski-checkpoint-exports/capture/archive.tgz",
     content.length,
   );
   assert.deepEqual(
@@ -122,7 +122,7 @@ test("checkpoint binding keeps small deltas on control and shares a single binar
     if (request.action === "checkpoint-source") {
       exports++;
       result = {
-        path: "/var/lib/jetski/exports/capture/archive.tgz",
+        path: "/tmp/jetski-checkpoint-exports/capture/archive.tgz",
         sha256: archive.sha256,
         bytes: bytes.length,
       };
