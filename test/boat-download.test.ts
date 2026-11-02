@@ -160,6 +160,7 @@ test("checkpoint binding keeps small deltas on control and shares a single binar
     "example/linux@sha256:" + "a".repeat(64),
   );
   assert.ok(source);
+  assert.equal(source.readConcurrency, 1);
   assert.equal(exports, 0);
   assert.deepEqual(
     Buffer.from(await source.read(0, 64)),

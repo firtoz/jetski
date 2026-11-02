@@ -90,7 +90,8 @@ export class BoatTransport implements HostTransport {
       });
     };
     return {
-      readConcurrency: 4,
+      // Preserve contiguous stream order across physical packs.
+      readConcurrency: 1,
       readChunkBytes: MAX_CHECKPOINT_READ_BYTES,
       read: async (offset, bytes) => {
         // Small changed members avoid setup round trips. Large sequential reads
