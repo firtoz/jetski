@@ -10,6 +10,7 @@ import {
   HOST_PROTOCOL_VERSION,
   type HostTransport,
 } from "../core/transport.js";
+import { sequentialCheckpointDownload } from "../transport/checkpoint-download.js";
 
 export const BOAT_MACHINE_TYPES = ["small", "default", "large"] as const;
 export type BoatMachineType = (typeof BOAT_MACHINE_TYPES)[number];
@@ -98,7 +99,12 @@ export class BoatApi {
     if (!uploaded.ok) throw Error("Boat capability upload not acknowledged");
   }
   /** One short-lived authorization, then bounded binary ranges without a bearer. */
-  async openDownload(host: string, path: string, length: number) {
+  async openDownload(
+    host: string,
+    path: string,
+    length: number,
+    options: { sequential?: boolean } = {},
+  ) {
     identifier(host);
     if (
       !path.startsWith("/") ||
@@ -134,7 +140,7 @@ export class BoatApi {
       expiry <= Date.now()
     )
       throw Error("Invalid Boat download capability");
-    return {
+    const download = {
       read: async (offset: number, count: number): Promise<Uint8Array> => {
         if (
           !Number.isSafeInteger(offset) ||
@@ -198,6 +204,31 @@ export class BoatApi {
             await response.body.cancel();
         }
       },
+    };
+    if (!options.sequential) return { ...download, close: async () => {} };
+    const stream = sequentialCheckpointDownload(length, download.read, () =>
+      this.request(url.href, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(300_000),
+        headers: { "Accept-Encoding": "identity" },
+      }),
+    );
+    return {
+      read: (offset: number, count: number) => {
+        if (
+          !Number.isSafeInteger(offset) ||
+          offset < 0 ||
+          !Number.isSafeInteger(count) ||
+          count < 1 ||
+          count > 8 * 1024 * 1024 ||
+          offset + count > length ||
+          Date.now() >= expiry
+        )
+          return Promise.reject(Error("Invalid Boat download range"));
+        return stream.read(offset, count);
+      },
+      close: () => stream.close(),
     };
   }
   async call(

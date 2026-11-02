@@ -85,7 +85,9 @@ export class BoatTransport implements HostTransport {
       )
         throw Error("Checkpoint source identity mismatch");
       prepared = true;
-      return this.api.openDownload(host, path, archive.bytes);
+      return this.api.openDownload(host, path, archive.bytes, {
+        sequential: true,
+      });
     };
     return {
       readConcurrency: 4,
@@ -118,7 +120,8 @@ export class BoatTransport implements HostTransport {
         return decodeBase64(value.base64, bytes);
       },
       close: async () => {
-        await opening?.catch(() => undefined);
+        const binary = await opening?.catch(() => undefined);
+        await binary?.close();
         if (!prepared) return;
         const done = (
           await this.request(host, {

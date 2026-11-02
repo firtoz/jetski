@@ -93,6 +93,10 @@ test("checkpoint binding keeps small deltas on control and shares a single binar
   const api = new BoatApi("private", async (url, init) => {
     if (String(url).startsWith("https://data.invalid/")) {
       assert.equal(new Headers(init?.headers).has("authorization"), false);
+      if (!new Headers(init?.headers).has("range"))
+        return new Response(bytes, {
+          headers: { "content-length": String(bytes.length) },
+        });
       const m = /bytes=(\d+)-(\d+)/.exec(
         new Headers(init?.headers).get("range")!,
       )!;
