@@ -36,18 +36,18 @@ Inspect the worktree and exact-SHA CI before trusting a recorded result.
 Evidence scope matters: disposable SSH/Podman tests do not prove live Boat,
 physical-host replacement, remote-store parity or downstream staging behavior.
 
-| Gate                             | Current evidence                                                                                              | Remaining acceptance                             |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Independent repository           | MIT source; portable imports; 156-file artifact and consumers match                                           | Final consolidated publication                   |
-| Core lifecycle and pooling       | SQLite replay/fencing/restart; live warm/idle, source/placement loss and final replacement                    | Verified for current v1 matrix                   |
-| Execution and interactive access | Standalone PTY/SSH/TCP; real browser input/resize/reconnect, authenticated HTTP/WSS; hosted watchdog          | Verified for current v1 matrix                   |
-| Filesystem and checkpoints       | Byte/mode/link fixtures; final 167-entry / 322,866,475-byte replacement; unchanged durable publication        | Verified for current v1 matrix                   |
-| Storage and collection           | Local/S3 contracts; live R2; corruption, listing and reader/writer races                                      | Real-grace deletion, retained restore and replay |
-| Security                         | Owner/fence/credential isolation; bootstrap fixture CI; final process/mount/data cleanup and provider absence | Verified within documented scope                 |
-| Client integration               | Pinned artifact; actual read/edit/PR, recovery and browser workflow; deployed restart and backend guards      | Final evidence publication                       |
-| Benchmarks and release           | Both twenty-trial comparisons, green runtime/client CI, owned hosts retired                                   | Final documentation/CI and timed GC gate         |
+| Gate                             | Current evidence                                                                                              | Remaining acceptance                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Independent repository           | MIT source; portable imports; 156-file artifact and consumers match                                           | Final consolidated publication                                        |
+| Core lifecycle and pooling       | SQLite replay/fencing/restart; live warm/idle, source/placement loss and final replacement                    | Verified for current v1 matrix                                        |
+| Execution and interactive access | Standalone PTY/SSH/TCP; real browser input/resize/reconnect, authenticated HTTP/WSS; hosted watchdog          | Verified for current v1 matrix                                        |
+| Filesystem and checkpoints       | Byte/mode/link fixtures; final 167-entry / 322,866,475-byte replacement; unchanged durable publication        | Verified for current v1 matrix                                        |
+| Storage and collection           | Local/S3 contracts; live R2; corruption, listing and reader/writer races                                      | Verified baseline real-grace deletion/replay/restore                  |
+| Security                         | Owner/fence/credential isolation; bootstrap fixture CI; final process/mount/data cleanup and provider absence | Verified within documented scope                                      |
+| Client integration               | Pinned artifact; actual read/edit/PR, recovery and browser workflow; deployed restart and backend guards      | Final evidence publication                                            |
+| Benchmarks and release           | Both twenty-trial comparisons, green runtime/client CI, owned hosts retired                                   | Baseline matrix and timed gate complete; follow-on tracked separately |
 
-## Current candidate and evidence
+## Qualified baseline and follow-on work
 
 Runtime `7240e47`, qualification artifact 19: build, typecheck, lint and all 187
 local tests pass. [Runtime CI](https://github.com/firtoz/jetski/actions/runs/41332633249)
@@ -74,10 +74,11 @@ run found slower saves and faster resumes for its fixture; see
 [measured limits](benchmarks.md). The large client checkpoint also exposed slow
 cold restore. These results do not establish universal speedups or zero-loss guarantees.
 
-The independent real-grace fixture becomes eligible on November 1, 2026, at
-23:51:52 UTC. Early collection deleted nothing. Retired-only deletion, exact pinned
-root recovery and repeated collection remain required after the actual clock gate.
-Preserve the separate protected experiment and budget.
+The independent real-grace fixture passed on November 2 at 00:01:46 UTC,
+after its unmodified November 1, 23:51:52 UTC eligibility boundary. Retired-only
+deletion, same-operation replay, exact source-deleted retained recovery and scoped
+cleanup passed without a VM. See [qualification](qualification.md#real-grace-collection-passed).
+The separately protected experiment remains independent.
 
 ## Execution order
 
@@ -94,18 +95,15 @@ The already-running hosted comparison may finish and must clean its owned hosts.
 
 ## Next steps
 
+The original v1 baseline acceptance matrix and actual-grace check are complete.
 The separately authorized [checkpoint performance goal](goals/checkpoint-performance.md)
-may proceed while this release's timed fixture is preserved. It supersedes the
-earlier restriction on optional tuning only for that explicitly scoped work.
+remains active. Current main includes those follow-on changes; baseline evidence
+does not automatically qualify every new path or imply performance parity.
 
-1. After November 1, 2026, 23:51:52 UTC, complete the independent real-grace R2
-   deletion, exact retained-root restore, replay and fixture cleanup. No VM is
-   needed; do not alter its clock, generation or retained references.
-2. Close that remaining acceptance row, publish consolidated evidence and verify
-   final exact-commit CI. Reuse the completed runtime/provider/client checks.
-3. Complete the full requirement audit and close the goal only when the timed gate
-   and final publication pass. Fix observed failures and repeat affected checks
-   only; add no optional tuning or new benchmark matrix.
+Complete that goal's frozen matched comparison, large cold/replacement recovery,
+pinned downstream workflow and owned cleanup. Preserve its full objective and
+report unmet targets. The old timed follow-up has been removed; do not repeat its
+completed fixture or mark the performance goal complete from this result.
 
 ## Keeping this plan useful
 

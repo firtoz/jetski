@@ -1,10 +1,11 @@
 # Qualification evidence
 
-The implementation candidate is complete; release acceptance remains open for the
-real-grace collection gate and final publication. The live checklist is
+The original v1 baseline acceptance includes the completed real-grace collection
+and retained-byte recovery check. Subsequent performance changes have their own
+[active qualification](goals/checkpoint-performance.md). The baseline checklist is
 [implementation.md](implementation.md); design and exclusions are in [design.md](design.md).
 
-## Candidate and independent checks
+## Qualified baseline and independent checks
 
 Runtime `7240e47`, distributed as experimental qualification artifact 19, passes
 build, typecheck, lint and all 187 local tests.
@@ -26,7 +27,7 @@ root; source, examples and commit messages pass the generic-content audit. See
 | Filesystem integrity              | Host archive/fencing tests; exact live independent oracles and source-deleted replacement                                            | Bytes, modes, symlinks and within-mount hardlinks; no RAM/kernel snapshot             |
 | Storage adapters                  | Shared local/S3 consistency and failure contracts; isolated R2 conformance and live filesystem recovery                              | Other S3-shaped services require their own qualification                              |
 | Incremental publication and cache | Changed-frame saves, corrupt/cache-miss recovery, lost publication ACK, conditional-read failure tests and live cache receipt        | Cache reuse follows verified durable publication; fresh clients hash complete objects |
-| Retention and collection          | Pin/history tests; writer/reader/publication races, corrupt/incomplete listing and failed-delete cases                               | Actual 24-hour fixture remains pending below                                          |
+| Retention and collection          | Pin/history tests; writer/reader/publication races, corrupt/incomplete listing and failed-delete cases                               | Actual 24-hour retired-only deletion, replay and retained restore pass below          |
 | Interactive transports            | Real PTY/SSH/TCP qualification, Chrome HTTPS/WSS fixture, portable Workers gateway probes and live downstream browser check          | Authenticated scope, bounded bytes, input identities and output cursors               |
 | Embedded state/scheduling         | Actual SQLite-backed platform restart/alarm/rollback tests; live deployment preserves checkpoint, generation and closed-access state | Client supplies transactional state and authoritative scheduling                      |
 | Adoption and recovery             | Real read/edit/publication, source-loss and interrupted-placement recovery, physical replacement and resumed work                    | New staging workspaces; persisted backend identity rejects competing/native targets   |
@@ -69,22 +70,23 @@ stream closed 121 ms after its deadline; the expired cookie received 403. Histor
 uncertain outcomes, including cancelled stream delivery, remain preserved after
 cleanup and host retirement. They are not silently reclassified as successful work.
 
-## Real-grace collection: pending
+## Real-grace collection: passed
 
-An independent R2 fixture has a retired filesystem version, a pinned retained
-version, deleted source archives and an independent recovery oracle. Early
-collection deleted zero objects and the resume helper refused early collection.
-The actual minimum grace ends **November 1, 2026, 23:51:52 UTC**.
+The independent R2 fixture became eligible on November 1, 2026, at 23:51:52 UTC.
+At November 2, 00:01:46 UTC, the frozen baseline collector deleted its single
+eligible retired frame. Early collection had deleted nothing. Repeating the same
+collection ID returned the persisted outcome without a second deletion.
 
-Required after that deadline: delete only the eligible retired objects, restore
-and compare the retained filesystem exactly, repeat collection safely, then clean
-owned fixture resources. Do not alter its clock, references or generation. No VM
-is held. This is separate from the protected pre-existing recovery experiment;
-automatic collection remains opt-in while this release gate is open.
+With source archives already deleted, a fresh download and full hash checks
+recovered the pinned retained version. The independent filesystem oracle matched
+bytes, modes, links, Unicode and rename/delete results. Scoped fixture payloads
+and local test state were then cleaned; permanent identity reservations remain.
+The original clock, references and generation were not changed. No VM was used;
+physical-host replacement remains separately qualified above.
 
-Backend rollback protection is qualified through persisted identity/admission
-checks and rejection of competing native targets, plus live state preservation
-across deployment. No production downgrade or legacy workspace migration was performed.
+This proves the baseline fixture's real-time grace boundary. It does not establish
+real-grace qualification for every later format or enable wider automatic
+collection. The separate protected experiment remains independent.
 
 ## Measured limitations
 

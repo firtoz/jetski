@@ -28,4 +28,5 @@ missing approved contract or a concrete defect.
 
 All source rows now have implementations. This is an implementation candidate,
 not a claim that release acceptance or every supported-provider behavior passes.
-Automatic collection remains opt-in until its real-grace release gate closes.
+The baseline real-grace release gate passed on November 2. Automatic collection
+remains opt-in; follow-on formats and performance changes have separate qualification.
