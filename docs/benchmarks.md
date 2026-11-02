@@ -113,14 +113,24 @@ Two further diagnostic hosts are excluded from the comparison table. One exposed
 a priming failure: negotiated source ranges reached the controller intact, but a
 shared decoder still enforced the ordinary output limit. The retained save journal
 recovered on that same host after the bound was fixed; three exact cycles passed.
-Both diagnostic hosts were retired. Three later attempts failed before timed
-trials, bringing the follow-on total to twenty-one starts, all retired. Two
+Both diagnostic hosts were retired. Four later attempts failed before timed
+trials, bringing the retired follow-on total to twenty-three starts. Three
 quarantined an empty runtime during initial creation; one stopped before reference
-setup. On the latest failed host, a read-only local Podman listing hung until the
-dedicated API service was stopped, then both API and CLI checks passed after
-restart. The exact upstream cause remains uncertain. These failed attempts are
-not successful comparisons; no workload commands had started on those candidate
-hosts. Private-socket lifecycle control is being qualified before further trials.
+setup. A later runtime stack located image ownership remapping; its child wrote
+1.13 GB and waited on filesystem journal commits before finishing. This refines
+the earlier API/CLI contention hypothesis: shared-engine control alone did not
+resolve startup. The harness used native overlay; the actual client selects FUSE.
+The next frozen comparison uses that candidate setting, independently verifies its
+mount program and reports the reference's differing native-overlay policy. Failed
+setups remain separate from timing results; they are not successful comparisons.
+
+The resulting FUSE screen completed five trials per arm with exact oracles and
+owned cleanup. Median save was6.815 versus3.670 s, warm resume7.363 versus1.070 s,
+and complete cycle17.649 versus5.685 s. Median changed upload fell to259,410
+bytes versus1,042,257, but reduced bytes did not establish speed parity. Both
+hosts were retired, bringing the follow-on total to twenty-five starts. A second
+FUSE pair was not run because the measured gap was clear; the full replicated
+acceptance comparison remains open.
 
 Local encoding screens informed later candidates: adaptive gzip reduced a16 MiB
 binary encode from307 to24 ms, and a source-like mix from180 to164 ms with0.36%

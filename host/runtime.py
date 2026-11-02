@@ -9,6 +9,7 @@ import pathlib
 import re
 from fence import identity
 from streams import stopped_streams
+from runtime_backend import WORKLOAD_USER, WORKLOAD_USER_NAMESPACE
 
 
 class PodmanRuntime:
@@ -98,8 +99,8 @@ class PodmanRuntime:
                     "--cap-drop=ALL",
                     "--security-opt=no-new-privileges",
                     "--user",
-                    "1000:1000",
-                    "--userns=keep-id:uid=1000,gid=1000",
+                    WORKLOAD_USER,
+                    "--userns=" + WORKLOAD_USER_NAMESPACE,
                     "--pids-limit",
                     "256",
                     "--memory",

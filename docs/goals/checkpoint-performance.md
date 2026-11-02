@@ -49,16 +49,16 @@ as a substitute for a contemporaneous comparison.
 
 ## Finite implementation and acceptance checklist
 
-| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                        |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                          |
-| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.            |
-| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; latest embedded save 4.052 s vs3.007 s reference; parity open.        |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.          |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 231 TypeScript/109 Python tests and live R2 recovery pass; new hosted replacement open.                       |
-| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Six separate five-per-arm screens; setup failures preserved, all owned hosts retired; final replication open. |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                      |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.             |
+| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                            |
+| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.              |
+| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; latest embedded save 4.052 s vs3.007 s reference; parity open.          |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.            |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 231 TypeScript/110 Python tests and live R2 recovery pass; new hosted replacement open.                         |
+| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Seven separate five-per-arm screens; setup failures preserved, all owned hosts retired; final replication open. |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                        |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.               |
 
 ## Current candidate and evidence
 
@@ -75,7 +75,7 @@ inline output disabled. Geometry is persisted per shutdown; large captures grow
 toward4 MiB. Old4 MiB archives and output format1 remain readable. Format2 inline
 bytes require a supporting reader when rolling back controller binaries.
 
-Local quality passes231 TypeScript and109 Python tests, build, types, lint and
+Local quality passes231 TypeScript and110 Python tests, build, types, lint and
 Ruff. Fault checks cover lost acknowledgements, restart/settings changes, missing
 sources, exact bytes/modes/links, corrupt proofs blocking publication/read/GC and
 drained parallel failures. Mixed inline/object output also recovers exactly with
@@ -87,16 +87,28 @@ with1 MiB members to259,147 with256 KiB members, using nine initial physical
 packs in either case. Capture measured377 versus349 ms; these are local encoding
 measurements. The [six hosted screens](../benchmarks.md#follow-on-checkpoint-optimization-screens)
 still miss parity: the latest save was4.052 versus3.007 s and complete cycle7.198
-versus4.820 s. Completed oracles pass; all twenty-one comparison/diagnostic hosts are
-retired. Failures remain preserved, including a priming decoder-bound failure
+versus4.820 s. Completed oracles pass; twenty-five prior comparison/diagnostic hosts are
+retired. The FUSE screen completed all ten exact trials, but save and resume
+medians were6.815 and7.363 s versus3.670 and1.070 s; parity remains open. Failures remain preserved, including a priming decoder-bound failure
 recovered on its original host. Different candidates/controllers are never pooled.
 
-Three later attempts stopped before timed trials. Two exposed startup contention
-between local Podman lifecycle commands and its private API service; stopping the
-service unblocked an independent empty-container listing. The precise upstream
-cause remains unconfirmed. Lifecycle control now uses the same validated private
-socket as execution, while initial bootstrap keeps local image preparation.
-Actual host fixture CI must qualify this change before further paid trials.
+Four later attempts stopped before timed trials. The latest runtime trace showed
+Podman waiting for a child to remap ownership across its image layer; that child
+wrote1.13 GB and waited for filesystem journal commits before eventually finishing.
+The earlier engine-contention hypothesis was incomplete. Shared-engine lifecycle
+control passes all seven disposable-host CI jobs, but did not resolve this cost.
+The harness selected native overlay, whereas the client explicitly selects FUSE
+overlay. The new comparison uses that intended candidate policy and verifies the
+live mount program before priming. The reference remains on native overlay; report
+this configuration difference and preserve the failed setups separately.
+
+Bootstrap now prepares each approved image with the exact workload user namespace
+before publishing host readiness. It creates an isolated container without starting
+it, verifies its identity and absence of mounts, and confirms removal. Lost-ACK
+replay reuses the observed preparation receipt; foreign or running containers block
+readiness. This moves potentially expensive mapping out of assignment admission.
+A fresh native-overlay pilot must establish that preparation is reusable before
+spending on another paired comparison. It does not weaken any workload isolation.
 
 The next step is one frozen replicated comparison of the combined candidate,
 followed by the large cold/replacement and pinned-client staging gates. Whole

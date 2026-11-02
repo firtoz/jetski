@@ -210,6 +210,12 @@ files to build the supervisor, and enables the private rootless Podman socket.
 After bootstrap, lifecycle and execution share that private engine. Lifecycle
 commands use the rootless remote client through the validated Unix socket;
 bootstrap alone uses local image preparation. The socket stays outside workloads.
+Bootstrap prepares the exact workload user-namespace mapping for each approved
+image before readiness. Its temporary container is never started or given
+persistent mounts, and removal must be confirmed. This can add substantial first
+boot work for large images on native overlay; it belongs to host setup, rather
+than an uncertain first assignment. A matching unstarted preparation can recover
+a lost acknowledgement; a foreign or running container blocks readiness.
 
 Terminal sessions use `POST /v1/sandboxes/{sandbox}/terminals` with the same
 `id`, `argv`, `cwd`, `timeout` fields as commands. Their `output` endpoint exposes
