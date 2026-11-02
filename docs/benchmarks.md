@@ -1,5 +1,19 @@
 # Hosted performance qualification
 
+## Current candidate: qualification31
+
+The frozen `ae17299` comparison completed ten trials per arm across two host
+pairs, with all20 filesystem checks matching and all four hosts retired. Median
+candidate/reference save is3.5355/4.308 s, readiness1.7625/1.168 s and complete
+cycle6.7585/6.369 s. Sample p95/max cycle is8.890/7.590 s. Saves improve, but warm
+cycle/readiness parity remains unmet. The larger-source pair measures13.664/
+22.579 s, with exact fixtures and zero verification payload downloads. A later
+qualification-driver correction removes a fixed post-completion wait; these
+measured results are preserved unchanged. See the [active goal](goals/checkpoint-performance.md).
+
+The following warm table is the earlier frozen `f02cc848` comparison, with
+its own controller/host conditions; it must not be substituted for the latest build.
+
 ## November 2, 2026: matched warm comparison
 
 Ten trials per arm completed across two independent Boat host pairs, alternating

@@ -59,27 +59,30 @@ older historical time, for acceptance.
 
 ## Current candidate and evidence
 
-Qualification artifact27 freezes core `88556f0`: ordered binary source streams,
-bounded rolling uploads, verified local-cache reuse and optional16 MiB raw import.
-Small deltas retain the control path. Raw import and source binding remain
-replaceable transport capabilities; storage and state stay separate.
+Current main `ae17299` carries ordered binary source streams, bounded rolling
+uploads, 256 KiB independent members in 8 MiB packs, verified local-cache reuse,
+optional 16 MiB raw import, streaming object/range verification and capture hashing
+during writes. The optional native R2 adapter adds provider-validated SHA-256,
+fresh version-bound publication observations and a bounded aggregate range-proof
+cache. Checkpoint formats and the host bundle remain unchanged by these storage
+follow-ons; legacy 4 MiB frames stay readable.
 
-The follow-on at `9b5ae6c` adds shared streaming object/range verification and
-single-buffer uploads, and hashes encoded captures while writing instead of
-rereading the temporary archive. Exact encoded bytes and checkpoint formats stay
-unchanged. Capture host assets change, so new assignments need the new immutable
-bundle. Seven focused storage checks and15 capture/frame checks pass, along with
-build/types/lint. The local storage screen improves copying/hash time and RSS;
-the pinned artifact28 is published and the client update is on main.
-Its larger-source comparison and final staging workflow remain separate gates.
-
-All seven exact-SHA runtime CI jobs pass at `5b024d2`, including the
-changed capture bundle. The affected pack, transport/import and
-state checks pass; valid earlier corruption, lost-ACK, restart, cancellation,
-stale-generation, old-format and GC-race evidence is reused. Every started sibling
-must drain before cleanup, failure or publication. Hashes, immutable identities,
-publication verification, lease fences, reader/writer coordination and pins remain
-mandatory. Transfer buffers stay bounded; a complete archive is never buffered.
+The latest follow-on adds optional `putBuffer`, borrowing a prepared pack only
+until the adapter promise settles. Native validated writes advertise four upload
+slots, matching the reference; stream inputs retain copy semantics. Local/S3
+remain at two and command retention keeps its separate two-command memory bound.
+All 36 affected storage/packed/frame/command checks, build, types and lint pass.
+All seven exact-SHA runtime CI jobs pass at `ae17299`, released as qualification31.
+The larger-source pair measures 13.664 versus 22.579 s, with exact fixtures, zero
+verification payload downloads and owned cleanup. The exact-build warm comparison completed on two host pairs with all20
+filesystem comparisons matching. Median save is 3.5355 versus4.308 s, but resume
+is 1.7625 versus1.168 s and the complete cycle6.7585 versus6.369 s. The warm
+cycle/readiness target remains unmet; do not replace these results with older
+favorable timings. Valid earlier corruption,
+lost-ACK, restart, cancellation, stale-generation, old-format and GC-race evidence
+is reused. Every started sibling must drain before cleanup or publication;
+verification, immutable identities, fences, reader/writer coordination and pins
+remain mandatory.
 
 The frozen warm comparison at `f02cc84854d0a3cbb4c5a39be967d6b21fd18cca` has ten
 trials per arm on two host pairs. All20 filesystem oracles match. Candidate median
@@ -96,39 +99,44 @@ variation is substantial; candidate import-only timing was not separately measur
 Both machines and temporary controllers are retired. Earlier failed attempts,
 independent oracles and retained archives remain available in private evidence.
 
-**The larger first-save target remains unmet.** The latest source-only pair at
-`5b024d2` measures43.869 versus40.173 s, with exact source fixtures and both
-machines/controllers retired. The previous rolling-window pair measured27.246
-versus22.817 s. These separate configurations/hosts are not a pooled median.
-The local storage-path speedup does not establish hosted end-to-end parity.
+**Final performance acceptance remains open.** Native verified-write
+pairs at `273bbb8` measure candidate/reference 17.441/128.107 s and
+17.608/16.815 s. The reference varies widely; do not pool unlike configurations or
+claim parity from its outlier. At `3364293`, the dense-proof cache removes all
+verification payload downloads, but save time is 22.398/16.118 s. All these source
+fixtures match, and their hosts/controllers are retired. Fewer bytes alone do not
+establish latency parity. Earlier comparisons remain in the consolidated report.
 
-The reference checks object metadata after writes; the candidate additionally
-reads and hashes complete objects and their logical ranges. Preserve the stronger
-proof. Next, qualify [native SHA-256 write verification](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#r2putoptions)
-as a storage capability, with fresh publication observations and full readback
-fallback. An S3-shaped interface or custom metadata alone is insufficient.
-The optional [native adapter](../storage-r2.md) at `fc196b2` passes both live R2 storage contracts:
-verified-write reuse uses no readback body and still performs a fresh version/
-checksum observation at publication. Bad native checksums are rejected; independent
-bytes match. This used no execution host, and its Worker/test prefix are cleaned.
-Seven focused checks, build, types and lint pass. Artifact release, client
-integration and hosted performance qualification remain open. Provisional transfer
-may overlap work, but completion and execution remain behind the verified root;
-publication itself is a metadata update rather than another payload copy.
+Both native [R2 storage policies](../storage-r2.md) pass the live consistency/
+recovery contract, checksum rejection and independent byte reads. Its temporary
+Worker/prefix are cleaned without an execution host. Missing native capabilities
+fall back to complete readback; custom metadata or an S3-shaped API is insufficient.
+The latest four-upload larger-source pair beats the unchanged reference, as
+reported above. The complete warm matrix above has ten observations per arm; sample p95/max
+cycle is8.890 versus7.590 s and readiness3.157 versus1.957 s. All four hosts and
+controllers are retired. A local qualification-driver defect also added250 ms
+after successful reconciliation. Its immediate-recheck fix passes three local
+checks, but the measured matrix is preserved without subtracting estimated delays.
+Next, profile and implement warm activation improvements before further paid
+qualification; preserve every cache proof, reader lease and activation fence. Provisional transfer may overlap work, but completion and
+execution remain behind the verified root. Publication changes metadata rather
+than copying payloads.
 
 Downstream artifact pinning and guarded idle-profile adoption are implemented.
 Historical uncertain outcomes must remain uncertain; only current fences, settled
 lifecycle receipts and fresh provider absence can establish idle migration safety.
-The pinned client deployment and guarded idle-profile adoption are complete. A
-fresh preparation and editable sandbox reused one physical host; real file
-inspection found the README without edits, and the requested single-line edit
-changed only that file. Publication timed out before review/push; server-owned
-cleanup durably saved generation4 before host expiry, and provider absence is
-confirmed. A lifetime-admission failure now persists an explicit never-started
-outcome for reconnects; the client uses stage-sized publication budgets and reads
-that failure without inventing a process receipt. Artifact28 and the client integration changes are published; root build, types,
-lint and12 focused client checks pass. Exact client deployment, publication,
-warm resume and physical replacement remain open. No production cutover is authorized.
+Guarded idle-profile adoption and the preceding pinned deployment passed. Real
+file inspection found the README without edits, and a single-line edit changed
+only that file. Publication timed out before review/push; server-owned cleanup
+saved generation4 before host expiry, and provider absence is confirmed.
+Never-started lifetime admission now has an explicit durable outcome, and the
+client uses stage-sized publication budgets. Qualification29 passed client quality/security CI but its staging deployment
+failed Cloudflare's startup CPU check; preserve that failure. Qualification31 is
+now pinned on client main, with root build/types/lint, affected checks and actual
+binding-state/storage contracts passing. Its entire exact-SHA client CI run passes, and actual staging settings match
+qualification31 with the unchanged scope configuration. Publication, warm resume
+and physical replacement remain open; finish the warm implementation before
+repeating that paid workflow. No production cutover is authorized.
 Routine receipts, diagnostics and process handles stay in private QA notes.
 
 ## Execution order
