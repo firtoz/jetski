@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,7 +35,10 @@ for (const failure of [
       await rm(directory, { recursive: true, force: true });
     });
     const objects = new LocalCheckpointStore(join(directory, "objects"));
-    const raw = Buffer.from("fixture archive"),
+    const raw =
+        failure === "finalize-ack"
+          ? randomBytes(1280 * 1024 + 113)
+          : Buffer.from("fixture archive"),
       archive = gzipSync(raw);
     const manifest = {
       version: 1,
@@ -107,7 +110,8 @@ for (const failure of [
         let result: Json = null;
         if (request.action === "quiesce") {
           quiesced = true;
-          if (failure === "finalize-ack") result = { finalizeVersion: 1 };
+          if (failure === "finalize-ack")
+            result = { finalizeVersion: 1, checkpointReadBytes: 1280 * 1024 };
         }
         if (request.action === "stream-status")
           result = {

@@ -34,12 +34,22 @@ export function encodeBase64(bytes: Uint8Array): string {
     parts.push(String.fromCharCode(...bytes.subarray(at, at + 8192)));
   return btoa(parts.join(""));
 }
-export function decodeBase64(value: string): Uint8Array {
-  if (value.length > 350000) throw new Error("Encoded segment exceeds bound");
+export function decodeBase64(
+  value: string,
+  maximumBytes = OUTPUT_CHUNK,
+): Uint8Array {
+  if (
+    !Number.isSafeInteger(maximumBytes) ||
+    maximumBytes < 1 ||
+    maximumBytes > DEFAULTS.maxObjectBytes
+  )
+    throw new Error("Invalid binary segment bound");
+  if (value.length > Math.ceil(maximumBytes / 3) * 4)
+    throw new Error("Encoded segment exceeds bound");
   const decoded = Uint8Array.from(atob(value), (character) =>
     character.charCodeAt(0),
   );
-  if (decoded.length > OUTPUT_CHUNK || encodeBase64(decoded) !== value)
+  if (decoded.length > maximumBytes || encodeBase64(decoded) !== value)
     throw new Error("Invalid binary segment");
   return decoded;
 }

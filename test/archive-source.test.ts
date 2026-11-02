@@ -84,3 +84,18 @@ test("source range failures drain siblings and invalid negotiation never reads",
   await rejected;
   assert.equal(reads, 2);
 });
+
+test("bulk decoding is explicit; ordinary output keeps its bound", async () => {
+  const { decodeBase64 } = await import("../src/core/command-output.js");
+  const bytes = Buffer.alloc(MAX_CHECKPOINT_READ_BYTES, 251),
+    encoded = bytes.toString("base64");
+  assert.throws(() => decodeBase64(encoded), /Encoded segment exceeds bound/);
+  assert.deepEqual(Buffer.from(decodeBase64(encoded, bytes.length)), bytes);
+  assert.throws(() => decodeBase64(encoded, bytes.length - 1));
+  for (const bound of [0, Number.NaN, 1.5, 9 * 1024 * 1024])
+    assert.throws(
+      () => decodeBase64("", bound),
+      /Invalid binary segment bound/,
+    );
+  assert.throws(() => decodeBase64(encoded.slice(0, -1) + "!", bytes.length));
+});

@@ -380,7 +380,7 @@ export class ShutdownCoordinator {
                 typeof value.base64 !== "string"
               )
                 throw Error("Invalid archive segment");
-              return decodeBase64(value.base64);
+              return decodeBase64(value.base64, bytes);
             },
           },
           record.previous ?? undefined,
