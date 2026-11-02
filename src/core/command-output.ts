@@ -147,6 +147,7 @@ export class CommandOutputStore {
       offset: number,
       bytes: number,
     ) => Promise<Json>,
+    beforeUpload?: () => void,
   ): Promise<void> {
     const rootId = this.rootId(id),
       prior = await this.registry.root(fence, rootId);
@@ -220,6 +221,7 @@ export class CommandOutputStore {
           };
           await this.registry.planStreamPart(fence, rootId, key, part);
           if (object) {
+            beforeUpload?.();
             const stored = await this.objects.put(
               object,
               (async function* () {

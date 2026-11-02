@@ -21,6 +21,7 @@ from fence import Fence, identity  # noqa: E402
 
 OUTPUT_BYTES = 16 * 1024 * 1024
 QUIESCE_COMMAND_SECONDS = 10
+START_WAIT_MAX_MS = 1000
 
 
 def command_id(value):
@@ -201,6 +202,18 @@ class Commands:
             if receipt is None:
                 raise ValueError("unknown_command")
             return receipt
+
+    def wait(self, raw, command, milliseconds):
+        """Observe one admitted ID; no launch or replay, even after uncertainty."""
+        if type(milliseconds) is not int or not 0 <= milliseconds <= START_WAIT_MAX_MS:
+            raise ValueError("invalid_command_wait")
+        deadline = time.monotonic() + milliseconds / 1000
+        while True:
+            receipt = self.status(raw, command)
+            remaining = deadline - time.monotonic()
+            if receipt["phase"] not in ("queued", "running") or remaining <= 0:
+                return receipt
+            time.sleep(min(0.01, remaining))
 
     def output(self, raw, command, channel, offset, count):
         lease = identity(raw)

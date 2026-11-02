@@ -31,6 +31,53 @@ class CommandTests(unittest.TestCase):
         self.commands = Commands(self.fence, self.base / "outputs", self.launched.append)
         self.command = str(uuid.uuid4())
 
+    def test_bounded_wait_observes_completion_without_relaunch(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        clock = [0.0]
+
+        def finish(delay):
+            clock[0] += delay
+            with self.fence.locked():
+                state = self.fence.read()
+                state["commands"][self.command].update(phase="succeeded", exitCode=0)
+                self.fence.write(state)
+
+        with (
+            patch("commands.time.monotonic", side_effect=lambda: clock[0]),
+            patch("commands.time.sleep", side_effect=finish),
+        ):
+            result = self.commands.wait(self.lease, self.command, 250)
+        self.assertEqual(result["phase"], "succeeded")
+        self.assertEqual(self.commands.wait(self.lease, self.command, 0), result)
+        self.assertEqual(self.launched, [self.command])
+
+    def test_wait_timeout_and_uncertainty_never_admit_another_worker(self):
+        self.commands.start(self.lease, self.command, ["true"])
+        clock = [0.0]
+        with (
+            patch("commands.time.monotonic", side_effect=lambda: clock[0]),
+            patch(
+                "commands.time.sleep",
+                side_effect=lambda delay: clock.__setitem__(0, clock[0] + delay),
+            ),
+        ):
+            self.assertEqual(self.commands.wait(self.lease, self.command, 20)["phase"], "queued")
+        self.assertLessEqual(clock[0], 0.021)
+        for value in (-1, True, 1001, 1.5):
+            with self.assertRaisesRegex(ValueError, "invalid_command_wait"):
+                self.commands.wait(self.lease, self.command, value)
+        with self.fence.locked():
+            state = self.fence.read()
+            state["commands"][self.command]["phase"] = "uncertain"
+            self.fence.write(state)
+        with patch(
+            "commands.time.sleep", side_effect=AssertionError("must not wait for uncertainty")
+        ):
+            self.assertEqual(
+                self.commands.wait(self.lease, self.command, 250)["phase"], "uncertain"
+            )
+        self.assertEqual(self.launched, [self.command])
+
     def test_quiesce_closes_admission_and_cancels_unstarted_commands(self):
         self.commands.start(self.lease, self.command, ["true"])
         self.commands.prepare_quiesce(self.lease)

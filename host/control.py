@@ -20,7 +20,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from archive import capture, sync_dir  # noqa: E402
 from streams import Streams  # noqa: E402
 from terminal_input import TerminalInputs  # noqa: E402
-from commands import Commands, reconcile_workers_locked  # noqa: E402
+from commands import Commands, reconcile_workers_locked, START_WAIT_MAX_MS  # noqa: E402
 from files import Files  # noqa: E402
 from file_upload import FileUpload  # noqa: E402
 from import_checkpoint import CheckpointImport, IMPORT_REQUEST_BYTES  # noqa: E402
@@ -142,7 +142,10 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
     if action in ("command-start", "terminal-start"):
         if launch is None:
             raise ValueError("command_launcher_unavailable")
-        return commands.start(
+        wait_ms = payload.get("waitMs", 0)
+        if type(wait_ms) is not int or not 0 <= wait_ms <= START_WAIT_MAX_MS:
+            raise ValueError("invalid_command_wait")
+        receipt = commands.start(
             lease,
             payload.get("commandId"),
             payload.get("argv"),
@@ -152,6 +155,9 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
             rows=payload.get("rows", 24),
             columns=payload.get("columns", 80),
         )
+        if wait_ms:
+            return commands.wait(lease, payload.get("commandId"), wait_ms)
+        return receipt
     if action in ("terminal-input", "terminal-input-status"):
         inputs = TerminalInputs(fence, CONTROL_ROOT / "terminal-input")
         if action == "terminal-input":

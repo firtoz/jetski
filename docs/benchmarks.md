@@ -75,25 +75,26 @@ and durable-save/fresh-assignment recovery boundary. All completed trials passed
 independent filesystem checks. **None is a replicated ten-versus-ten result, and
 none meets the speed target.** Do not pool different candidates or controllers.
 
-| Candidate and composition                    | Save: reference / candidate | Complete cycle: reference / candidate | Storage calls: reference / candidate |
-| -------------------------------------------- | --------------------------: | ------------------------------------: | -----------------------------------: |
-| `98fe0ad`, Node/S3, individual 1 MiB objects |            5.704 / 29.405 s |                      9.469 / 32.254 s |                             18 / 207 |
-| `45b27a5`, Node/S3, physical packs           |            4.389 / 17.517 s |                      6.510 / 21.184 s |                              18 / 40 |
-| `083daad`, Node/S3, signal-aware idle        |             3.379 / 5.936 s |                       5.208 / 8.501 s |                              18 / 40 |
-| `083daad`, embedded native R2 adapter        |             4.151 / 5.166 s |                       6.917 / 8.276 s |                              18 / 40 |
-| `b691ba2`, embedded native R2, adaptive gzip |             3.667 / 4.656 s |                       6.080 / 7.894 s |                              18 / 40 |
+| Candidate and composition                          | Save: reference / candidate | Complete cycle: reference / candidate | Storage calls: reference / candidate |
+| -------------------------------------------------- | --------------------------: | ------------------------------------: | -----------------------------------: |
+| `98fe0ad`, Node/S3, individual 1 MiB objects       |            5.704 / 29.405 s |                      9.469 / 32.254 s |                             18 / 207 |
+| `45b27a5`, Node/S3, physical packs                 |            4.389 / 17.517 s |                      6.510 / 21.184 s |                              18 / 40 |
+| `083daad`, Node/S3, signal-aware idle              |             3.379 / 5.936 s |                       5.208 / 8.501 s |                              18 / 40 |
+| `083daad`, embedded native R2 adapter              |             4.151 / 5.166 s |                       6.917 / 8.276 s |                              18 / 40 |
+| `b691ba2`, embedded native R2, adaptive gzip       |             3.667 / 4.656 s |                       6.080 / 7.894 s |                              18 / 40 |
+| `8c488fa`, embedded native R2, fewer control calls |             3.007 / 4.052 s |                       4.820 / 7.198 s |                              18 / 40 |
 
 The reference uses Node orchestration with a Cloudflare native-R2 retention
 worker. The embedded candidate runs core coordination and its adapter in a
 Cloudflare Durable Object. These are different control-plane compositions;
-changes between screens do not isolate transport costs. The native candidate's
+changes between screens do not isolate transport costs. The `083daad` native candidate's
 median readiness was 1.607 s versus 1.793 s; maximum saves were 5.413 s versus
 5.213 s. Five observations per arm cannot establish stable tail estimates.
 All screens uploaded approximately 1.04 MB per warm trial.
 
 A second host pair for `98fe0ad` failed at the five-minute candidate creation
 deadline before timed work, leaving a quarantined `creating` receipt. No workload
-commands were admitted. Its evidence and checkpoints are preserved. All twelve
+commands were admitted. Its evidence and checkpoints are preserved. All fourteen
 hosts across the screens and failed setup were retired; subsequent inventory
 reported zero active hosts. Embedded controller state was backed up before
 removing its temporary controller. These counts are physical starts, not logical

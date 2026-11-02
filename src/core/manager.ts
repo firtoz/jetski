@@ -83,6 +83,7 @@ type ResumeRecord = {
   placed: boolean;
 };
 type CommandRecord = {
+  outcome?: Json;
   terminal?: boolean;
   id: string;
   lease: HostLease;
@@ -100,6 +101,8 @@ export type ManagerOptions = {
   automaticCollection?: boolean;
   /** Optional physical packing target; zero retains per-frame storage. */
   checkpointPackBytes?: number;
+  /** Bounded wait for short noninteractive commands; zero returns immediately. */
+  commandStartWaitMs?: number;
   hostsPerOwner?: number;
   now?: () => number;
   events?: EventSink;
@@ -125,6 +128,7 @@ export class SandboxManager {
   private readonly terminalInputs: TerminalInputJournal;
   private readonly shutdown: ShutdownCoordinator;
   private readonly now: () => number;
+  private readonly commandStartWaitMs: number;
   hostCapabilities() {
     return this.provider.capabilities();
   }
@@ -140,6 +144,14 @@ export class SandboxManager {
       typeof options.automaticCollection !== "boolean"
     )
       throw Error("Invalid automatic collection policy");
+    this.commandStartWaitMs =
+      options.commandStartWaitMs ?? DEFAULTS.commandStartWaitMs;
+    if (
+      !Number.isSafeInteger(this.commandStartWaitMs) ||
+      this.commandStartWaitMs < 0 ||
+      this.commandStartWaitMs > DEFAULTS.maxCommandStartWaitMs
+    )
+      throw Error("Invalid command start wait");
     const packBytes = options.checkpointPackBytes ?? 0;
     if (
       !Number.isSafeInteger(packBytes) ||
@@ -241,7 +253,7 @@ export class SandboxManager {
         await this.streams?.settleStopped(scope, lease);
         await this.terminalInputs.settle(scope);
       },
-      retainCommands: async (scope) => {
+      retainCommands: async (scope, _lease, beforeUpload) => {
         const commands = await state.transaction((tx) =>
           tx
             .scan<CommandRecord>(`command/${scopeKey(scope)}/`)
@@ -266,7 +278,12 @@ export class SandboxManager {
                 throw Error("Invalid command receipt");
               if (["queued", "running"].includes(String(status.phase)))
                 return false;
-              await this.retainObservedCommand(scope, command, status);
+              await this.retainObservedCommand(
+                scope,
+                command,
+                status,
+                beforeUpload,
+              );
               return true;
             }),
           );
@@ -1160,16 +1177,18 @@ export class SandboxManager {
     // Persist before crossing the host boundary. Even a controller crash before
     // dispatch is uncertain: reconnect observes this ID and never reexecutes it.
     if (!admission.fresh) return this.commandStatus(scope, id);
-    return this.request(
+    const result = await this.request(
       admission.record.lease,
       terminal ? "terminal-start" : "command-start",
       {
         lease: admission.record.lease,
         image: admission.record.image,
         commandId: id,
+        waitMs: terminal ? 0 : this.commandStartWaitMs,
         ...spec,
       },
     );
+    return this.rememberTerminal(scope, admission.record, result);
   }
   async startTerminal(
     scope: Scope,
@@ -1326,8 +1345,42 @@ export class SandboxManager {
       );
     return result;
   }
+  private async rememberTerminal(
+    scope: Scope,
+    command: CommandRecord,
+    result: Json,
+  ): Promise<Json> {
+    if (
+      !result ||
+      typeof result !== "object" ||
+      Array.isArray(result) ||
+      !["succeeded", "failed", "cancelled"].includes(String(result.phase))
+    )
+      return result;
+    if (result.id !== command.id)
+      throw Error("Command outcome identity conflict");
+    await this.state.transaction((tx) => {
+      const key = `command/${scopeKey(scope)}/${command.id}`;
+      const current = tx.get<CommandRecord>(key);
+      if (
+        !current ||
+        canonical(current.lease) !== canonical(command.lease) ||
+        canonical(current.spec) !== canonical(command.spec)
+      )
+        throw Error("Command authority changed");
+      if (
+        current.outcome !== undefined &&
+        canonical(current.outcome) !== canonical(result)
+      )
+        throw Error("Command outcome identity conflict");
+      if (current.outcome === undefined)
+        tx.put(key, { ...current, outcome: result });
+    });
+    return result;
+  }
   async commandStatus(scope: Scope, id: string): Promise<Json> {
     const command = await this.command(scope, id);
+    if (command.outcome !== undefined) return command.outcome;
     const sandbox = await this.get(scope);
     if (!sandbox) throw new Error("Sandbox unavailable");
     const retained = await this.outputs.retained(
@@ -1335,11 +1388,12 @@ export class SandboxManager {
       id,
     );
     if (retained !== undefined) return retained;
-    return this.request(command.lease, "command-status", {
+    const result = await this.request(command.lease, "command-status", {
       lease: command.lease,
       image: command.image,
       commandId: id,
     });
+    return this.rememberTerminal(scope, command, result);
   }
   /** Called by lifecycle reconciliation before host release. A failed transfer
    * keeps its writer admission, preventing collection and successful release. */
@@ -1352,6 +1406,7 @@ export class SandboxManager {
     scope: Scope,
     command: CommandRecord,
     status: Json,
+    beforeUpload?: () => void,
   ): Promise<void> {
     const sandbox = await this.get(scope);
     if (!sandbox) throw new Error("Sandbox unavailable");
@@ -1368,6 +1423,7 @@ export class SandboxManager {
           offset,
           bytes,
         }),
+      beforeUpload,
     );
   }
   async commandOutput(

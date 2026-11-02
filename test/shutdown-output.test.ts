@@ -217,8 +217,8 @@ for (const failure of ["output", "capture"] as const)
     assert.equal(drained, true);
     assert.equal(
       statusCalls.get(ids[0]!),
-      1,
-      "reuse the observed terminal outcome",
+      undefined,
+      "reuse the durably observed terminal outcome without a host query",
     );
     assert.ok(!actions.includes("release"));
     state.close();

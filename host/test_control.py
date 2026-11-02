@@ -127,6 +127,32 @@ class ControlTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.request("finalize", invalid)
 
+    def test_invalid_start_wait_is_rejected_before_command_admission(self):
+        self.request("claim", dict(lease=self.lease))
+        launched = []
+        for wait in (-1, True, 1001, 0.5):
+            with self.assertRaisesRegex(ValueError, "invalid_command_wait"):
+                control.dispatch(
+                    dict(
+                        version=1,
+                        id="wait",
+                        action="command-start",
+                        payload=dict(
+                            lease=self.lease,
+                            image=self.config["images"][0],
+                            commandId=str(uuid.uuid4()),
+                            argv=["true"],
+                            waitMs=wait,
+                        ),
+                    ),
+                    self.config,
+                    self.account,
+                    self.run_command,
+                    launch=launched.append,
+                )
+        self.assertEqual(launched, [])
+        self.assertEqual(Fence(self.root / "control/slot").read().get("commands", {}), {})
+
     def test_bulk_envelope_is_import_only_and_bounded(self):
         raw = dict(version=1, id="large", action="import-chunk", payload="x" * (5 * 1024**2))
         encoded = json.dumps(raw).encode()

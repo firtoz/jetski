@@ -661,3 +661,10 @@ spending compression CPU on already compressed binaries. Sampling never skips
 content verification: complete member hashes and extraction checks still apply.
 Readers accept earlier gzip members unchanged. A changed capture policy can
 require a full upload on its first save before incremental reuse stabilizes.
+
+
+Short noninteractive command starts wait up to250 ms for an observed outcome;
+set `commandStartWaitMs` to0 for immediate acknowledgement or choose0–1000 ms.
+Terminals always start immediately. Completed outcomes are persisted by command
+identity, so later status reads need no host round trip. Unknown outcomes remain
+uncertain and never authorize replay.

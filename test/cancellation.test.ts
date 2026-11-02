@@ -120,7 +120,10 @@ test("command cancellation survives controller restart before dispatch and after
     starts = 0;
   let phase = "running";
   const transport = {
-    request: async (_host: string, request: { id: string; action: string }) => {
+    request: async (
+      _host: string,
+      request: { id: string; action: string; payload: unknown },
+    ) => {
       if (request.action === "command-start") starts++;
       if (request.action === "command-status" && statusFails)
         throw Error("status unreachable");
@@ -132,7 +135,13 @@ test("command cancellation survives controller restart before dispatch and after
           throw Error("cancel ACK lost");
         }
       }
-      return { version: 1 as const, id: request.id, result: { phase } };
+      return {
+        version: 1 as const,
+        id: request.id,
+        result: request.action.startsWith("command-")
+          ? { id: (request.payload as { commandId: string }).commandId, phase }
+          : { phase },
+      };
     },
   };
   let clock = 1;
@@ -225,7 +234,30 @@ test("command cancellation survives controller restart before dispatch and after
   manager = new SandboxManager(state, provider, transport, objects, options);
   await manager.reconcile(scope.owner);
   statusFails = true;
+  assert.deepEqual(
+    await manager.commandStatus(scope, command),
+    { id: command, phase: "cancelled" },
+    "durable terminal observation survives restart without a host status call",
+  );
+  await assert.rejects(
+    manager.commandStatus({ ...scope, owner: "foreign" }, command),
+  );
+  for (const commandStartWaitMs of [
+    -1,
+    NaN,
+    0.5,
+    DEFAULTS.maxCommandStartWaitMs + 1,
+  ])
+    assert.throws(
+      () =>
+        new SandboxManager(state, provider, transport, objects, {
+          ...options,
+          commandStartWaitMs,
+        }),
+      /Invalid command start wait/,
+    );
   assert.deepEqual(await manager.cancelCommand(scope, command), {
+    id: command,
     phase: "cancelled",
   });
   assert.equal(
@@ -258,7 +290,7 @@ test("command cancellation survives controller restart before dispatch and after
   );
   assert.deepEqual(
     await manager.startCommand(scope, command, ["sleep", "120"]),
-    { phase: "cancelled" },
+    { id: command, phase: "cancelled" },
   );
   assert.equal(
     starts,
