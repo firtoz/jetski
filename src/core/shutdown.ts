@@ -109,6 +109,7 @@ type Dependencies = {
   objects: CheckpointStore;
   transfer: CheckpointTransfer;
   request: (lease: HostLease, action: string, payload: Json) => Promise<Json>;
+  settleStopped: (scope: Scope, lease: HostLease) => Promise<void>;
   retainCommands: (scope: Scope, lease: HostLease) => Promise<boolean>;
   hostAbsent: (lease: HostLease) => Promise<boolean>;
   settleUploads: (scope: Scope) => Promise<void>;
@@ -347,8 +348,19 @@ export class ShutdownCoordinator {
         );
       }
       if (record.stage === "outputs") {
-        if (!(await retainCommands(scope, record.lease))) return;
-        record = await this.advance(record, "capture");
+        await this.deps.settleStopped(scope, record.lease);
+        // Quiescence has frozen both sources. Retaining output can overlap
+        // filesystem capture, but every started branch must settle before any
+        // failure escapes or publication/cleanup is allowed.
+        const settled = await Promise.allSettled([
+          retainCommands(scope, record.lease),
+          request(record.lease, "capture", payload).then(parseArchive),
+        ]);
+        const [outputs, captured] = settled;
+        if (outputs.status === "rejected") throw outputs.reason;
+        if (captured.status === "rejected") throw captured.reason;
+        if (!outputs.value) return;
+        record = await this.advance(record, "publish", captured.value);
       }
       if (record.stage === "capture") {
         const archive = parseArchive(
