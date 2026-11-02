@@ -38,9 +38,37 @@ A subsequent change pipelines ordered source preparation with bounded storage
 uploads. Its separate large-fixture sample measured25.574 versus16.619 s initial
 save for the same436,207,724 logical-byte fixture. All source fixture comparisons
 matched and both hosts were retired. The warm matrix above was not repeated for
-this multi-pack change. Earlier uninterrupted source-deleted cold qualification
-matched bytes/modes/links and saved output, but cold and large-save speed parity
-remain open. See the [performance goal](goals/checkpoint-performance.md).
+this multi-pack change. The larger first-save speed gap remains open. See the
+[performance goal](goals/checkpoint-performance.md).
+
+## November 2, 2026: bounded binary cold import
+
+A cold-only comparison restored retained archives of the same436,207,724
+logical-byte fixture to two fresh Boat hosts. Both source hosts and their original
+controllers were confirmed absent first. Controller metadata was rehydrated from
+an integrity-bound backup; no machine snapshot or source cache was available.
+The candidate was `ff080b1f748bc39c68053abdd59b63458c6f97f4`, using optional16 MiB
+raw imports. The frozen reference and workload resources were unchanged.
+
+| Cold comparison metric                    |  Reference |                  Jetski |
+| ----------------------------------------- | ---------: | ----------------------: |
+| Allocation through verified readiness     |  218.556 s |               101.045 s |
+| Restore after host bootstrap              |   42.249 s | Not separately measured |
+| Archive payload restored                  | 201.600 MB |              201.573 MB |
+| Candidate storage / provider API requests |          — |                  25 /42 |
+
+Both normalized fixture oracles matched, including modes and two hardlink groups.
+The complete candidate filesystem and saved command output also matched. Both
+replacements completed a new durable save, were retired with provider absence
+confirmed, and their temporary controllers were removed. Earlier helper failures
+occurred before allocation and are preserved separately.
+
+This is one host per arm, not a latency distribution. Bootstrap variation accounts
+for a substantial part of the whole-readiness difference; the result does not prove
+an import-only speed advantage. The preceding control-envelope candidate measured
+193.631 s whole readiness in its earlier sample. The new result supports the raw
+path's functionality and improves that observed whole time, while larger first-save
+performance and the final downstream workflow remain open.
 
 ## Historical comparisons
 
