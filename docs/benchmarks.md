@@ -1,5 +1,49 @@
 # Hosted performance qualification
 
+## November 2, 2026: matched warm comparison
+
+Ten trials per arm completed across two independent Boat host pairs, alternating
+order. Both workloads used2 CPUs,2 GiB, the same pinned Node image, native overlay
+storage and the deterministic64 MiB fixture. Each trial included useful work,
+verified R2 save/release, a fresh writable resume and an independent filesystem
+comparison. All20 comparisons matched. Four physical hosts were used in total,
+two per arm, and all were retired; bootstrap, priming and final cleanup are outside
+the timed rows. Retained idle time was7.352 s across the complete matrix.
+
+| Warm trial metric                      | Reference median / p95 | Jetski median / p95 |
+| -------------------------------------- | ---------------------: | ------------------: |
+| Durable save and release               |         6.595 /9.221 s |      4.434 /6.915 s |
+| Resume readiness                       |         3.425 /3.930 s |      2.993 /8.542 s |
+| Complete work/save/resume/verification |       11.876 /14.508 s |    10.786 /19.331 s |
+| Object payload uploaded                |               1.042 MB |            0.263 MB |
+| Object payload downloaded              |               0.005 MB |            0.263 MB |
+| Storage requests                       |                     18 |                  32 |
+| Provider API requests                  |                     16 |                  17 |
+
+Jetski's median save, resume and complete cycle were lower on both host pairs.
+Its resume/cycle tails were worse; with ten observations per arm, nearest-rank p95
+is the sample maximum. This is a measured median improvement, not a universal
+latency or cost claim. Bytes use decimal MB and exclude HTTP overhead; provider
+API counts exclude signed data streams. More storage reads/requests remain a
+tradeoff of the publication verification path.
+
+The frozen warm implementation was `f02cc84854d0a3cbb4c5a39be967d6b21fd18cca`;
+the reference was `eb592a78fb16d5e1bac4b82e8b43af8d3eeece58`. Jetski orchestration
+ran in an embedded Durable Object with a native R2 adapter; reference orchestration
+ran in Node with a native-R2 retention bridge. Earlier failed pre-trial source
+exports and previous variants remain in private receipts and are not pooled into
+this frozen comparison.
+
+A subsequent change pipelines ordered source preparation with bounded storage
+uploads. Its separate large-fixture sample measured25.574 versus16.619 s initial
+save for the same436,207,724 logical-byte fixture. All source fixture comparisons
+matched and both hosts were retired. The warm matrix above was not repeated for
+this multi-pack change. Earlier uninterrupted source-deleted cold qualification
+matched bytes/modes/links and saved output, but cold and large-save speed parity
+remain open. See the [performance goal](goals/checkpoint-performance.md).
+
+## Historical comparisons
+
 ## November 1, 2026: default configurations
 
 Twenty alternating warm trials completed on two Boat small hosts: ten per

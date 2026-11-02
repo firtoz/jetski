@@ -57,94 +57,52 @@ as a substitute for a contemporaneous comparison.
 | Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Signed uploads qualify durable4 MiB chunks; old256/512 KiB receipts and large source-deleted/lost-ACK recovery pass.           |
 | Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 236 TypeScript/124 Python tests, all seven host CI jobs and large source-deleted/lost-ACK recovery pass.                       |
 | Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Frozen ten-per-arm comparison completed with all20 exact; opposite host rankings leave performance parity open.                |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Source-deleted large recovery passes; uninterrupted matched comparison and first-save parity remain open.                      |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.                              |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Uninterrupted source-deleted large recovery and repeated saves pass; save/cold speed parity remains open.                      |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | New artifact pin and persisted admission profiles implemented; final deployment, scoped workflow and replacement pending.      |
 
 ## Current candidate and evidence
 
-The source now includes bounded verification/transfer concurrency, verified
-physical packs, adaptive gzip, atomic local-cache publication, negotiated4 MiB
-imports and replay-safe host finalization. It also persists terminal outcomes and
-bounded output proofs, overlaps capture with output upload, and coalesces adjacent
-source reads. Every original publication, fencing and failed-sibling barrier stays
-required. Stable operator choices are documented in [standalone.md](../standalone.md).
+The implementation includes immutable compressed frames and physical packs,
+bounded transfers, adaptive gzip, durable bulk-import progress, replay-safe host
+finalization and persisted command/output proofs. Verified local-cache reuse now
+borrows a fenced read-only archive instead of copying it. General capture and
+inline-output defaults remain unchanged; the comparison selects256 KiB members,
+8 MiB packs and an8192-byte inline threshold. Existing4 MiB archives and older
+output formats remain readable. See [standalone.md](../standalone.md) for controls.
 
-The next hosted candidate selects256 KiB capture members,8 MiB packs and the
-opt-in8192-byte inline-output threshold. General defaults remain1 MiB members and
-inline output disabled. Geometry is persisted per shutdown; large captures grow
-toward4 MiB. Old4 MiB archives and output format1 remain readable. Format2 inline
-bytes require a supporting reader when rolling back controller binaries.
+The latest transport binds the admitted image to a supervisor-owned immutable
+export under `/tmp`, within the host file gateway's permitted boundary. Large
+contiguous reads use one bounded stream with ordered pack consumption; sparse
+reads retain exact ranges and small deltas avoid authorization setup. No complete
+archive is buffered. Redirects, wrong metadata, truncation and excess bytes fail
+closed. All source reads settle before stream/export cleanup; frame/object hashes,
+remote publication verification and source-retention barriers remain mandatory.
 
-Local quality passes236 TypeScript and124 Python tests, build, types, lint and
-Ruff. Fault checks cover lost acknowledgements, restart/settings changes, missing
-sources, exact bytes/modes/links, corrupt proofs blocking publication/read/GC and
-drained parallel failures. Mixed inline/object output also recovers exactly with
-live R2 and a restarted workerd SQLite fixture using the downstream state adapter.
-These checks do not close fresh-host or downstream staging qualification.
+Build, types, lint, the13 focused stream/transport/shutdown checks and all seven
+host CI jobs pass at `f02cc84854d0a3cbb4c5a39be967d6b21fd18cca`. Earlier full
+fault qualification covers corruption, lost acknowledgements, restart, stale
+leases, cancellation, old checkpoints and GC/publication races. Reuse that valid
+evidence; repeat only checks affected by a concrete failure or change.
 
-The local64 MiB geometry screen reduced changed encoded bytes from1,045,819
-with1 MiB members to259,147 with256 KiB members, with nine initial packs in
-either case. Local encoding is not hosted performance evidence.
+The larger fixture recovered exactly after physical source deletion:18 normalized
+entries and436,207,724 logical bytes, including two hardlink groups. Its complete
+candidate filesystem and saved command output also matched, and repeated saves
+passed. All four machines and temporary controllers are retired. That matched
+pre-streaming sample measured52.768 versus17.757 s initial save, and193.631 versus
+48.303 s whole replacement readiness; reference data-only restore was21.087 s.
+The speed gap remains open. Earlier interrupted attempts and their independent
+oracles/archives are preserved separately.
 
-The frozen comparison completed ten trials per arm across two host pairs, with
-all20 independent filesystem oracles exact. Pooled save medians were3.638 versus
-6.617 s, complete cycles9.218 versus13.047 s, and resume3.964 versus3.839 s.
-The per-host ranking reversed sharply between replicas. These pooled numbers do
-not establish reliable parity; a same-owner, sequential same-host diagnostic is
-planned to distinguish runtime costs from host variability. One failed reference
-setup remains recorded separately, with no timed trials; its empty resources were
-removed. The detailed benchmark report will retain tails and every failed setup.
-
-Native image setup previously spent substantial I/O remapping image ownership.
-Explicit private mappings now preserve observed parent-map boundaries and keep
-workload UID/GID1000 separate from engine ownership. Root identity/configuration
-receipts are immutable, fsynced and integrity checked; ambiguous maps fail closed.
-All seven integration CI jobs and a fresh three-cycle Boat pilot pass. Existing
-host assets are never upgraded in place.
-
-The larger fixture has18 entries,436,207,724 logical bytes including hardlinks,
-and a201,573,270-byte archive. Its source was durably published and physically
-retired. Replacement failed before its first imported chunk: the four-MiB binary
-chunk's JSON envelope exceeds Boat's five-MiB direct file-write bound. The retained
-archive and independent oracle are protected. Larger control files now use a
-short-lived HTTPS upload capability without forwarding API credentials; exact host
-length/hash verification still precedes execution. Lost acknowledgements and
-invalid, expired or redirected capabilities cannot dispatch an uncertain command.
-The unchanged replacement host subsequently recovered all24 filesystem entries and
-436,219,624 logical bytes, including modes/links and saved command output. Repeated
-saves and deliberately lost four-MiB import ACK recovery also passed; its VMs and
-controller are retired. The original failed attempt is preserved, so this is not
-an uninterrupted cold benchmark.
-
-The reference also recovered its18-entry fixture exactly after a harness correction:
-a fresh physical host's first lease is generation1, independently of the logical
-sandbox generation. Source-deleted recovery and repeated saves pass; the initial
-rejected claim remains recorded. Its clean data-cold transfer/readiness measured
-23.190 s and initial durable save12.853 s, excluding the correction pause. The
-candidate's initial full save was55.133 s. That first-save gap remains open.
-
-The next local candidate removes warm-cache copying by persisting a fenced,
-read-only source selection before extraction. Chunk uploads retain separate writable
-inodes; complete archive verification remains required. Lost selection/ready ACKs,
-corruption, scope changes, partial uploads and old staging receipts pass121 Python
-tests. All232 TypeScript checks, build, types and lint pass. All seven host CI jobs now pass for this change; clean comparative timings and
-downstream adoption remain open.
-
-The binary source-transfer implementation now provides an optional transport
-binding. Large reads share a bounded HTTPS capability; small deltas keep the
-existing control path to avoid extra setup requests. Supervisor-owned read-only
-links are lease-fenced, and cleanup runs after all reads settle. The core retains
-full frame/object verification, durable publication and failure barriers. Focused
-checks cover incorrect/truncated ranges, credential separation, cleanup, corrupted
-source rejection and interrupted export setup. The hosted first-save attempt exposed missing image context in the optional binding,
-which the host dispatcher validates before archive access. The binding now carries
-the admitted image on export, range and cleanup requests. The original stopped
-source is retained for reconciliation; comparative performance remains unqualified.
-
-Finish the combined build and CI, then run the consolidated matched warm/large
-comparison and pinned-client staging qualification. Reuse valid evidence and repeat
-only checks affected by a failure or change. Whole request timings govern the
-result; retain failed trials and the first-save gap until evidence closes it.
+The final frozen ten-per-arm warm comparison has lower candidate median save,
+resume and complete-cycle times on both independent host pairs, with all20
+filesystem oracles exact. Resume/cycle tails remain worse. The later ordered
+multi-pack pipeline's separate full-save sample is25.574 versus16.619 s; the large
+speed gap remains open. See [consolidated measurements](../benchmarks.md). Reuse
+unaffected warm and fault evidence instead of rerunning the entire matrix for each
+changed large-transfer path. Next, implement bounded binary import to reduce cold
+control-envelope overhead, then qualify its affected recovery path and complete
+pinned downstream read/edit/publication/save/resume/replacement. No production
+cutover is authorized. Routine receipts remain private.
 
 ## Execution order
 
