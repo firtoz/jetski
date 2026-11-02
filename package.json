@@ -17,6 +17,7 @@
     "./transport/ssh": "./dist/transport/ssh.js",
     "./server": "./dist/server/http.js",
     "./storage/s3": "./dist/storage/s3.js",
+    "./storage/integrity": "./dist/storage/integrity.js",
     "./server/storage": "./dist/server/storage.js",
     "./testing/storage": "./dist/testing/storage.js",
     "./providers/boat": "./dist/providers/boat.js",

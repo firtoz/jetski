@@ -20,6 +20,7 @@ import {
 } from "../core/contracts.js";
 
 import { objectRanges } from "../core/object-ranges.js";
+import { ObjectStreamVerifier } from "./integrity.js";
 
 export type S3StoreOptions = {
   bucket: string;
@@ -128,15 +129,17 @@ export class S3CheckpointStore implements CheckpointStore {
       }),
       this.signal(),
     );
-    const chunks: Buffer[] = [];
+    const payload = Buffer.alloc(expected.bytes);
     const hash = createHash("sha256");
     let length = 0;
     for await (const chunk of source) {
+      if (!(chunk instanceof Uint8Array)) throw Error("Invalid object stream");
+      const offset = length;
       length += chunk.byteLength;
       if (length > expected.bytes)
         throw Error("Object exceeds declared length");
       hash.update(chunk);
-      chunks.push(Buffer.from(chunk));
+      payload.set(chunk, offset);
     }
     if (length !== expected.bytes || hash.digest("hex") !== expected.sha256)
       throw Error("Object integrity mismatch");
@@ -144,7 +147,7 @@ export class S3CheckpointStore implements CheckpointStore {
       new PutObjectCommand({
         Bucket: this.options.bucket,
         Key: key,
-        Body: Buffer.concat(chunks),
+        Body: payload,
         ContentLength: length,
         IfNoneMatch: "*",
         Metadata: {
@@ -169,6 +172,7 @@ export class S3CheckpointStore implements CheckpointStore {
     address: ObjectAddress,
     prior?: VerifiedObject,
     ranges?: readonly ObjectRange[],
+    retainBytes = false,
   ): Promise<{ info: ObjectInfo; bytes?: Buffer } | undefined> {
     const key = this.key(address);
     let response;
@@ -229,39 +233,24 @@ export class S3CheckpointStore implements CheckpointStore {
         !/^[a-f0-9]{64}$/.test(metadata.sha256 ?? "")
       )
         throw Error("Invalid object metadata");
-      const chunks: Buffer[] = [];
-      const hash = createHash("sha256");
+      const verifier = new ObjectStreamVerifier(
+        { bytes, sha256: metadata.sha256! },
+        ranges,
+      );
+      const payload = retainBytes ? Buffer.alloc(bytes) : undefined;
       let length = 0;
       for await (const chunk of body) {
         if (!(chunk instanceof Uint8Array))
           throw Error("Invalid object stream");
+        verifier.update(chunk);
+        payload?.set(chunk, length);
         length += chunk.byteLength;
-        if (length > bytes) throw Error("Object exceeds declared length");
-        hash.update(chunk);
-        chunks.push(Buffer.from(chunk));
       }
-      if (length !== bytes || hash.digest("hex") !== metadata.sha256)
-        throw Error("Stored object integrity mismatch");
+      const checkedProofs = verifier.finish();
       const info = { ...address, bytes, sha256: metadata.sha256! };
-      const payload = Buffer.concat(chunks);
       let proofs: ReadonlyMap<string, string> | undefined;
-      if (ranges) {
-        const checked = objectRanges(ranges, bytes);
-        for (const range of checked) {
-          const digest = createHash("sha256")
-            .update(payload.subarray(range.start, range.endExclusive))
-            .digest("hex");
-          if (digest !== range.sha256)
-            throw Error("Object slice integrity failure");
-        }
-        if (checked.length <= MAX_CACHED_OBJECT_RANGES)
-          proofs = new Map(
-            checked.map((range) => [
-              `${range.start}/${range.endExclusive}`,
-              range.sha256,
-            ]),
-          );
-      }
+      if (ranges && checkedProofs.size <= MAX_CACHED_OBJECT_RANGES)
+        proofs = checkedProofs;
       this.verified.delete(key);
       // Only strong, bounded entity tags from a fully hashed response qualify.
       // ETags are validators, never substitutes for the SHA-256 integrity check.
@@ -276,7 +265,7 @@ export class S3CheckpointStore implements CheckpointStore {
         };
         this.remember(key, receipt);
       }
-      return { info, bytes: payload };
+      return { info, ...(payload ? { bytes: payload } : {}) };
     } catch (error) {
       this.verified.delete(key);
       throw error;
@@ -323,7 +312,7 @@ export class S3CheckpointStore implements CheckpointStore {
     address: ObjectAddress,
     range?: { start: number; endExclusive: number },
   ): ByteStream {
-    const object = await this.fetch(address);
+    const object = await this.fetch(address, undefined, undefined, true);
     if (!object?.bytes) throw Error("Object unavailable");
     const start = range?.start ?? 0,
       end = range?.endExclusive ?? object.info.bytes;

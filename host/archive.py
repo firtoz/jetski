@@ -153,7 +153,12 @@ def capture(roots, target, limits=None, frame_bytes=FRAME_BYTES):
             os.fsync(output.fileno())
         if os.path.getsize(temporary) > limits["bytes"]:
             raise ValueError("compressed_archive_limit")
-        sha = digest(temporary)
+        if os.path.getsize(temporary) != compressed.offset:
+            raise ValueError("archive_write_extent")
+        # Hash the exact encoded members while writing instead of rereading the
+        # complete temporary archive. Transfer still verifies every source member
+        # and stored pack; cache reuse independently rehashes its durable file.
+        sha = compressed.compressed_hash.hexdigest()
         # Create-only publication. A different result never overwrites an old ACK.
         try:
             os.link(temporary, target)

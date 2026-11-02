@@ -14,7 +14,19 @@ class FrameTests(unittest.TestCase):
             # Fragmented input exercises frame boundaries independently of writes.
             for index in range(0, len(value), 137):
                 writer.write(value[index : index + 137])
+        self.assertEqual(
+            writer.compressed_hash.hexdigest(), hashlib.sha256(output.getvalue()).hexdigest()
+        )
         return output.getvalue(), writer.frames
+
+    def test_short_encoded_write_cannot_produce_a_complete_capture(self):
+        class ShortOutput(io.BytesIO):
+            def write(self, value):
+                return super().write(value[:-1])
+
+        with self.assertRaisesRegex(OSError, "short_archive_write"):
+            with FrameWriter(ShortOutput(), 1024) as writer:
+                writer.write(b"complete bytes required")
 
     def test_independent_frames_and_concatenated_recovery(self):
         original = bytes(range(256)) * 100

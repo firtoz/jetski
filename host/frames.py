@@ -57,6 +57,7 @@ class FrameWriter:
         self.pending = bytearray()
         self.frames = []
         self.offset = 0
+        self.compressed_hash = hashlib.sha256()
 
     def __enter__(self):
         return self
@@ -81,7 +82,9 @@ class FrameWriter:
             return
         raw = bytes(self.pending)
         compressed = compress_frame(raw, self.compression_level)
-        self.output.write(compressed)
+        if self.output.write(compressed) != len(compressed):
+            raise OSError("short_archive_write")
+        self.compressed_hash.update(compressed)
         self.frames.append(
             dict(
                 offset=self.offset,
