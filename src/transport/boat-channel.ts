@@ -98,26 +98,32 @@ export class BoatControlChannel {
           `env -i PATH=/usr/bin:/bin python3 -I -c 'import os; os.mkdir("${directory}", 0o700)'`,
           signal,
         );
-        const uploaded = await this.api.call(
-          `/sandboxes/${host}/files`,
-          "PUT",
-          {
-            path,
-            content: input.toString("base64"),
-            encoding: "base64",
-          },
-          {},
-          { ...(signal ? { signal } : {}) },
-        );
-        if (
-          uploaded.status !== 200 ||
-          uploaded.value.success !== true ||
-          typeof uploaded.value.path !== "string" ||
-          uploaded.value.path.includes("\0") ||
-          posix.resolve("/home/user", uploaded.value.path) !== path ||
-          uploaded.value.size !== input.length
-        )
-          throw Error("Invalid control upload receipt");
+        // Direct write_file rejects decoded files above 5 MiB. A four-MiB
+        // binary import becomes larger than that after its JSON/base64 envelope.
+        if (input.length > 5 * 1024 * 1024) {
+          await this.api.uploadFile(host, path, input, signal);
+        } else {
+          const uploaded = await this.api.call(
+            `/sandboxes/${host}/files`,
+            "PUT",
+            {
+              path,
+              content: input.toString("base64"),
+              encoding: "base64",
+            },
+            {},
+            { ...(signal ? { signal } : {}) },
+          );
+          if (
+            uploaded.status !== 200 ||
+            uploaded.value.success !== true ||
+            typeof uploaded.value.path !== "string" ||
+            uploaded.value.path.includes("\0") ||
+            posix.resolve("/home/user", uploaded.value.path) !== path ||
+            uploaded.value.size !== input.length
+          )
+            throw Error("Invalid control upload receipt");
+        }
         const digest = createHash("sha256").update(input).digest("hex");
         stdout = await execute(
           `env -i PATH=/usr/bin:/bin python3 -I -c 'import hashlib,os,subprocess,sys; f=os.open("${path}",os.O_RDONLY|os.O_NOFOLLOW); data=os.fdopen(f,"rb").read(${inputLimit + 1}); assert len(data)==${input.length} and hashlib.sha256(data).hexdigest()=="${digest}"; sys.exit(subprocess.run(${JSON.stringify(program)},input=data,env={"PATH":"/usr/bin:/bin"}).returncode)'`,

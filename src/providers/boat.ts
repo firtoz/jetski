@@ -34,6 +34,69 @@ export class BoatApi {
     // Native fetch implementations can reject an arbitrary class receiver.
     this.request = (input, init) => request(input, init);
   }
+  /** Upload data without forwarding the API bearer credential to the capability.
+   * The caller must still verify exact bytes on the host before execution. */
+  async uploadFile(
+    host: string,
+    path: string,
+    data: Uint8Array,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    identifier(host);
+    if (
+      !/^bx_[a-zA-Z0-9_-]+$/.test(host) ||
+      !path.startsWith("/") ||
+      path.includes("\0") ||
+      path.split("/").includes("..") ||
+      path.length > 4096 ||
+      data.length < 1 ||
+      data.length > 6 * 1024 * 1024
+    )
+      throw Error("Invalid Boat file upload");
+    signal?.throwIfAborted();
+    const authorized = await this.call(
+      `/sandboxes/${host}/files/upload-url`,
+      "POST",
+      {
+        path,
+        ttlSeconds: 900,
+      },
+      {},
+      { ...(signal ? { signal } : {}) },
+    );
+    const capability = authorized.value;
+    if (
+      authorized.status !== 200 ||
+      capability.ok === false ||
+      capability.success === false ||
+      capability.method !== "PUT" ||
+      typeof capability.url !== "string" ||
+      typeof capability.expiresAt !== "string"
+    )
+      throw Error("Invalid Boat upload capability");
+    const url = new URL(capability.url);
+    const expiry = Date.parse(capability.expiresAt);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      !Number.isFinite(expiry) ||
+      expiry <= Date.now()
+    )
+      throw Error("Invalid Boat upload capability");
+    const signals = [AbortSignal.timeout(60_000)];
+    if (signal) signals.push(signal);
+    const uploaded = await this.request(url.href, {
+      method: "PUT",
+      redirect: "manual",
+      signal: AbortSignal.any(signals),
+      headers: { "Content-Type": "application/octet-stream" },
+      body: new Uint8Array(data),
+    });
+    await uploaded.body?.cancel();
+    if (!uploaded.ok) throw Error("Boat capability upload not acknowledged");
+  }
   async call(
     path: string,
     method = "GET",
@@ -46,7 +109,7 @@ export class BoatApi {
     } = {},
   ): Promise<Reply> {
     if (
-      !/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+(?:\/(?:commands|files|sshkey))?)?$/.test(
+      !/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+(?:\/(?:commands|files(?:\/upload-url)?|sshkey))?)?$/.test(
         path,
       )
     )

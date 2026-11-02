@@ -49,16 +49,16 @@ as a substitute for a contemporaneous comparison.
 
 ## Finite implementation and acceptance checklist
 
-| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                          |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                            |
-| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.              |
-| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; latest embedded save 4.052 s vs3.007 s reference; parity open.          |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.            |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 231 TypeScript/116 Python tests and live R2 recovery pass; new hosted replacement open.                         |
-| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Seven separate five-per-arm screens; setup failures preserved, all owned hosts retired; final replication open. |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                        |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.               |
+| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                           |
+| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.                             |
+| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; frozen comparison completed; per-host ranking reverses, so reliable parity stays open. |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.                           |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 232 TypeScript/116 Python tests and live R2 recovery pass; new hosted replacement open.                                        |
+| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Frozen ten-per-arm comparison completed with all20 exact; opposite host rankings leave performance parity open.                |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Large source published and deleted; import-envelope limit diagnosed; recovery pending.                                         |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.                              |
 
 ## Current candidate and evidence
 
@@ -75,52 +75,43 @@ inline output disabled. Geometry is persisted per shutdown; large captures grow
 toward4 MiB. Old4 MiB archives and output format1 remain readable. Format2 inline
 bytes require a supporting reader when rolling back controller binaries.
 
-Local quality passes231 TypeScript and116 Python tests, build, types, lint and
+Local quality passes232 TypeScript and116 Python tests, build, types, lint and
 Ruff. Fault checks cover lost acknowledgements, restart/settings changes, missing
 sources, exact bytes/modes/links, corrupt proofs blocking publication/read/GC and
 drained parallel failures. Mixed inline/object output also recovers exactly with
 live R2 and a restarted workerd SQLite fixture using the downstream state adapter.
 These checks do not close fresh-host or downstream staging qualification.
 
-In the local64 MiB geometry screen, changed encoded bytes fell from1,045,819
-with1 MiB members to259,147 with256 KiB members, using nine initial physical
-packs in either case. Capture measured377 versus349 ms; these are local encoding
-measurements. The [six hosted screens](../benchmarks.md#follow-on-checkpoint-optimization-screens)
-still miss parity: the latest save was4.052 versus3.007 s and complete cycle7.198
-versus4.820 s. Completed oracles pass; twenty-six prior comparison/diagnostic hosts are
-retired. The FUSE screen completed all ten exact trials, but save and resume
-medians were6.815 and7.363 s versus3.670 and1.070 s; parity remains open. Failures remain preserved, including a priming decoder-bound failure
-recovered on its original host. Different candidates/controllers are never pooled.
+The local64 MiB geometry screen reduced changed encoded bytes from1,045,819
+with1 MiB members to259,147 with256 KiB members, with nine initial packs in
+either case. Local encoding is not hosted performance evidence.
 
-Four later attempts stopped before timed trials. The latest runtime trace showed
-Podman waiting for a child to remap ownership across its image layer; that child
-wrote1.13 GB and waited for filesystem journal commits before eventually finishing.
-The earlier engine-contention hypothesis was incomplete. Shared-engine lifecycle
-control passes all seven disposable-host CI jobs, but did not resolve this cost.
-The harness selected native overlay, whereas the client explicitly selects FUSE
-overlay. The new comparison uses that intended candidate policy and verifies the
-live mount program before priming. The reference remains on native overlay; report
-this configuration difference and preserve the failed setups separately.
+The frozen comparison completed ten trials per arm across two host pairs, with
+all20 independent filesystem oracles exact. Pooled save medians were3.638 versus
+6.617 s, complete cycles9.218 versus13.047 s, and resume3.964 versus3.839 s.
+The per-host ranking reversed sharply between replicas. These pooled numbers do
+not establish reliable parity; a same-owner, sequential same-host diagnostic is
+planned to distinguish runtime costs from host variability. One failed reference
+setup remains recorded separately, with no timed trials; its empty resources were
+removed. The detailed benchmark report will retain tails and every failed setup.
 
-A native image-preparation pilot reached its20-minute observation deadline before
-assignment. It is preserved as a failed setup; its unassigned VM and controller
-were removed. Moving the same expensive ownership remap earlier was insufficient.
-The next candidate instead derives persistent-file ownership from observed
-rootless UID/GID maps and uses a private mapping aligned with the image layers.
-Workloads remain UID/GID1000 with the same capability, privilege and namespace
-controls. Root-owned identity metadata is immutable, fsynced and integrity-checked;
-foreign, ambiguous, corrupt or changed mappings fail before admission. Direct
-runtime embeddings retain their existing default and can supply an explicit
-namespace and filesystem identity. All116 Python and231 TypeScript tests pass,
-including lost-ACK metadata publication and distinct engine/storage ownership.
-Integration CI caught two startup defects before paid qualification. The engine's
-traversal parent is now root-owned and separate from workload-owned contents.
-OCI diagnostics then showed that the zero-valued keep-id option produced a
-rejected GID map. Explicit identity ranges now preserve the observed parent-map
-boundaries in a private namespace, without combining incompatible userns options.
-Both maps are validated and included in immutable identity/configuration receipts;
-missing, overlapping, gapped or changed ranges fail closed. Local checks pass;
-actual host CI and a fresh pilot still gate comparison.
+Native image setup previously spent substantial I/O remapping image ownership.
+Explicit private mappings now preserve observed parent-map boundaries and keep
+workload UID/GID1000 separate from engine ownership. Root identity/configuration
+receipts are immutable, fsynced and integrity checked; ambiguous maps fail closed.
+All seven integration CI jobs and a fresh three-cycle Boat pilot pass. Existing
+host assets are never upgraded in place.
+
+The larger fixture has18 entries,436,207,724 logical bytes including hardlinks,
+and a201,573,270-byte archive. Its source was durably published and physically
+retired. Replacement failed before its first imported chunk: the four-MiB binary
+chunk's JSON envelope exceeds Boat's five-MiB direct file-write bound. The retained
+archive and independent oracle are protected. Larger control files now use a
+short-lived HTTPS upload capability without forwarding API credentials; exact host
+length/hash verification still precedes execution. Lost acknowledgements and
+invalid, expired or redirected capabilities cannot dispatch an uncertain command.
+All232 TypeScript checks, build, types and lint pass locally. Existing-host recovery
+and a fresh uninterrupted comparison remain open; no source-loss success is claimed.
 
 The next step is one frozen replicated comparison of the combined candidate,
 followed by the large cold/replacement and pinned-client staging gates. Whole
