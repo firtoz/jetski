@@ -46,16 +46,16 @@ older historical time, for acceptance.
 
 ## Finite implementation and acceptance checklist
 
-| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                                       |
-| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 256 KiB capture members and 8 MiB packs selected; legacy 4 MiB reads and adaptive gzip qualified.                                          |
-| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline implemented; pooled save/cycle medians improve; consistent warm parity remains unproven.                                  |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Optional16 MiB raw import qualified locally and on fresh hosts; exact source-deleted recovery, progress and cleanup pass.                  |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 257 TypeScript/51 affected Python checks and current seven-job CI pass; valid prior fault evidence reused.                                 |
-| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Current ten-per-arm matrix has all20 exact; pooled medians improve, but host-pair reversal and readiness tie leave consistent parity open. |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Previous raw/cold recovery and repeated saves pass; new forward-only restore needs current larger replacement evidence.                    |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Pinned deployment and guarded profile adoption pass; real file inspection and single-file edit pass; publication and recovery remain open. |
+| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                                          |
+| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 256 KiB capture members and 8 MiB packs selected; legacy 4 MiB reads and adaptive gzip qualified.                                             |
+| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline implemented; pooled save/cycle medians improve; consistent warm parity remains unproven.                                     |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Optional16 MiB raw import qualified locally and on fresh hosts; exact source-deleted recovery, progress and cleanup pass.                     |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 257 TypeScript/51 affected Python checks and current seven-job CI pass; valid prior fault evidence reused.                                    |
+| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Current ten-per-arm matrix has all20 exact; pooled medians improve, but host-pair reversal and readiness tie leave consistent parity open.    |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Previous raw/cold recovery and repeated saves pass; new forward-only restore needs current larger replacement evidence.                       |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Verified: pinned deployment, real draft PR, exact warm/source-deleted recovery, three-turn session continuity, fresh coding task and cleanup. |
 
 ## Current candidate and evidence
 
@@ -94,22 +94,42 @@ recovery, full byte/mode/link/output comparisons and repeated saves pass. The ne
 restore code still needs current cold/replacement qualification; earlier timing
 is not an exact-build performance result for qualification32.
 
-Both installed downstream consumers exactly match qualification32. Client main
-pins it, with root build/types/lint, startup and lock/advisory review passing;
-quality/security CI pass and deployment is queued. Last independently verified
-staging is qualification31 with unchanged scoped configuration. Require the new
-successful Deploy job and actual configuration/SHA receipt before mutations.
-Existing real README inspection/edit completed; the old publication is terminal
-cancelled without push, and cleanup durably saved generation4 before source expiry.
-Resume that saved work and use the prepared fresh publication ID; do not repeat
-read/edit jobs. Publication, warm resume and physical source-deleted replacement
-remain open. Do not repeat idle adoption or upgrade active immutable bundles.
+Both installed downstream consumers exactly match qualification32. The entire
+pinned client CI passes, and actual staging revision/configuration match the
+successful deployment. A fresh physical host restored the previously acknowledged
+workspace; real README inspection/edit and a reviewed README-only draft PR now
+complete. Independent provider metadata confirms the draft, its exact commit,
+one changed file and one added line. Server-owned cleanup durably saved and
+stopped it. Warm and source-deleted physical replacement both match the complete
+147-entry/322,777,337-byte filesystem. Saved command output and all three user
+turns survive; the fresh task's actual tool results confirm the marker, published
+commit and clean Git status. Final save and owned cleanup pass; provider inventory
+is empty. This downstream gate is closed. Do not repeat completed functional
+checks, idle adoption or active immutable-bundle upgrades without a concrete change.
+
+A further local driver correction separates host-owned command-status observation
+from full pool reconciliation and its extra immediate status poll. Six regression
+checks pass; this correction is not included in the frozen timings above and does
+not establish a runtime speedup. Preserve those rows unchanged. The larger cold
+worker and integrity-bound fixture plan are prepared with bounded per-action
+timings and no extra host requests. Finish the corrected warm comparison and
+larger cold comparison on the same two fresh host pairs, reusing retained source
+archives. For the second pair, preserve the first pair's acknowledged history and
+explicitly select the original retained root; never rewind metadata to an older
+backup. This combines the remaining performance work into four fresh hosts. The first
+pair is admitted. Two pre-allocation setup failures were preserved and corrected:
+route readiness and a retained-root metadata assertion. Empty transactional state
+and zero active hosts were confirmed before controller cleanup; neither attempt
+consumed a host start. Current journals and recovery details remain private.
 
 Private receipts retain failed attempts, operation identities, current job handles,
-provider cleanup and conservative budget accounting. All74 accounted performance
-hosts are retired; four final staging/recovery starts are reserved within the
-unchanged approved aggregate allowance. Other recovery reservations and real-grace
-fixtures remain untouched. No production cutover is authorized.
+provider cleanup and conservative budget accounting. The prior77 accounted performance
+hosts were confirmed absent before admission; the first combined candidate host
+is now allocated. Four final combined cold/warm starts are reserved within the
+existing approved aggregate cap, existing wallet only. Conservative repricing
+uses confirmed retired lifetimes and historical zero-compute observations; no
+refund, included-start discount or future lifetime saving is assumed. Other
+reservations and real-grace fixtures remain untouched. No production cutover.
 
 ## Execution order
 
