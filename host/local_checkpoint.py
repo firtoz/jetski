@@ -1,5 +1,6 @@
 """One verified, owner-scoped archive cache per host, never a durability root."""
 
+import errno
 import hashlib
 import os
 import pathlib
@@ -66,30 +67,47 @@ class LocalCheckpoint:
             if state.get("localCheckpoint") == expected and self.verified(destination, expected):
                 return expected
             source = self.archives / (lease["assignmentId"] + ".tgz")
-            if not self.verified(source, expected):
-                raise ValueError("cache_source_integrity")
-            # A single cache slot bounds retained archives. Old metadata may
-            # survive a crash after replace; a hash mismatch then causes a miss.
-            for orphan in self.root.glob(".pending-*"):
-                meta = orphan.lstat()
-                if not stat.S_ISREG(meta.st_mode) or meta.st_uid != os.geteuid():
-                    raise ValueError("unsafe_cache_staging")
-                orphan.unlink()
-            fd, pending = tempfile.mkstemp(prefix=".pending-", dir=self.root)
-            try:
-                with os.fdopen(fd, "wb") as output, source.open("rb") as input_file:
-                    shutil.copyfileobj(input_file, output)
-                    output.flush()
-                    os.fsync(output.fileno())
-                if not self.verified(pending, expected):
-                    raise ValueError("cache_copy_integrity")
-                os.replace(pending, destination)
-                sync_dir(self.root)
-                self.fence.write({**state, "localCheckpoint": expected})
-            finally:
-                if os.path.lexists(pending):
-                    os.unlink(pending)
+            # The released archive is immutable and private to the supervisor.
+            # A rename avoids copying and hashing its full contents a second time.
+            # Recovery also accepts the exact destination after a lost metadata ACK.
+            if not os.path.lexists(source):
+                if not self.verified(destination, expected):
+                    raise ValueError("cache_source_integrity")
+            else:
+                if not self.verified(source, expected):
+                    raise ValueError("cache_source_integrity")
+                try:
+                    os.replace(source, destination)
+                except OSError as error:
+                    if error.errno != errno.EXDEV:
+                        raise
+                    self.copy_verified(source, destination, expected)
+            # Both directory entries must be durable before publishing metadata,
+            # including replay after a rename or directory-sync interruption.
+            sync_dir(self.root)
+            sync_dir(self.archives)
+            self.fence.write({**state, "localCheckpoint": expected})
             return expected
+
+    def copy_verified(self, source, destination, expected):
+        """Cross-filesystem fallback retains the source through verified copying."""
+        for orphan in self.root.glob(".pending-*"):
+            meta = orphan.lstat()
+            if not stat.S_ISREG(meta.st_mode) or meta.st_uid != os.geteuid():
+                raise ValueError("unsafe_cache_staging")
+            orphan.unlink()
+        fd, pending = tempfile.mkstemp(prefix=".pending-", dir=self.root)
+        try:
+            with os.fdopen(fd, "wb") as output, source.open("rb") as input_file:
+                shutil.copyfileobj(input_file, output)
+                output.flush()
+                os.fsync(output.fileno())
+            if not self.verified(pending, expected):
+                raise ValueError("cache_copy_integrity")
+            os.replace(pending, destination)
+        finally:
+            if os.path.lexists(pending):
+                os.unlink(pending)
 
     def seed_locked(self, lease, state, expected, destination):
         """Caller holds fence and has checked an unpublished fresh import target."""

@@ -1,8 +1,11 @@
 export const CHECKPOINT_READ_BYTES = 256 * 1024;
+export const MAX_CHECKPOINT_READ_BYTES = 1280 * 1024;
 export const MAX_CHECKPOINT_READ_CONCURRENCY = 4;
 export interface ArchiveSource {
   /** Independent immutable range reads may overlap only after opting in. */
   readConcurrency?: number;
+  /** Negotiated range size; omission preserves legacy 256 KiB host bounds. */
+  readChunkBytes?: number | undefined;
   read(offset: number, bytes: number): Promise<Uint8Array>;
 }
 export function archiveReadConcurrency(source: ArchiveSource): number {
@@ -14,6 +17,16 @@ export function archiveReadConcurrency(source: ArchiveSource): number {
   )
     throw Error("Invalid checkpoint read concurrency");
   return limit;
+}
+export function archiveReadChunkBytes(source: ArchiveSource): number {
+  const bytes = source.readChunkBytes ?? CHECKPOINT_READ_BYTES;
+  if (
+    !Number.isSafeInteger(bytes) ||
+    bytes < 1 ||
+    bytes > MAX_CHECKPOINT_READ_BYTES
+  )
+    throw Error("Invalid checkpoint read size");
+  return bytes;
 }
 /** Ordered bounded ranges. All started reads drain before a failed batch exits. */
 export async function* archiveChunks(
@@ -28,11 +41,12 @@ export async function* archiveChunks(
     concurrency > archiveReadConcurrency(source)
   )
     throw Error("Invalid checkpoint read concurrency");
+  const chunkBytes = archiveReadChunkBytes(source);
   while (remaining) {
     const reads: Promise<Uint8Array>[] = [],
       counts: number[] = [];
     for (let index = 0; index < concurrency && remaining; index++) {
-      const count = Math.min(CHECKPOINT_READ_BYTES, remaining),
+      const count = Math.min(chunkBytes, remaining),
         position = offset;
       reads.push(Promise.resolve().then(() => source.read(position, count)));
       counts.push(count);

@@ -1,4 +1,5 @@
 import os
+import base64
 import json
 import pathlib
 import tempfile
@@ -7,6 +8,8 @@ import unittest
 import uuid
 from unittest.mock import patch
 import control
+from archive import capture
+from fence import Fence
 from supervisor import bounded_command, runtime_argv
 
 
@@ -51,6 +54,78 @@ class ControlTests(unittest.TestCase):
             self.account,
             self.run_command,
         )
+
+    def test_finalize_replays_after_each_interruption_and_rejects_stale_lease(self):
+        self.request("claim", dict(lease=self.lease))
+        archives = self.root / "archives"
+        source = self.data / self.lease["assignmentId"]
+        (source / "workspace").mkdir(parents=True)
+        (source / "home").mkdir()
+        (source / "workspace/bytes").write_bytes(os.urandom(1500 * 1024))
+        archive = archives / (self.lease["assignmentId"] + ".tgz")
+        checkpoint = capture({name: source / name for name in ("workspace", "home")}, archive)
+        fence = Fence(self.root / "control/slot")
+        with fence.locked():
+            fence.write(
+                {
+                    **fence.read(),
+                    "checkpoint": checkpoint,
+                    "runtime": {"phase": "stopped", "name": "container"},
+                }
+            )
+        fence.close(self.lease)
+        ranged = self.request(
+            "read-checkpoint",
+            dict(lease=self.lease, image=self.config["images"][0], offset=0, bytes=1280 * 1024),
+        )
+        self.assertEqual(base64.b64decode(ranged["base64"]), archive.read_bytes()[: 1280 * 1024])
+        with self.assertRaisesRegex(ValueError, "invalid_checkpoint_range"):
+            self.request(
+                "read-checkpoint",
+                dict(
+                    lease=self.lease,
+                    image=self.config["images"][0],
+                    offset=0,
+                    bytes=1280 * 1024 + 1,
+                ),
+            )
+        publication = dict(checkpointId=str(uuid.uuid4()), sha256=checkpoint["sha256"])
+        payload = dict(lease=self.lease, image=self.config["images"][0], publication=publication)
+        dispatch = control.dispatch
+        for failed_step in ("release", "purge-source"):
+
+            def interrupted(request, *args, **kwargs):
+                if request["action"] == failed_step:
+                    raise OSError("interrupted " + failed_step)
+                return dispatch(request, *args, **kwargs)
+
+            with (
+                patch.object(control, "dispatch", side_effect=interrupted),
+                patch.object(
+                    self, "run_command", return_value=dict(exitCode=1, stdout="", stderr="")
+                ),
+            ):
+                with self.assertRaisesRegex(OSError, "interrupted"):
+                    dispatch(
+                        dict(version=1, id="test", action="finalize", payload=payload),
+                        self.config,
+                        self.account,
+                        self.run_command,
+                    )
+            self.assertTrue(source.exists(), "source preserved until final purge")
+        with patch.object(self, "run_command", return_value=dict(exitCode=1, stdout="", stderr="")):
+            result = self.request("finalize", payload)
+            self.assertEqual(result, dict(finalized=True, checkpointId=publication["checkpointId"]))
+            self.assertEqual(self.request("finalize", payload), result)
+        self.assertFalse(source.exists())
+        self.assertFalse(archive.exists())
+        self.assertTrue((archives / "cache/archive.tgz").exists())
+        for invalid in (
+            dict(payload, lease=dict(self.lease, generation=2)),
+            dict(payload, publication={**publication, "checkpointId": str(uuid.uuid4())}),
+        ):
+            with self.assertRaises(ValueError):
+                self.request("finalize", invalid)
 
     def test_bulk_envelope_is_import_only_and_bounded(self):
         raw = dict(version=1, id="large", action="import-chunk", payload="x" * (5 * 1024**2))

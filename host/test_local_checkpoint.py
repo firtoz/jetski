@@ -1,4 +1,5 @@
 import base64
+import errno
 import hashlib
 import os
 import pathlib
@@ -60,7 +61,7 @@ class LocalCheckpointTests(unittest.TestCase):
         self.fence.release(self.lease, lambda *_: True, self.publication)
         result = self.cache.publish(self.lease, self.publication)
         self.assertEqual(self.cache.publish(self.lease, self.publication), result)
-        self.source.unlink()
+        self.source.unlink(missing_ok=True)
 
     def next(self, foreign=False):
         lease = {**self.lease, "assignmentId": str(uuid.uuid4()), "generation": 2}
@@ -140,19 +141,66 @@ class LocalCheckpointTests(unittest.TestCase):
         self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
         self.assert_restored(lease, importer)
 
-    def test_cache_publication_lost_metadata_ack_replays_without_losing_source(self):
+    def test_cache_publication_lost_metadata_ack_replays_after_source_rename(self):
         self.fence.close(self.lease)
         self.fence.release(self.lease, lambda *_: True, self.publication)
         with patch.object(self.fence, "write", side_effect=OSError("metadata unavailable")):
             with self.assertRaisesRegex(OSError, "metadata unavailable"):
                 self.cache.publish(self.lease, self.publication)
-        self.assertTrue(self.source.exists())
+        self.assertFalse(self.source.exists())
+        self.assertEqual((self.archives / "cache/archive.tgz").read_bytes(), self.bytes)
         self.assertNotIn("localCheckpoint", self.fence.read())
         self.cache.publish(self.lease, self.publication)
-        self.source.unlink()
+        self.source.unlink(missing_ok=True)
         lease, importer = self.next()
         self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
         self.assert_restored(lease, importer)
+
+    def test_cache_rename_preserves_inode_and_sync_failure_replays(self):
+        self.fence.close(self.lease)
+        self.fence.release(self.lease, lambda *_: True, self.publication)
+        inode = self.source.stat().st_ino
+        with patch("local_checkpoint.sync_dir", side_effect=OSError("sync unavailable")):
+            with self.assertRaisesRegex(OSError, "sync unavailable"):
+                self.cache.publish(self.lease, self.publication)
+        destination = self.archives / "cache/archive.tgz"
+        self.assertEqual(destination.stat().st_ino, inode)
+        self.assertNotIn("localCheckpoint", self.fence.read())
+        self.cache.publish(self.lease, self.publication)
+        lease, importer = self.next()
+        self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
+        self.assert_restored(lease, importer)
+
+    def test_cache_cross_filesystem_fallback_and_io_failure(self):
+        self.fence.close(self.lease)
+        self.fence.release(self.lease, lambda *_: True, self.publication)
+        replace = os.replace
+
+        def cross_device(source, destination):
+            if pathlib.Path(source) == self.source:
+                raise OSError(errno.EXDEV, "different filesystem")
+            return replace(source, destination)
+
+        with patch("local_checkpoint.os.replace", side_effect=OSError(errno.EIO, "disk error")):
+            with self.assertRaises(OSError):
+                self.cache.publish(self.lease, self.publication)
+        self.assertTrue(self.source.exists())
+        self.assertNotIn("localCheckpoint", self.fence.read())
+        with patch("local_checkpoint.os.replace", side_effect=cross_device):
+            self.cache.publish(self.lease, self.publication)
+        self.assertTrue(self.source.exists())
+        self.assertEqual((self.archives / "cache/archive.tgz").read_bytes(), self.bytes)
+
+    def test_unjournaled_corrupt_destination_cannot_replace_missing_source(self):
+        self.fence.close(self.lease)
+        self.fence.release(self.lease, lambda *_: True, self.publication)
+        with patch.object(self.fence, "write", side_effect=OSError("metadata unavailable")):
+            with self.assertRaises(OSError):
+                self.cache.publish(self.lease, self.publication)
+        (self.archives / "cache/archive.tgz").write_bytes(b"bad")
+        with self.assertRaisesRegex(ValueError, "source_integrity"):
+            self.cache.publish(self.lease, self.publication)
+        self.assertNotIn("localCheckpoint", self.fence.read())
 
     def test_fifo_cache_is_a_bounded_miss_not_a_blocking_open(self):
         self.publish()

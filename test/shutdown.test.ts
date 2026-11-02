@@ -21,6 +21,7 @@ const sha = (value: Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
 for (const failure of [
   "release-ack",
+  "finalize-ack",
   "upload",
   "none",
   "missing-idle",
@@ -69,7 +70,7 @@ for (const failure of [
     let failRetirement = true;
     let oldHostState: "ready" | "unknown" | "absent" = "ready";
     let failUpload = failure === "upload";
-    let failRelease = failure === "release-ack",
+    let failRelease = failure === "release-ack" || failure === "finalize-ack",
       allocations = 0;
     const provider: HostProvider = {
       capabilities: () => ({
@@ -104,7 +105,10 @@ for (const failure of [
           throw Error("Unavailable host received workload effects");
         actions.push(request.action);
         let result: Json = null;
-        if (request.action === "quiesce") quiesced = true;
+        if (request.action === "quiesce") {
+          quiesced = true;
+          if (failure === "finalize-ack") result = { finalizeVersion: 1 };
+        }
         if (request.action === "stream-status")
           result = {
             id: request.id,
@@ -151,14 +155,26 @@ for (const failure of [
               .toString("base64"),
           };
         }
-        if (["remove", "release", "purge-source"].includes(request.action)) {
+        if (
+          ["remove", "release", "purge-source", "finalize"].includes(
+            request.action,
+          )
+        ) {
           const listed = [];
           for await (const entry of objects.list(scope)) listed.push(entry);
           assert.equal(listed.length, 1, "publication before destruction");
-          if (request.action === "release" && failRelease) {
+          if (["release", "finalize"].includes(request.action) && failRelease) {
             failRelease = false;
             throw Error("release ACK lost");
           }
+        }
+        if (request.action === "finalize") {
+          result = {
+            finalized: true,
+            checkpointId: (
+              request.payload as { publication: { checkpointId: string } }
+            ).publication.checkpointId,
+          };
         }
         return { version: 1, id: request.id, result };
       },
@@ -201,7 +217,11 @@ for (const failure of [
       manager.startCommand(scope, randomUUID(), ["true"]),
       /not running/,
     );
-    if (failure === "release-ack" || failure === "upload")
+    if (
+      failure === "release-ack" ||
+      failure === "finalize-ack" ||
+      failure === "upload"
+    )
       await assert.rejects(
         manager.reconcile("alice"),
         failure === "upload" ? /interrupted upload/ : /release ACK lost/,
@@ -262,8 +282,18 @@ for (const failure of [
       await manager.reconcile("alice");
     }
     assert.equal((await manager.get(scope))?.lease, null);
-    assert.ok(actions.indexOf("read-checkpoint") < actions.indexOf("remove"));
-    assert.ok(actions.indexOf("release") < actions.indexOf("purge-source"));
+    if (failure === "finalize-ack") {
+      assert.ok(
+        actions.indexOf("read-checkpoint") < actions.indexOf("finalize"),
+      );
+      assert.equal(actions.filter((action) => action === "finalize").length, 2);
+      assert.equal(actions.includes("remove"), false);
+      assert.equal(actions.includes("release"), false);
+      assert.equal(actions.includes("purge-source"), false);
+    } else {
+      assert.ok(actions.indexOf("read-checkpoint") < actions.indexOf("remove"));
+      assert.ok(actions.indexOf("release") < actions.indexOf("purge-source"));
+    }
     const count = actions.length;
     await manager.stop(
       scope,

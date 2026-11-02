@@ -1,3 +1,4 @@
+import { MAX_CHECKPOINT_READ_BYTES } from "./archive-source.js";
 import {
   checkpointArchive,
   checkpointObjectRanges,
@@ -50,6 +51,8 @@ type Shutdown = {
   archive: CapturedArchive | null;
   blocked: boolean;
   recoveredBy?: string;
+  finalizeVersion?: 1;
+  readChunkBytes?: number;
 };
 export type MissingSourceRecovery = {
   generation: number;
@@ -263,15 +266,29 @@ export class ShutdownCoordinator {
     record: Shutdown,
     stage: Stage,
     archive = record.archive,
+    finalizeVersion = record.finalizeVersion,
+    readChunkBytes = record.readChunkBytes,
   ) {
     await this.deps.state.transaction((tx) => {
       const key = this.key(record, record.id),
         current = tx.get<Shutdown>(key);
       if (!current || canonical(current) !== canonical(record))
         throw Error("Shutdown stage changed");
-      tx.put(key, { ...record, stage, archive });
+      tx.put(key, {
+        ...record,
+        stage,
+        archive,
+        ...(finalizeVersion === 1 ? { finalizeVersion } : {}),
+        ...(readChunkBytes !== undefined ? { readChunkBytes } : {}),
+      });
     });
-    return { ...record, stage, archive };
+    return {
+      ...record,
+      stage,
+      archive,
+      ...(finalizeVersion === 1 ? { finalizeVersion } : {}),
+      ...(readChunkBytes !== undefined ? { readChunkBytes } : {}),
+    };
   }
   async reconcile(owner: string) {
     const records = await this.deps.state.transaction((tx) =>
@@ -302,8 +319,32 @@ export class ShutdownCoordinator {
       if (record.stage === "quiesce") {
         await this.deps.settleUploads(scope);
         await pool.transition(record.lease, "quiescing");
-        await request(record.lease, "quiesce", payload);
-        record = await this.advance(record, "outputs");
+        const receipt = await request(record.lease, "quiesce", payload);
+        const finalizeVersion =
+          receipt &&
+          typeof receipt === "object" &&
+          !Array.isArray(receipt) &&
+          receipt.finalizeVersion === 1
+            ? 1
+            : undefined;
+        const advertised =
+          receipt && typeof receipt === "object" && !Array.isArray(receipt)
+            ? receipt.checkpointReadBytes
+            : undefined;
+        const readChunkBytes =
+          typeof advertised === "number" &&
+          Number.isSafeInteger(advertised) &&
+          advertised >= 1 &&
+          advertised <= MAX_CHECKPOINT_READ_BYTES
+            ? advertised
+            : undefined;
+        record = await this.advance(
+          record,
+          "outputs",
+          record.archive,
+          finalizeVersion,
+          readChunkBytes,
+        );
       }
       if (record.stage === "outputs") {
         if (!(await retainCommands(scope, record.lease))) return;
@@ -323,6 +364,7 @@ export class ShutdownCoordinator {
           record.archive,
           {
             readConcurrency: 4,
+            readChunkBytes: record.readChunkBytes,
             read: async (offset, bytes) => {
               const value = await request(record.lease, "read-checkpoint", {
                 ...payload,
@@ -363,6 +405,24 @@ export class ShutdownCoordinator {
           "Published checkpoint integrity failure",
           checkpointObjectRanges([root]),
         );
+      }
+      if (record.stage === "remove" && record.finalizeVersion === 1) {
+        const receipt = await request(record.lease, "finalize", {
+          ...payload,
+          publication: {
+            checkpointId: record.id,
+            sha256: record.archive!.sha256,
+          },
+        });
+        if (
+          !receipt ||
+          typeof receipt !== "object" ||
+          Array.isArray(receipt) ||
+          receipt.finalized !== true ||
+          receipt.checkpointId !== record.id
+        )
+          throw Error("Host finalization unconfirmed");
+        record = await this.advance(record, "finish");
       }
       if (record.stage === "remove") {
         await request(record.lease, "remove", payload);

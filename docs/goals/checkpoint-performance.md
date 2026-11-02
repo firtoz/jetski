@@ -49,16 +49,16 @@ as a substitute for a contemporaneous comparison.
 
 ## Finite implementation and acceptance checklist
 
-| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                         |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                           |
-| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.             |
-| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; embedded save 5.166 s vs4.151 s reference; parity open.                |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.           |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 216 TypeScript/98 Python tests and live R2 recovery pass; new hosted replacement open.                         |
-| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Four separate five-per-arm screens, one pretrial failure preserved, ten hosts retired; final replication open. |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                       |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.              |
+| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                 |
+| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.                   |
+| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; latest embedded save 4.656 s vs3.667 s reference; parity open.               |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.                 |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 219 TypeScript/102 Python tests and live R2 recovery pass; new hosted replacement open.                              |
+| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Five separate five-per-arm screens, one pretrial failure preserved; all owned hosts retired; final replication open. |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                             |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.                    |
 
 ## Current local screen
 
@@ -73,9 +73,9 @@ synthetic-clock collection checks do not replace the protected real-grace test.
 
 The [hosted screens](../benchmarks.md#follow-on-checkpoint-optimization-screens)
 remain below target. The latest embedded native-store composition measured
-5.166 s save versus 4.151 s reference, and 8.276 s whole cycle versus 6.917 s.
+4.656 s save versus 3.667 s reference, and 7.894 s whole cycle versus 6.080 s.
 All completed oracles pass; the uncertain earlier setup remains preserved, and
-all ten test hosts are retired. Different controller compositions are reported
+all thirteen test and diagnostic hosts are retired. Different controller compositions are reported
 separately. None closes the replicated comparison gate.
 
 Adaptive standard-gzip sampling now selects stored members for incompressible
@@ -85,6 +85,15 @@ fell from180 to164 ms with0.36% more encoded bytes. These are capture-only local
 measurements, not hosted speed evidence. Every full member retains CRC and both
 compressed/expanded SHA-256 verification. Source-deleted filesystem tests pass;
 existing gzip checkpoints remain readable.
+
+The latest diagnostic separates host and storage timings: metadata transactions
+accounted for about1 ms per save, while repeated control requests, archive work
+and cleanup remain material. A new candidate uses atomic local-cache publication
+with cross-filesystem copy fallback, negotiated bounded1280 KiB source reads and
+one replay-safe finalization request. Every underlying cleanup receipt, publication
+check and fence remains required. Lost metadata/cleanup acknowledgements, corrupt
+cache bytes, stale leases and drained range failures pass locally. Hosted speed
+and replacement qualification for these changes remain open.
 
 ## Execution order
 
@@ -99,5 +108,5 @@ existing gzip checkpoints remain readable.
 4. Integrate the winning reliable candidate in staging and publish measured results.
    Do not promote a faster but less durable path or claim a universal speedup.
 
-The original v1 release's remaining real-grace gate is tracked separately in
-[implementation.md](../implementation.md). This follow-on goal does not close it.
+The original v1 real-grace gate passed independently; its evidence is in
+[implementation.md](../implementation.md). It does not close this performance goal.

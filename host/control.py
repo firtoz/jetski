@@ -191,7 +191,31 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
         return runtime.create(lease, payload.get("memoryMb", 512), payload.get("cpus", 1))
     if action == "quiesce":
         commands.prepare_quiesce(lease)
-        return runtime.quiesce(lease)
+        return {**runtime.quiesce(lease), "finalizeVersion": 1, "checkpointReadBytes": 1280 * 1024}
+    if action == "finalize":
+        publication = payload.get("publication")
+        with fence.locked():
+            state = fence.read()
+            fence.match(state, lease)
+            checkpoint = state.get("checkpoint")
+            if (
+                not isinstance(publication, dict)
+                or set(publication) != {"checkpointId", "sha256"}
+                or not checkpoint
+                or publication.get("sha256") != checkpoint.get("sha256")
+                or state["phase"] not in ("closed", "released")
+                or (state["phase"] == "released" and state.get("releaseReceipt") != publication)
+            ):
+                raise ValueError("invalid_finalize_publication")
+            released = state["phase"] == "released"
+        # The ordinary operations retain their durable receipts and fence checks.
+        # An interrupted composite observes those receipts instead of replaying
+        # execution or skipping the remaining verification/cleanup steps.
+        for step in (
+            ("release", "purge-source") if released else ("remove", "release", "purge-source")
+        ):
+            dispatch({**request, "action": step}, config, account, run, launch, backend)
+        return dict(finalized=True, checkpointId=publication["checkpointId"])
     if action == "remove":
         return runtime.remove(lease)
     if action == "release":
@@ -242,6 +266,8 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
                     if path.is_symlink() or not path.is_file():
                         raise ValueError("unsafe_source_archive")
                     path.unlink()
+            sync_dir(DATA_ROOT)
+            sync_dir(ARCHIVE_ROOT)
             return dict(purged=True)
     if action == "capture":
         with fence.locked():
@@ -261,7 +287,7 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
             type(offset) is not int
             or type(count) is not int
             or offset < 0
-            or not 1 <= count <= 256 * 1024
+            or not 1 <= count <= 1280 * 1024
         ):
             raise ValueError("invalid_checkpoint_range")
         with fence.locked():
