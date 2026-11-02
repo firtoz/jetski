@@ -668,3 +668,12 @@ set `commandStartWaitMs` to0 for immediate acknowledgement or choose0–1000 ms.
 Terminals always start immediately. Completed outcomes are persisted by command
 identity, so later status reads need no host round trip. Unknown outcomes remain
 uncertain and never authorize replay.
+
+
+`inlineCommandOutputBytes` is an opt-in threshold from0 (default) to8192 bytes
+per complete output channel. It keeps tiny outputs in the durable transactional
+state rather than creating separate storage objects; larger or partial channels
+retain the object-store path. Full content hashes, writer admission and GC checks
+still apply. Back up control-plane metadata as well as checkpoint objects. Once
+inline output roots have been written, use a reader that supports output format2;
+older binaries must not be used to roll back that control-plane state.

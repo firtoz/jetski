@@ -21,9 +21,11 @@ export type OutputSegment = {
   nextOffset: number;
   terminal: boolean;
 };
+export type InlineOutput = { base64: string; sha256: string };
 type OutputMetadata = {
   kind: "command-output";
-  version: 1;
+  version: 1 | 2;
+  inline?: Record<OutputChannel, InlineOutput | null>;
   commandId: string;
   status: Json;
   channels: Record<OutputChannel, number[]>;
@@ -61,6 +63,28 @@ async function sha(bytes: Uint8Array) {
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
 }
+export function inlineOutputBytes(proof: InlineOutput): Uint8Array {
+  if (
+    !proof ||
+    typeof proof !== "object" ||
+    Object.keys(proof).sort().join(",") !== "base64,sha256" ||
+    typeof proof.base64 !== "string" ||
+    typeof proof.sha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(proof.sha256)
+  )
+    throw Error("Invalid inline output proof");
+  const bytes = decodeBase64(proof.base64, DEFAULTS.maxInlineOutputBytes);
+  if (!bytes.length) throw Error("Empty inline output proof");
+  return bytes;
+}
+export async function verifyInlineOutputs(root: CheckpointRoot): Promise<void> {
+  const metadata = validateOutputRoot(root);
+  for (const channel of OUTPUT_CHANNELS) {
+    const proof = metadata.inline?.[channel];
+    if (proof && (await sha(inlineOutputBytes(proof))) !== proof.sha256)
+      throw Error("Inline output integrity failure");
+  }
+}
 export function validateOutputRoot(
   root: CheckpointRoot,
   id?: string,
@@ -69,14 +93,16 @@ export function validateOutputRoot(
   if (
     !value ||
     value.kind !== "command-output" ||
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     (id !== undefined && value.commandId !== id) ||
     typeof value.commandId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
       value.commandId,
     ) ||
     Object.keys(value).sort().join(",") !==
-      "channels,commandId,kind,status,version" ||
+      (value.version === 1
+        ? "channels,commandId,kind,status,version"
+        : "channels,commandId,inline,kind,status,version") ||
     !value.status ||
     typeof value.status !== "object" ||
     Array.isArray(value.status) ||
@@ -98,6 +124,20 @@ export function validateOutputRoot(
       )
     )
       throw new Error("Invalid output frame index");
+  if (value.version === 2) {
+    if (
+      !value.inline ||
+      Object.keys(value.inline).sort().join(",") !== "stderr,stdout"
+    )
+      throw Error("Invalid inline output channels");
+    for (const channel of OUTPUT_CHANNELS) {
+      const proof = value.inline[channel];
+      if (proof === null) continue;
+      inlineOutputBytes(proof);
+      if (value.channels[channel].length)
+        throw Error("Mixed inline output channel");
+    }
+  }
   const indices = OUTPUT_CHANNELS.flatMap((channel) => value.channels[channel]);
   if (
     indices.length !== root.frames.length ||
@@ -126,7 +166,15 @@ export class CommandOutputStore {
   constructor(
     private readonly objects: CheckpointStore,
     private readonly registry: CheckpointRegistry,
-  ) {}
+    private readonly inlineBytes = 0,
+  ) {
+    if (
+      !Number.isSafeInteger(inlineBytes) ||
+      inlineBytes < 0 ||
+      inlineBytes > DEFAULTS.maxInlineOutputBytes
+    )
+      throw Error("Invalid inline output policy");
+  }
   private rootId(id: string) {
     if (
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)
@@ -136,7 +184,9 @@ export class CommandOutputStore {
   }
   async retained(fence: Fence, id: string): Promise<Json | undefined> {
     const root = await this.registry.root(fence, this.rootId(id));
-    return root ? validateOutputRoot(root, id).status : undefined;
+    if (!root) return undefined;
+    await verifyInlineOutputs(root);
+    return validateOutputRoot(root, id).status;
   }
   async retain(
     fence: Fence,
@@ -169,7 +219,11 @@ export class CommandOutputStore {
       status,
     });
     const frames: ObjectInfo[] = [],
-      channels: Record<OutputChannel, number[]> = { stdout: [], stderr: [] };
+      channels: Record<OutputChannel, number[]> = { stdout: [], stderr: [] },
+      inline: Record<OutputChannel, InlineOutput | null> = {
+        stdout: null,
+        stderr: null,
+      };
     for (const channel of OUTPUT_CHANNELS) {
       let offset = 0;
       while (true) {
@@ -203,21 +257,28 @@ export class CommandOutputStore {
           )
             throw Error("Invalid output cursor progress");
           const digest = await sha(bytes);
-          const object = bytes.length
-            ? {
-                owner: fence.owner,
-                sandbox: fence.sandbox,
-                id: crypto.randomUUID(),
-                bytes: bytes.length,
-                sha256: digest,
-              }
-            : null;
+          const inlined =
+            offset === 0 &&
+            value.terminal &&
+            bytes.length > 0 &&
+            bytes.length <= this.inlineBytes;
+          const object =
+            bytes.length && !inlined
+              ? {
+                  owner: fence.owner,
+                  sandbox: fence.sandbox,
+                  id: crypto.randomUUID(),
+                  bytes: bytes.length,
+                  sha256: digest,
+                }
+              : null;
           part = {
             bytes: bytes.length,
             sha256: digest,
             nextOffset: offset + bytes.length,
             terminal: value.terminal,
             object,
+            ...(inlined ? { inline: value.base64 } : {}),
           };
           await this.registry.planStreamPart(fence, rootId, key, part);
           if (object) {
@@ -239,6 +300,20 @@ export class CommandOutputStore {
           part.nextOffset > OUTPUT_LIMIT
         )
           throw Error("Invalid retained output segment");
+        if (part.inline !== undefined) {
+          if (
+            offset !== 0 ||
+            !part.terminal ||
+            part.object ||
+            part.nextOffset !== part.bytes
+          )
+            throw Error("Invalid inline output segment");
+          const proof = { base64: part.inline, sha256: part.sha256 },
+            bytes = inlineOutputBytes(proof);
+          if (bytes.length !== part.bytes || (await sha(bytes)) !== part.sha256)
+            throw Error("Inline output integrity failure");
+          inline[channel] = proof;
+        }
         if (part.object) {
           if (channels[channel].length >= 64) throw Error("Output frame limit");
           channels[channel].push(frames.length);
@@ -250,10 +325,11 @@ export class CommandOutputStore {
     }
     await this.registry.publish(fence, rootId, rootId, frames, {
       kind: "command-output",
-      version: 1,
+      version: inline.stdout || inline.stderr ? 2 : 1,
       commandId: id,
       status,
       channels,
+      ...(inline.stdout || inline.stderr ? { inline } : {}),
     });
   }
   async read(
@@ -278,7 +354,20 @@ export class CommandOutputStore {
     try {
       const root = await this.registry.root(fence, rootId);
       if (!root) throw new Error("Output root missing");
-      const indices = validateOutputRoot(root, id).channels[channel];
+      await verifyInlineOutputs(root);
+      const metadata = validateOutputRoot(root, id),
+        proof = metadata.inline?.[channel];
+      if (proof) {
+        const bytes = inlineOutputBytes(proof);
+        if (offset > bytes.length) throw Error("Output cursor beyond end");
+        const part = bytes.subarray(offset, offset + count);
+        return {
+          base64: encodeBase64(part),
+          nextOffset: offset + part.length,
+          terminal: offset + part.length === bytes.length,
+        };
+      }
+      const indices = metadata.channels[channel];
       const objects = indices.map((index) => {
         const object = root.frames[index];
         if (

@@ -103,6 +103,8 @@ export type ManagerOptions = {
   checkpointPackBytes?: number;
   /** Bounded wait for short noninteractive commands; zero returns immediately. */
   commandStartWaitMs?: number;
+  /** Store tiny complete output channels in durable transactional metadata. Opt-in. */
+  inlineCommandOutputBytes?: number;
   hostsPerOwner?: number;
   now?: () => number;
   events?: EventSink;
@@ -221,7 +223,11 @@ export class SandboxManager {
       );
     this.checkpoints = new CheckpointRegistry(state, objects, this.now);
     this.copies = new CheckpointCopy(state, this.checkpoints, objects);
-    this.outputs = new CommandOutputStore(objects, this.checkpoints);
+    this.outputs = new CommandOutputStore(
+      objects,
+      this.checkpoints,
+      options.inlineCommandOutputBytes ?? 0,
+    );
     this.history = new CheckpointHistory(
       state,
       this.checkpoints,

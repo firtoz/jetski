@@ -47,6 +47,7 @@ if (command === "serve") {
     hostsPerOwner?: number;
     checkpointPackBytes?: number;
     commandStartWaitMs?: number;
+    inlineCommandOutputBytes?: number;
     sshGateway?: {
       hostKeyPath: string;
       host?: string;
@@ -100,6 +101,9 @@ if (command === "serve") {
         ? { workloadResources: config.workloadResources }
         : {}),
       hostsPerOwner: config.hostsPerOwner ?? 1,
+      ...(config.inlineCommandOutputBytes !== undefined
+        ? { inlineCommandOutputBytes: config.inlineCommandOutputBytes }
+        : {}),
       ...(config.commandStartWaitMs !== undefined
         ? { commandStartWaitMs: config.commandStartWaitMs }
         : {}),

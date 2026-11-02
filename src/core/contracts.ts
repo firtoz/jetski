@@ -39,6 +39,7 @@ export const DEFAULTS = Object.freeze({
   outputChannelBytes: 16 * 1024 * 1024,
   outputChunkBytes: 256 * 1024,
   outputJournalParts: 130,
+  maxInlineOutputBytes: 8192,
   commandStartWaitMs: 250,
   maxCommandStartWaitMs: 1000,
 });

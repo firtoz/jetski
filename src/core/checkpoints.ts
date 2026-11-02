@@ -1,4 +1,5 @@
 import { checkpointObjectRanges } from "./checkpoint-layout.js";
+import { inlineOutputBytes } from "./command-output.js";
 import {
   type CheckpointStore,
   canonical,
@@ -21,7 +22,10 @@ import {
 } from "./inventory.js";
 import { verifyCheckpointObjects } from "./object-verification.js";
 import { PackedSaveJournal } from "./packed-save-journal.js";
-import { validateRootPayload } from "./root-payload.js";
+import {
+  validateRootPayload,
+  verifyRootInlinePayload,
+} from "./root-payload.js";
 
 export type CheckpointRoot = {
   id: string;
@@ -44,6 +48,7 @@ export type StreamPart = {
   nextOffset: number;
   terminal: boolean;
   object: ObjectInfo | null;
+  inline?: string;
 };
 type StreamSave = {
   generation: number;
@@ -356,6 +361,7 @@ export class CheckpointRegistry {
       pins: [],
     };
     validateRootPayload(descriptor);
+    await verifyRootInlinePayload(descriptor);
     await this.state.transaction((tx) => {
       const state = this.load(tx, fence);
       if (
@@ -538,6 +544,7 @@ export class CheckpointRegistry {
     part: StreamPart,
   ): Promise<void> {
     identifier(partId);
+    part = structuredClone(part);
     if (
       !Number.isSafeInteger(part.bytes) ||
       part.bytes < 0 ||
@@ -549,7 +556,27 @@ export class CheckpointRegistry {
       !/^[a-f0-9]{64}$/.test(part.sha256)
     )
       throw Error("Invalid stream part");
-    if (part.object) {
+    if (part.inline !== undefined) {
+      const bytes = inlineOutputBytes({
+        base64: part.inline,
+        sha256: part.sha256,
+      });
+      const hash = Array.from(
+        new Uint8Array(
+          await crypto.subtle.digest("SHA-256", new Uint8Array(bytes).buffer),
+        ),
+        (byte) => byte.toString(16).padStart(2, "0"),
+      ).join("");
+      if (
+        part.object ||
+        !/^(stdout|stderr)_0$/.test(partId) ||
+        part.bytes !== bytes.length ||
+        part.nextOffset !== bytes.length ||
+        !part.terminal ||
+        hash !== part.sha256
+      )
+        throw Error("Invalid inline stream part");
+    } else if (part.object) {
       identifier(part.object.id);
       if (
         part.object.owner !== fence.owner ||
@@ -791,6 +818,7 @@ export class CheckpointRegistry {
     });
     // Verify both physical reachability and every retained logical slice before
     // the first delete. Ambiguous or conflicting metadata keeps GC excluded.
+    for (const root of protectedRoots) await verifyRootInlinePayload(root);
     await verifyCheckpointObjects(
       this.objects,
       fence,
