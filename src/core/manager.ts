@@ -1,4 +1,5 @@
 import type { CapturedArchive } from "./archive-format.js";
+import { resumeCachedCheckpoint } from "./cached-resume.js";
 import { CheckpointCopy } from "./checkpoint-copy.js";
 import { CheckpointHistory } from "./checkpoint-history.js";
 import { checkpointArchive } from "./checkpoint-layout.js";
@@ -880,33 +881,49 @@ export class SandboxManager {
           ...scope,
           generation: sandbox.generation,
         });
-        await this.request(lease, "claim", { lease });
-        if (sandbox.restoreCheckpoint)
-          await restoreCheckpoint(
-            this.objects,
-            this.checkpoints,
-            { ...scope, generation: sandbox.generation },
-            sandbox.restoreCheckpoint,
-            (action, payload) =>
-              this.request(lease, action, {
-                ...(payload as Record<string, Json>),
-                lease,
-                image: sandbox.image,
-              }),
-            this.transport.checkpointImport
-              ? () =>
-                  this.transport.checkpointImport!(
-                    lease.machineId,
-                    lease,
-                    sandbox.image,
-                  )
-              : undefined,
-          );
-        await this.request(lease, "create", {
-          lease,
-          image: sandbox.image,
-          ...workloadResources(sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES),
-        });
+        const resources = workloadResources(
+          sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES,
+        );
+        const resumedCached = sandbox.restoreCheckpoint
+          ? await resumeCachedCheckpoint(
+              this.checkpoints,
+              { ...scope, generation: sandbox.generation },
+              lease,
+              sandbox.image,
+              resources,
+              sandbox.restoreCheckpoint,
+              this.transport,
+            )
+          : false;
+        if (!resumedCached) {
+          await this.request(lease, "claim", { lease });
+          if (sandbox.restoreCheckpoint)
+            await restoreCheckpoint(
+              this.objects,
+              this.checkpoints,
+              { ...scope, generation: sandbox.generation },
+              sandbox.restoreCheckpoint,
+              (action, payload) =>
+                this.request(lease, action, {
+                  ...(payload as Record<string, Json>),
+                  lease,
+                  image: sandbox.image,
+                }),
+              this.transport.checkpointImport
+                ? () =>
+                    this.transport.checkpointImport!(
+                      lease.machineId,
+                      lease,
+                      sandbox.image,
+                    )
+                : undefined,
+            );
+          await this.request(lease, "create", {
+            lease,
+            image: sandbox.image,
+            ...resources,
+          });
+        }
         await this.pool.transition(lease, "active");
         await this.state.transaction((tx) => {
           const current = tx.get<Sandbox>(this.key(scope));

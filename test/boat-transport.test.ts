@@ -405,3 +405,96 @@ test("binary import is opt-in, bounded and carries lease/image through verified 
   );
   assert.equal(uploads, 1);
 });
+
+test("cached resume requires an explicitly observed host capability", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  await state.transaction((tx) => {
+    tx.put("boat-host/bx_owned", "allocation");
+    tx.put("allocation", {
+      owner: "owner",
+      operationId: "allocate",
+      expiresAt: Date.now() + 60000,
+      key: "key",
+      body: {},
+      id: "bx_owned",
+      retired: false,
+    });
+  });
+  let advertised = false;
+  const calls: string[] = [];
+  const api = new BoatApi("fixture", async (_url, init) => {
+    const body = JSON.parse(init?.body as string);
+    const match = /^printf '%s' '([A-Za-z0-9+/=]+)'/.exec(body.command);
+    assert.ok(match);
+    const request = JSON.parse(Buffer.from(match[1]!, "base64").toString());
+    calls.push(request.action);
+    const result =
+      request.action === "status"
+        ? {
+            ready: true,
+            machineId: "bx_owned",
+            ...(advertised ? { cachedResumeVersion: 1 } : {}),
+          }
+        : { ready: true };
+    return Response.json({
+      success: true,
+      exitCode: 0,
+      timedOut: false,
+      stdout: JSON.stringify({ version: 1, id: request.id, result }),
+      stderr: "",
+    });
+  });
+  const transport = new BoatTransport(state, api);
+  const input = {
+    lease: {
+      owner: "owner",
+      sandboxId: "box",
+      poolId: "pool",
+      slotId: "slot",
+      machineId: "bx_owned",
+      assignmentId: "assignment",
+      generation: 2,
+    },
+    image: "example/linux@sha256:" + "a".repeat(64),
+    checkpointId: "checkpoint",
+    sha256: "b".repeat(64),
+    bytes: 1024,
+    resources: { cpus: 2, memoryMb: 2048 },
+  };
+  const miss = await transport.resumeCached("bx_owned", input);
+  assert.equal((miss as { ready: boolean }).ready, false);
+  assert.deepEqual(
+    calls,
+    [],
+    "no unsupported command may be dispatched speculatively",
+  );
+  await transport.request("bx_owned", {
+    version: 1,
+    id: "old-status",
+    action: "status",
+    payload: null,
+  });
+  assert.equal(
+    ((await transport.resumeCached("bx_owned", input)) as { ready: boolean })
+      .ready,
+    false,
+  );
+  advertised = true;
+  await transport.request("bx_owned", {
+    version: 1,
+    id: "new-status",
+    action: "status",
+    payload: null,
+  });
+  await transport.resumeCached("bx_owned", input);
+  assert.deepEqual(calls, ["status", "status", "resume-cached"]);
+  await state.transaction((tx) =>
+    tx.put("allocation", { id: "bx_owned", retired: true }),
+  );
+  await assert.rejects(
+    transport.resumeCached("bx_owned", input),
+    /actively owned/,
+  );
+  assert.equal(calls.length, 3);
+});

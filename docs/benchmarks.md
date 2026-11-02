@@ -40,8 +40,11 @@ A separate driver correction immediately rechecks authoritative completion after
 reconciliation; it no longer always waits250 ms after completion. Both replicas
 include that correction, so this comparison cannot isolate its effect from the
 runtime change. Earlier measured rows below are preserved without estimated
-subtraction. Local screens did not establish a speedup. Larger cold recovery and
-the pinned downstream workflow remain open; see the [active goal](goals/checkpoint-performance.md).
+subtraction. Local screens did not establish a speedup. The pinned downstream workflow and exact larger source-deleted recovery now pass.
+A further corrected-observer host pair still loses warm parity; its cold caller
+was interrupted and recovered, so it supplies recovery evidence rather than a
+clean latency win. An optional combined cache-resume path is under qualification;
+see the [active goal](goals/checkpoint-performance.md).
 
 ## Previous candidate: qualification31
 

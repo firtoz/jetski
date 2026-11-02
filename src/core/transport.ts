@@ -2,6 +2,15 @@ import type { CapturedArchive } from "./archive-format.js";
 import type { ArchiveSource } from "./archive-source.js";
 import type { Json } from "./contracts.js";
 import type { HostLease } from "./pool.js";
+import type { WorkloadResources } from "./resources.js";
+export type CachedResumeRequest = {
+  lease: HostLease;
+  image: string;
+  checkpointId: string;
+  sha256: string;
+  bytes: number;
+  resources: WorkloadResources;
+};
 export const HOST_PROTOCOL_VERSION = 1;
 /** Raw parts are bounded independently of the control protocol envelope. */
 export const HOST_IMPORT_FILE_BYTES = 16 * 1024 * 1024;
@@ -35,6 +44,9 @@ export type HostResponse = {
   result: Json;
 };
 export interface HostTransport {
+  /** Optional composition of fenced claim, verified cache import and create.
+   * A miss must not create a runtime. The core validates the returned identity. */
+  resumeCached?(host: string, input: CachedResumeRequest): Promise<Json>;
   /** Optional bounded binary import; durable offsets remain host-authoritative. */
   checkpointImport?(
     host: string,

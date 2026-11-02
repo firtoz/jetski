@@ -75,7 +75,7 @@ def dispatch(
             or proof.get("gidMappings") != gid_mappings
         ):
             raise ValueError("runtime_ownership_changed")
-        return proof
+        return {**proof, "cachedResumeVersion": 1}
     persistent = storage_owner if storage_owner is not None else account
     assignment_uid = persistent.pw_uid if parent_uid is None else parent_uid
     payload = request["payload"]
@@ -86,6 +86,56 @@ def dispatch(
         raise ValueError("physical_identity_conflict")
     # One fence per host: caller-selected slot IDs cannot create parallel assignments.
     fence = Fence(CONTROL_ROOT / "slot")
+    if action == "resume-cached":
+        if payload.get("image") not in config["images"]:
+            raise ValueError("unapproved_image")
+
+        def step(action):
+            return dispatch(
+                {**request, "action": action},
+                config,
+                account,
+                run,
+                launch,
+                backend,
+                storage_owner=storage_owner,
+                user_namespace=user_namespace,
+                parent_uid=parent_uid,
+                uid_mappings=uid_mappings,
+                gid_mappings=gid_mappings,
+            )
+
+        step("claim")
+        with fence.locked():
+            state = fence.read()
+            imported = state.get("import") if state.get("runtime") else None
+            if state.get("runtime") and (
+                not imported
+                or imported["phase"] != "ready"
+                or any(
+                    imported[key] != payload.get(field)
+                    for key, field in (
+                        ("id", "checkpointId"),
+                        ("sha256", "sha256"),
+                        ("bytes", "bytes"),
+                    )
+                )
+            ):
+                raise ValueError("cached_resume_identity_conflict")
+        if imported is None:
+            imported = step("import-begin")
+        ready = imported["phase"] == "ready"
+        # The existing importer performs the complete SHA/CRC/tree proof before
+        # ready. A miss leaves only unpublished receiving state, never execution.
+        runtime = step("create") if ready else None
+        return dict(
+            lease=lease,
+            checkpointId=imported["id"],
+            sha256=imported["sha256"],
+            bytes=imported["bytes"],
+            ready=ready,
+            runtime=runtime,
+        )
     if action == "claim":
         return fence.claim(lease)
     if action == "inspect":

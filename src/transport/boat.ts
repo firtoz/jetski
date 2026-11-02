@@ -6,6 +6,7 @@ import type { Json, StateStore } from "../core/contracts.js";
 import { identifier } from "../core/contracts.js";
 import type { HostLease } from "../core/pool.js";
 import {
+  type CachedResumeRequest,
   type CheckpointImportSink,
   HOST_CONTROL_TIMEOUT_MS,
   HOST_IMPORT_FILE_BYTES,
@@ -21,6 +22,24 @@ import { BoatControlChannel } from "./boat-channel.js";
 
 /** Fixed privileged control program; workload bytes enter only through stdin. */
 export class BoatTransport implements HostTransport {
+  async resumeCached(host: string, input: CachedResumeRequest): Promise<Json> {
+    identifier(host);
+    if (input.lease.machineId !== host)
+      throw Error("Cached resume host mismatch");
+    const { resources, ...checkpoint } = input;
+    const supported = await this.state.transaction(
+      (tx) => tx.get(`boat-cached-resume/${host}`) === 1,
+    );
+    if (!supported) return { ...checkpoint, ready: false, runtime: null };
+    return (
+      await this.request(host, {
+        version: HOST_PROTOCOL_VERSION,
+        id: crypto.randomUUID(),
+        action: "resume-cached",
+        payload: { ...checkpoint, ...resources },
+      })
+    ).result;
+  }
   private readonly channel: BoatControlChannel;
   readonly checkpointImport?: (
     host: string,
@@ -34,7 +53,7 @@ export class BoatTransport implements HostTransport {
     image: string,
   ) => Promise<ArchiveSource | undefined>;
   constructor(
-    state: StateStore,
+    private readonly state: StateStore,
     private readonly api: BoatApi,
     timeoutSeconds = HOST_CONTROL_TIMEOUT_MS / 1000,
     options: { archiveReads?: boolean; archiveWrites?: boolean } = {},
@@ -241,6 +260,19 @@ export class BoatTransport implements HostTransport {
         !Object.hasOwn(response, "result")
       )
         throw Error("Invalid host response");
+      if (request.action === "status") {
+        const proof = response.result;
+        const supported =
+          proof &&
+          typeof proof === "object" &&
+          !Array.isArray(proof) &&
+          proof.ready === true &&
+          proof.machineId === host &&
+          proof.cachedResumeVersion === 1;
+        await this.state.transaction((tx) =>
+          tx.put(`boat-cached-resume/${host}`, supported ? 1 : 0),
+        );
+      }
       return response;
     } catch {
       throw new HostTransportError(

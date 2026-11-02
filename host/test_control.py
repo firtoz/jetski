@@ -55,6 +55,101 @@ class ControlTests(unittest.TestCase):
             self.run_command,
         )
 
+    def cached_source(self):
+        from local_checkpoint import LocalCheckpoint
+        import shutil
+
+        self.request("claim", dict(lease=self.lease))
+        source = self.data / self.lease["assignmentId"]
+        (source / "workspace").mkdir(parents=True)
+        (source / "home").mkdir()
+        (source / "workspace/bytes").write_bytes(b"exact\x00bytes" * 1000)
+        os.chmod(source / "workspace/bytes", 0o640)
+        os.link(source / "workspace/bytes", source / "home/hard")
+        (source / "home/link").symlink_to("/workspace/bytes")
+        archives = self.root / "archives"
+        archive = archives / (self.lease["assignmentId"] + ".tgz")
+        captured = capture({name: source / name for name in ("workspace", "home")}, archive)
+        fence = Fence(self.root / "control/slot")
+        with fence.locked():
+            fence.write({**fence.read(), "checkpoint": captured, "runtime": {"phase": "removed"}})
+        publication = dict(checkpointId=str(uuid.uuid4()), sha256=captured["sha256"])
+        fence.close(self.lease)
+        fence.release(self.lease, lambda *_: True, publication)
+        LocalCheckpoint(fence, archives).publish(self.lease, publication)
+        shutil.rmtree(source)
+        archive.unlink(missing_ok=True)
+        next_lease = {**self.lease, "generation": 2, "assignmentId": str(uuid.uuid4())}
+        return dict(
+            lease=next_lease,
+            image=self.config["images"][0],
+            checkpointId=publication["checkpointId"],
+            sha256=captured["sha256"],
+            bytes=captured["bytes"],
+            cpus=2,
+            memoryMb=2048,
+        )
+
+    def test_cached_resume_composes_verified_import_and_create_with_replay(self):
+        payload = self.cached_source()
+        result = self.request("resume-cached", payload)
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["runtime"]["configuration"]["cpus"], 2)
+        self.assertEqual(self.request("resume-cached", payload), result)
+        self.assertEqual(len(self.calls), 1, "lost ACK replay must not execute create again")
+        restored = self.data / payload["lease"]["assignmentId"]
+        self.assertEqual((restored / "workspace/bytes").read_bytes(), b"exact\x00bytes" * 1000)
+        self.assertEqual(
+            (restored / "workspace/bytes").stat().st_ino, (restored / "home/hard").stat().st_ino
+        )
+        self.assertEqual(os.readlink(restored / "home/link"), "/workspace/bytes")
+        self.assertEqual((restored / "workspace/bytes").stat().st_mode & 0o777, 0o640)
+        for wrong in (dict(payload, sha256="b" * 64), dict(payload, lease=self.lease)):
+            with self.assertRaises(ValueError):
+                self.request("resume-cached", wrong)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_cached_resume_corruption_misses_without_execution(self):
+        payload = self.cached_source()
+        cached = self.root / "archives/cache/archive.tgz"
+        raw = cached.read_bytes()
+        cached.write_bytes(raw[:-1] + bytes([raw[-1] ^ 1]))
+        result = self.request("resume-cached", payload)
+        self.assertFalse(result["ready"])
+        self.assertIsNone(result["runtime"])
+        self.assertEqual(self.calls, [])
+        self.assertFalse((self.data / payload["lease"]["assignmentId"]).exists())
+        state = Fence(self.root / "control/slot").read()
+        self.assertTrue(state["import"]["cacheRejected"])
+        self.assertNotIn("runtime", state)
+
+    def test_cached_resume_lost_create_ack_observes_existing_runtime(self):
+        payload = self.cached_source()
+        from runtime import PodmanRuntime as Runtime
+
+        create = Runtime.create
+
+        def interrupted(runtime, *args):
+            create(runtime, *args)
+            raise OSError("create ACK lost")
+
+        with patch.object(Runtime, "create", interrupted):
+            with self.assertRaisesRegex(OSError, "ACK lost"):
+                self.request("resume-cached", payload)
+        self.assertTrue(self.request("resume-cached", payload)["ready"])
+        self.assertEqual(len(self.calls), 1)
+
+    def test_cached_resume_never_replays_uncertain_creation(self):
+        payload = self.cached_source()
+        self.assertTrue(self.request("resume-cached", payload)["ready"])
+        fence = Fence(self.root / "control/slot")
+        with fence.locked():
+            state = fence.read()
+            fence.write({**state, "runtime": {**state["runtime"], "phase": "creating"}})
+        with self.assertRaisesRegex(ValueError, "runtime_already_admitted"):
+            self.request("resume-cached", payload)
+        self.assertEqual(len(self.calls), 1)
+
     def test_private_mapping_uses_distinct_storage_ownership_and_fenced_configuration(self):
         self.request("claim", dict(lease=self.lease))
         engine = types.SimpleNamespace(pw_uid=os.getuid() + 17, pw_gid=os.getgid() + 17)

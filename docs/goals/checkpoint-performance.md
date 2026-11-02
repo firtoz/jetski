@@ -59,7 +59,7 @@ older historical time, for acceptance.
 
 ## Current candidate and evidence
 
-Current runtime `27720c6`, qualification32, includes the bounded save pipeline,
+Published runtime `27720c6`, qualification32, includes the bounded save pipeline,
 256 KiB independent members in8 MiB packs, optional16 MiB raw import and native
 R2 verified-buffer uploads. Restore now hashes, validates and unpacks once into
 private staging, applies final metadata and syncs primary inodes once, then
@@ -107,29 +107,43 @@ commit and clean Git status. Final save and owned cleanup pass; provider invento
 is empty. This downstream gate is closed. Do not repeat completed functional
 checks, idle adoption or active immutable-bundle upgrades without a concrete change.
 
-A further local driver correction separates host-owned command-status observation
-from full pool reconciliation and its extra immediate status poll. Six regression
-checks pass; this correction is not included in the frozen timings above and does
-not establish a runtime speedup. Preserve those rows unchanged. The larger cold
-worker and integrity-bound fixture plan are prepared with bounded per-action
-timings and no extra host requests. Finish the corrected warm comparison and
-larger cold comparison on the same two fresh host pairs, reusing retained source
-archives. For the second pair, preserve the first pair's acknowledged history and
-explicitly select the original retained root; never rewind metadata to an older
-backup. This combines the remaining performance work into four fresh hosts. The first
-pair is admitted. Two pre-allocation setup failures were preserved and corrected:
-route readiness and a retained-root metadata assertion. Empty transactional state
-and zero active hosts were confirmed before controller cleanup; neither attempt
-consumed a host start. Current journals and recovery details remain private.
+The corrected command observer completed a further five trials per arm on one
+fresh pair, with all ten exact and both hosts/controllers retired. Median
+candidate/reference save is4.473/4.260 s, readiness3.596/1.268 s and complete
+cycle10.756/6.841 s. This fails parity; the second unchanged pair was withheld.
+Per-action measurements identify four readiness host-control calls. A follow-on
+implementation composes claim, verified local import and create in one optional
+transport call, retaining the reader lease and validating checkpoint, assignment,
+image and resources. A cache miss never creates a runtime and falls back to the
+ordinary importer. The Boat adapter enables it only after an explicit versioned
+host capability observation; older hosts keep the ordinary path. Fresh-host
+imports and checkpoint formats are unchanged.
+Build, types,259 TypeScript tests and14 host-control checks pass, including
+corruption, stale leases, lost ACK and rejected uncertain-create replay. Hosted
+performance and downstream adoption of this follow-on remain pending.
 
-Private receipts retain failed attempts, operation identities, current job handles,
-provider cleanup and conservative budget accounting. The prior77 accounted performance
-hosts were confirmed absent before admission; the first combined candidate host
-is now allocated. Four final combined cold/warm starts are reserved within the
-existing approved aggregate cap, existing wallet only. Conservative repricing
-uses confirmed retired lifetimes and historical zero-compute observations; no
-refund, included-start discount or future lifetime saving is assumed. Other
-reservations and real-grace fixtures remain untouched. No production cutover.
+The current published build also restored the larger436,207,724-byte fixture
+exactly after source deletion, including the complete filesystem and saved output.
+Its caller hit an implicit five-minute header timeout; the server recovered the
+original operation on the same host without replay. The host archive independently
+passes whole-hash restore. Preserve the failed caller and uncertain private receipt;
+core completion is independently observed. This is reliable recovery evidence,
+not a clean cold-latency win: persisted server completion took535.231 s versus
+65.192 s reference readiness, with bootstrap and raw-transfer costs still open.
+The later722.650 s caller observation includes diagnosis/reconnection and is not
+substituted for clean end-to-end timing. Client deadlines now match explicit RPC
+bounds. No extra hosts were started for diagnosis.
+
+Private receipts retain all failures, operation identities, source archives and
+latest acknowledged controller backup. All79 accounted performance hosts are
+retired. The first combined pair is complete; no second unchanged pair was allocated.
+Completed earlier qualification reservations were reconciled against their owned
+retired one-hour allocations, retaining maximum start/full-hour funding and freeing
+headroom within the unchanged approved aggregate cap. Reuse the latest backup
+and explicitly select retained roots; never rewind acknowledged history. Do not
+repeat the full client read/edit/PR workflow for unchanged business behavior.
+Qualify changed cache handling on a fresh owned host after publication. Preserve
+all other reservations, clocks, roots and generations. No production cutover.
 
 ## Execution order
 
