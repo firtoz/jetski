@@ -199,91 +199,108 @@ export class PackedCheckpointTransfer {
     const preparing = Array.from({ length: readLimit }, () =>
       Promise.resolve(),
     );
-    for (let offset = 0; offset < pending.length; offset += concurrency) {
-      const batch = pending.slice(offset, offset + concurrency),
-        ranges = Math.floor(readLimit / Math.min(readLimit, batch.length));
-      const settled = await Promise.allSettled(
-        batch.map(async (index, batchIndex) => {
-          const group = plan[index]!;
-          if (group.kind !== "upload") throw Error("Packed upload not planned");
-          const prepare = async () => {
-            const buffer = new Uint8Array(layout.bytes[index]!);
-            const runs: Array<{ offset: number; bytes: number }> = [];
-            for (const frameIndex of group.frames) {
-              const frame = archive.frames[frameIndex]!,
-                last = runs.at(-1);
-              if (last && last.offset + last.bytes === frame.offset)
-                last.bytes += frame.bytes;
-              else runs.push({ offset: frame.offset, bytes: frame.bytes });
-            }
-            let cursor = 0;
-            for (const run of runs) {
-              for await (const part of archiveChunks(
-                source,
-                run.offset,
-                run.bytes,
-                ranges,
-              )) {
-                buffer.set(part, cursor);
-                cursor += part.length;
-              }
-            }
-            if (cursor !== buffer.length)
-              throw Error("Packed source extent mismatch");
-            let verified = 0;
-            for (const frameIndex of group.frames) {
-              const frame = archive.frames[frameIndex]!,
-                end = verified + frame.bytes;
-              if ((await sha(buffer.subarray(verified, end))) !== frame.sha256)
-                throw Error("Packed source frame integrity failure");
-              verified = end;
-            }
-            return buffer;
-          };
-          let buffer: Awaited<ReturnType<typeof prepare>>;
-          if (batch.length <= readLimit) buffer = await prepare();
-          else {
-            const lane = batchIndex % readLimit;
-            const prepared = preparing[lane]!.then(prepare);
-            preparing[lane] = prepared.then(() => undefined);
-            // Preserve a rejected lane for queued siblings, while observing the
-            // tail even when no later task occupies this lane.
-            void preparing[lane]!.catch(() => undefined);
-            buffer = await prepared;
+    // A rolling window keeps free slots useful while a slower sibling uploads.
+    // Preparation lanes still serialize ordered streams. No new work is admitted
+    // after an observed failure, and every admitted sibling drains before return.
+    let cursor = 0,
+      failed = false;
+    const ranges = Math.floor(
+      readLimit / Math.min(readLimit, concurrency, pending.length || 1),
+    );
+    const upload = async (index: number, ordinal: number) => {
+      const group = plan[index]!;
+      if (group.kind !== "upload") throw Error("Packed upload not planned");
+      const prepare = async () => {
+        const buffer = new Uint8Array(layout.bytes[index]!);
+        const runs: Array<{ offset: number; bytes: number }> = [];
+        for (const frameIndex of group.frames) {
+          const frame = archive.frames[frameIndex]!,
+            last = runs.at(-1);
+          if (last && last.offset + last.bytes === frame.offset)
+            last.bytes += frame.bytes;
+          else runs.push({ offset: frame.offset, bytes: frame.bytes });
+        }
+        let cursor = 0;
+        for (const run of runs) {
+          for await (const part of archiveChunks(
+            source,
+            run.offset,
+            run.bytes,
+            ranges,
+          )) {
+            buffer.set(part, cursor);
+            cursor += part.length;
           }
-          const object = {
-            owner: fence.owner,
-            sandbox: fence.sandbox,
-            id: this.newId(),
-            bytes: buffer.length,
-            sha256: await sha(buffer),
-          };
-          await this.registry.packedSaves.object(fence, id, index, object);
-          let position = 0;
-          const proofs = group.frames.map((frameIndex) => {
-            const frame = archive.frames[frameIndex]!,
-              start = position;
-            position += frame.bytes;
-            return { start, endExclusive: position, sha256: frame.sha256 };
-          });
-          const stored = await this.objects.put(
-            { owner: object.owner, sandbox: object.sandbox, id: object.id },
-            (async function* () {
-              yield buffer;
-            })(),
-            { bytes: object.bytes, sha256: object.sha256, ranges: proofs },
-          );
-          if (!sameObject(stored, object))
-            throw Error("Packed upload receipt mismatch");
-          return { index, object };
-        }),
-      );
-      for (const result of settled) {
-        if (result.status === "rejected") throw result.reason;
-        physical[result.value.index] = result.value.object;
-        uploadedBytes += result.value.object.bytes;
+        }
+        if (cursor !== buffer.length)
+          throw Error("Packed source extent mismatch");
+        let verified = 0;
+        for (const frameIndex of group.frames) {
+          const frame = archive.frames[frameIndex]!,
+            end = verified + frame.bytes;
+          if ((await sha(buffer.subarray(verified, end))) !== frame.sha256)
+            throw Error("Packed source frame integrity failure");
+          verified = end;
+        }
+        return buffer;
+      };
+      let buffer: Awaited<ReturnType<typeof prepare>>;
+      if (concurrency <= readLimit) buffer = await prepare();
+      else {
+        const lane = ordinal % readLimit;
+        const prepared = preparing[lane]!.then(prepare);
+        preparing[lane] = prepared.then(() => undefined);
+        // Preserve a rejected lane for queued siblings, while observing the
+        // tail even when no later task occupies this lane.
+        void preparing[lane]!.catch(() => undefined);
+        buffer = await prepared;
       }
-    }
+      const object = {
+        owner: fence.owner,
+        sandbox: fence.sandbox,
+        id: this.newId(),
+        bytes: buffer.length,
+        sha256: await sha(buffer),
+      };
+      await this.registry.packedSaves.object(fence, id, index, object);
+      let position = 0;
+      const proofs = group.frames.map((frameIndex) => {
+        const frame = archive.frames[frameIndex]!,
+          start = position;
+        position += frame.bytes;
+        return { start, endExclusive: position, sha256: frame.sha256 };
+      });
+      const stored = await this.objects.put(
+        { owner: object.owner, sandbox: object.sandbox, id: object.id },
+        (async function* () {
+          yield buffer;
+        })(),
+        { bytes: object.bytes, sha256: object.sha256, ranges: proofs },
+      );
+      if (!sameObject(stored, object))
+        throw Error("Packed upload receipt mismatch");
+      physical[index] = object;
+      uploadedBytes += object.bytes;
+    };
+    const settled = await Promise.allSettled(
+      Array.from(
+        { length: Math.min(concurrency, pending.length) },
+        async () => {
+          while (!failed && cursor < pending.length) {
+            const ordinal = cursor++,
+              index = pending[ordinal]!;
+            try {
+              await upload(index, ordinal);
+            } catch (error) {
+              failed = true;
+              throw error;
+            }
+          }
+        },
+      ),
+    );
+    for (const result of settled)
+      if (result.status === "rejected") throw result.reason;
     if (physical.some((object) => object === undefined))
       throw Error("Packed save incomplete");
     const metadata: PackedArchive = {

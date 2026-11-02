@@ -106,7 +106,11 @@ cold comparison measured101.045 versus218.556 s whole readiness, with exact
 filesystem, saved output and repeated saves; both hosts/controllers are retired.
 Bootstrap variation is substantial and import-only candidate timing was not
 separately measured. No new warm matrix was run for this changed cold path.
-Next, complete pinned downstream read/edit/publication/save/resume/replacement. No production
+The remaining large-save implementation now uses a bounded rolling upload window
+instead of waiting at each group barrier. Its eight affected pack checks, build,
+types and lint pass; live performance remains unmeasured. Host assets and archive
+formats are unchanged. Next, measure that changed first-save path and complete
+pinned downstream read/edit/publication/save/resume/replacement. No production
 cutover is authorized. Routine receipts remain private.
 
 ## Execution order

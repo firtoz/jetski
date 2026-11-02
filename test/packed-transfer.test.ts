@@ -373,3 +373,50 @@ test("ordered source preparation overlaps bounded storage uploads", {
   assert.equal(cursor, archive.bytes.length);
   assert.deepEqual(await f.read("ordered"), archive.bytes);
 });
+
+test("rolling pack window crosses a slow upload without exceeding its buffer budget", {
+  timeout: 2000,
+}, async (t) => {
+  const f = await fixture(t),
+    archive = capture(Array.from({ length: 8 }, () => randomBytes(700_000))),
+    put = f.store.put.bind(f.store),
+    release = deferred();
+  let started = 0,
+    active = 0,
+    peak = 0,
+    cursor = 0,
+    crossed = false;
+  const limit = f.store.transferConcurrency;
+  f.store.put = async (...args) => {
+    const ordinal = started++;
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      if (started > limit) {
+        crossed = true;
+        release.resolve();
+      }
+      if (ordinal === 0) await release.promise;
+      return await put(...args);
+    } finally {
+      active--;
+    }
+  };
+  await f.transfer.save(f.fence, "rolling", archive.manifest, {
+    readConcurrency: 1,
+    read: async (offset, bytes) => {
+      assert.equal(offset, cursor);
+      cursor += bytes;
+      return archive.bytes.subarray(offset, offset + bytes);
+    },
+  });
+  assert.equal(
+    crossed,
+    true,
+    "new pack starts while the first upload remains pending",
+  );
+  assert.ok(peak <= limit);
+  assert.equal(active, 0);
+  assert.equal(cursor, archive.bytes.length);
+  assert.deepEqual(await f.read("rolling"), archive.bytes);
+});
