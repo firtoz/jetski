@@ -201,21 +201,35 @@ export class PackedCheckpointTransfer {
           const group = plan[index]!;
           if (group.kind !== "upload") throw Error("Packed upload not planned");
           const buffer = new Uint8Array(layout.bytes[index]!);
-          let cursor = 0;
+          const runs: Array<{ offset: number; bytes: number }> = [];
           for (const frameIndex of group.frames) {
             const frame = archive.frames[frameIndex]!,
-              start = cursor;
+              last = runs.at(-1);
+            if (last && last.offset + last.bytes === frame.offset)
+              last.bytes += frame.bytes;
+            else runs.push({ offset: frame.offset, bytes: frame.bytes });
+          }
+          let cursor = 0;
+          for (const run of runs) {
             for await (const part of archiveChunks(
               source,
-              frame.offset,
-              frame.bytes,
+              run.offset,
+              run.bytes,
               ranges,
             )) {
               buffer.set(part, cursor);
               cursor += part.length;
             }
-            if ((await sha(buffer.subarray(start, cursor))) !== frame.sha256)
+          }
+          if (cursor !== buffer.length)
+            throw Error("Packed source extent mismatch");
+          let verified = 0;
+          for (const frameIndex of group.frames) {
+            const frame = archive.frames[frameIndex]!,
+              end = verified + frame.bytes;
+            if ((await sha(buffer.subarray(verified, end))) !== frame.sha256)
               throw Error("Packed source frame integrity failure");
+            verified = end;
           }
           const object = {
             owner: fence.owner,

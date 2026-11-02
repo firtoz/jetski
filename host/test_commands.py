@@ -31,6 +31,33 @@ class CommandTests(unittest.TestCase):
         self.commands = Commands(self.fence, self.base / "outputs", self.launched.append)
         self.command = str(uuid.uuid4())
 
+    def test_terminal_snapshot_is_bounded_hashed_and_fenced(self):
+        import hashlib
+
+        self.commands.start(self.lease, self.command, ["true"])
+        self.assertIsNone(self.commands.snapshot(self.lease, self.command))
+        output = self.base / "outputs" / self.lease["assignmentId"] / self.command
+        output.mkdir(parents=True)
+        data = bytes(range(256)) * 32
+        (output / "stdout").write_bytes(data)
+        (output / "stderr").write_bytes(b"x" * 8193)
+        with self.fence.locked():
+            state = self.fence.read()
+            state["commands"][self.command].update(phase="succeeded", exitCode=0)
+            self.fence.write(state)
+        snapshot = self.commands.snapshot(self.lease, self.command)
+        self.assertEqual(snapshot["version"], 1)
+        self.assertEqual(base64.b64decode(snapshot["channels"]["stdout"]["base64"]), data)
+        self.assertEqual(snapshot["channels"]["stdout"]["sha256"], hashlib.sha256(data).hexdigest())
+        self.assertIsNone(snapshot["channels"]["stderr"])
+        (output / "stderr").unlink()
+        empty = self.commands.snapshot(self.lease, self.command)["channels"]["stderr"]
+        self.assertEqual(empty, dict(base64="", sha256=hashlib.sha256(b"").hexdigest()))
+        for lease in (dict(self.lease, owner="foreign"), dict(self.lease, generation=2)):
+            with self.assertRaises(ValueError):
+                self.commands.snapshot(lease, self.command)
+        self.assertEqual(self.launched, [self.command])
+
     def test_bounded_wait_observes_completion_without_relaunch(self):
         self.commands.start(self.lease, self.command, ["true"])
         clock = [0.0]

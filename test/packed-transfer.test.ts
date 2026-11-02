@@ -305,3 +305,32 @@ test("revoking a packed writer while a PUT is pending cannot publish", async (t)
   await rejected;
   assert.equal(await f.registry.root(f.fence, "save"), undefined);
 });
+
+test("contiguous small members share bounded reads without losing individual hashes", async (t) => {
+  const f = await fixture(t),
+    raw = Array.from({ length: 12 }, () => randomBytes(128 * 1024)),
+    data = capture(raw);
+  const calls: Array<{ offset: number; bytes: number }> = [];
+  const transfer = new CheckpointTransfer(f.store, f.registry, undefined, {
+    packBytes: 8 * 1024 * 1024,
+  });
+  const result = await transfer.save(f.fence, "coalesced", data.manifest, {
+    ...data.source,
+    read: async (offset, bytes) => {
+      calls.push({ offset, bytes });
+      return data.source.read(offset, bytes);
+    },
+  });
+  assert.equal(result.root.frames.length, 1);
+  assert.ok(
+    calls.length < raw.length,
+    "cold save avoids one control round trip per logical member",
+  );
+  assert.ok(calls.every((call) => call.bytes <= 256 * 1024));
+  assert.ok(calls.some((call) => call.bytes > data.manifest.frames[0]!.bytes));
+  assert.equal(
+    calls.reduce((total, call) => total + call.bytes, 0),
+    data.bytes.length,
+  );
+  assert.deepEqual(await f.read("coalesced"), data.bytes);
+});

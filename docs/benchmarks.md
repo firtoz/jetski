@@ -107,3 +107,17 @@ stopped-state checks; it also batches independent output retention and drains
 failed siblings before allowing cleanup. Capture and control round trips remain
 optimization targets. Later candidates still require the complete replicated
 comparison, large cold/replacement recovery and downstream qualification.
+
+
+Two further diagnostic hosts are excluded from the comparison table. One exposed
+a priming failure: negotiated source ranges reached the controller intact, but a
+shared decoder still enforced the ordinary output limit. The retained save journal
+recovered on that same host after the bound was fixed; three exact cycles passed.
+Both diagnostic hosts were retired, bringing the follow-on total to sixteen starts.
+
+Local encoding screens informed later candidates: adaptive gzip reduced a16 MiB
+binary encode from307 to24 ms, and a source-like mix from180 to164 ms with0.36%
+more encoded bytes. With physical packing, a64 MiB fixture's4 KiB edit changed
+259,147 encoded bytes at256 KiB geometry versus1,045,819 at1 MiB. Both initial
+archives used nine8 MiB packs; capture measured349 versus377 ms. These local
+measurements do not establish end-to-end speed.

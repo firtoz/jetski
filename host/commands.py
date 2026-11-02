@@ -9,6 +9,7 @@ import base64
 import contextlib
 import fcntl
 import json
+import hashlib
 import os
 import pathlib
 import sys
@@ -22,6 +23,7 @@ from fence import Fence, identity  # noqa: E402
 OUTPUT_BYTES = 16 * 1024 * 1024
 QUIESCE_COMMAND_SECONDS = 10
 START_WAIT_MAX_MS = 1000
+SNAPSHOT_BYTES = 8192
 
 
 def command_id(value):
@@ -214,6 +216,22 @@ class Commands:
             if receipt["phase"] not in ("queued", "running") or remaining <= 0:
                 return receipt
             time.sleep(min(0.01, remaining))
+
+    def snapshot(self, raw, command):
+        """Immutable terminal output only; large channels retain cursor streaming."""
+        receipt = self.status(raw, command)
+        if receipt["phase"] not in ("succeeded", "failed", "cancelled"):
+            return None
+        channels = {}
+        for channel in ("stdout", "stderr"):
+            value = self.output(raw, command, channel, 0, SNAPSHOT_BYTES)
+            channels[channel] = None
+            if value["terminal"]:
+                data = base64.b64decode(value["base64"])
+                channels[channel] = dict(
+                    base64=value["base64"], sha256=hashlib.sha256(data).hexdigest()
+                )
+        return dict(version=1, channels=channels)
 
     def output(self, raw, command, channel, offset, count):
         lease = identity(raw)

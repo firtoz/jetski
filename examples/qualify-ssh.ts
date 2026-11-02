@@ -214,6 +214,29 @@ try {
   await request("command-start", { ...payload, commandId, argv });
   const firstCommand = await waitCommand(commandId);
   assert.equal(firstCommand.phase, "succeeded", JSON.stringify(firstCommand));
+  const snapshot = firstCommand.outputSnapshot as {
+    version: number;
+    channels: {
+      stdout: { base64: string; sha256: string };
+      stderr: { base64: string; sha256: string };
+    };
+  };
+  assert.equal(snapshot.version, 1);
+  const observedOutput = Buffer.from("hello\0world");
+  assert.deepEqual(
+    Buffer.from(snapshot.channels.stdout.base64, "base64"),
+    observedOutput,
+  );
+  assert.equal(
+    snapshot.channels.stdout.sha256,
+    createHash("sha256").update(observedOutput).digest("hex"),
+  );
+  const observedStderr = Buffer.from(snapshot.channels.stderr.base64, "base64");
+  assert.equal(
+    snapshot.channels.stderr.sha256,
+    createHash("sha256").update(observedStderr).digest("hex"),
+  );
+
   // An acknowledged upload replay observes history, never overwrites newer workload bytes.
   assert.deepEqual(
     await request("file-write-finish", { ...payload, uploadId }),

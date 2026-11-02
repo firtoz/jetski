@@ -156,8 +156,13 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
             columns=payload.get("columns", 80),
         )
         if wait_ms:
-            return commands.wait(lease, payload.get("commandId"), wait_ms)
-        return receipt
+            receipt = commands.wait(lease, payload.get("commandId"), wait_ms)
+        snapshot = (
+            commands.snapshot(lease, payload.get("commandId"))
+            if receipt["phase"] in ("succeeded", "failed", "cancelled")
+            else None
+        )
+        return {**receipt, "outputSnapshot": snapshot} if snapshot is not None else receipt
     if action in ("terminal-input", "terminal-input-status"):
         inputs = TerminalInputs(fence, CONTROL_ROOT / "terminal-input")
         if action == "terminal-input":
@@ -166,7 +171,13 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
             )
         return inputs.status(lease, payload.get("commandId"), payload.get("inputId"))
     if action == "command-status":
-        return commands.status(lease, payload.get("commandId"))
+        receipt = commands.status(lease, payload.get("commandId"))
+        snapshot = (
+            commands.snapshot(lease, payload.get("commandId"))
+            if receipt["phase"] in ("succeeded", "failed", "cancelled")
+            else None
+        )
+        return {**receipt, "outputSnapshot": snapshot} if snapshot is not None else receipt
     if action == "command-output":
         return commands.output(
             lease,

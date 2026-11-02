@@ -684,3 +684,10 @@ members. Smaller members can reduce incremental transfer with physical packing;
 measure your workload. The admitted geometry survives controller restart and
 settings changes. Large captures grow members toward4 MiB to bound metadata;
 existing4 MiB archives stay readable. Only an opted-in size is sent to the host.
+
+
+Completed output channels up to8 KiB can accompany an authenticated terminal
+command receipt. The controller verifies and durably caches those bytes by command
+identity, preserving status/output reconnects without another host request. Larger
+channels keep bounded cursor streaming. This cache never substitutes for verified
+checkpoint publication or permits replay of uncertain commands.

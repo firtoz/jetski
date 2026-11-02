@@ -2,7 +2,15 @@ import { CheckpointCopy } from "./checkpoint-copy.js";
 import { CheckpointHistory } from "./checkpoint-history.js";
 import { checkpointArchive } from "./checkpoint-layout.js";
 import { CheckpointRegistry } from "./checkpoints.js";
-import { CommandOutputStore, type OutputChannel } from "./command-output.js";
+import {
+  CommandOutputStore,
+  encodeBase64,
+  type InlineOutput,
+  OUTPUT_CHANNELS,
+  OUTPUT_CHUNK,
+  type OutputChannel,
+  verifyOutputProof,
+} from "./command-output.js";
 import {
   CAPTURE_FRAME_BYTES,
   type CheckpointStore,
@@ -85,6 +93,7 @@ type ResumeRecord = {
 };
 type CommandRecord = {
   outcome?: Json;
+  outputSnapshot?: Record<OutputChannel, InlineOutput | null>;
   terminal?: boolean;
   id: string;
   lease: HostLease;
@@ -1363,18 +1372,45 @@ export class SandboxManager {
     command: CommandRecord,
     result: Json,
   ): Promise<Json> {
-    if (
-      !result ||
-      typeof result !== "object" ||
-      Array.isArray(result) ||
-      !["succeeded", "failed", "cancelled"].includes(String(result.phase))
-    )
+    if (!result || typeof result !== "object" || Array.isArray(result))
       return result;
+    if (!["succeeded", "failed", "cancelled"].includes(String(result.phase))) {
+      if (Object.hasOwn(result, "outputSnapshot"))
+        throw Error("Unsettled command output snapshot");
+      return result;
+    }
+    result = structuredClone(result);
     if (result.id !== command.id)
       throw Error("Command outcome identity conflict");
+    let outputSnapshot: Record<OutputChannel, InlineOutput | null> | undefined;
+    if (Object.hasOwn(result, "outputSnapshot")) {
+      const raw = result.outputSnapshot;
+      if (
+        !raw ||
+        typeof raw !== "object" ||
+        Array.isArray(raw) ||
+        Object.keys(raw).sort().join(",") !== "channels,version" ||
+        raw.version !== 1 ||
+        !raw.channels ||
+        typeof raw.channels !== "object" ||
+        Array.isArray(raw.channels) ||
+        Object.keys(raw.channels).sort().join(",") !== "stderr,stdout"
+      )
+        throw Error("Invalid command output snapshot");
+      outputSnapshot = { stdout: null, stderr: null };
+      for (const channel of OUTPUT_CHANNELS) {
+        const proof = raw.channels[channel];
+        if (proof === null) continue;
+        await verifyOutputProof(proof as InlineOutput, true);
+        outputSnapshot[channel] = structuredClone(proof) as InlineOutput;
+      }
+      result = { ...result };
+      delete result.outputSnapshot;
+    }
+    const status = result;
     await this.state.transaction((tx) => {
-      const key = `command/${scopeKey(scope)}/${command.id}`;
-      const current = tx.get<CommandRecord>(key);
+      const key = `command/${scopeKey(scope)}/${command.id}`,
+        current = tx.get<CommandRecord>(key);
       if (
         !current ||
         canonical(current.lease) !== canonical(command.lease) ||
@@ -1383,13 +1419,72 @@ export class SandboxManager {
         throw Error("Command authority changed");
       if (
         current.outcome !== undefined &&
-        canonical(current.outcome) !== canonical(result)
+        canonical(current.outcome) !== canonical(status)
       )
         throw Error("Command outcome identity conflict");
-      if (current.outcome === undefined)
-        tx.put(key, { ...current, outcome: result });
+      if (
+        outputSnapshot &&
+        current.outputSnapshot &&
+        canonical(outputSnapshot) !== canonical(current.outputSnapshot)
+      )
+        throw Error("Command output identity conflict");
+      if (
+        current.outcome === undefined ||
+        (outputSnapshot && !current.outputSnapshot)
+      )
+        tx.put(key, {
+          ...current,
+          outcome: structuredClone(status),
+          ...(outputSnapshot
+            ? { outputSnapshot: structuredClone(outputSnapshot) }
+            : {}),
+        });
     });
-    return result;
+    return status;
+  }
+  private async readCommandSource(
+    command: CommandRecord,
+    channel: OutputChannel,
+    offset: number,
+    bytes: number,
+  ): Promise<Json> {
+    if (
+      !OUTPUT_CHANNELS.includes(channel) ||
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(bytes) ||
+      bytes < 1 ||
+      bytes > OUTPUT_CHUNK
+    )
+      throw Error("Invalid command output range");
+    const proof = command.outputSnapshot?.[channel];
+    if (proof) {
+      if (
+        !command.outcome ||
+        typeof command.outcome !== "object" ||
+        Array.isArray(command.outcome) ||
+        !["succeeded", "failed", "cancelled"].includes(
+          String(command.outcome.phase),
+        )
+      )
+        throw Error("Command snapshot outcome missing");
+      const data = await verifyOutputProof(proof, true);
+      if (offset > data.length) throw Error("Output cursor beyond end");
+      const part = data.subarray(offset, offset + bytes);
+      return {
+        base64: encodeBase64(part),
+        nextOffset: offset + part.length,
+        terminal: offset + part.length === data.length,
+      };
+    }
+    return this.request(command.lease, "command-output", {
+      lease: command.lease,
+      image: command.image,
+      commandId: command.id,
+      channel,
+      offset,
+      bytes,
+    });
   }
   async commandStatus(scope: Scope, id: string): Promise<Json> {
     const command = await this.command(scope, id);
@@ -1428,14 +1523,7 @@ export class SandboxManager {
       command.id,
       status,
       (channel, offset, bytes) =>
-        this.request(command.lease, "command-output", {
-          lease: command.lease,
-          image: command.image,
-          commandId: command.id,
-          channel,
-          offset,
-          bytes,
-        }),
+        this.readCommandSource(command, channel, offset, bytes),
       beforeUpload,
     );
   }
@@ -1452,13 +1540,6 @@ export class SandboxManager {
     const fence = { ...scope, generation: sandbox.generation };
     if ((await this.outputs.retained(fence, id)) !== undefined)
       return this.outputs.read(fence, id, channel, offset, bytes);
-    return this.request(command.lease, "command-output", {
-      lease: command.lease,
-      image: command.image,
-      commandId: id,
-      channel,
-      offset,
-      bytes,
-    });
+    return this.readCommandSource(command, channel, offset, bytes);
   }
 }

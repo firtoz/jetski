@@ -63,7 +63,10 @@ async function sha(bytes: Uint8Array) {
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
 }
-export function inlineOutputBytes(proof: InlineOutput): Uint8Array {
+export function inlineOutputBytes(
+  proof: InlineOutput,
+  allowEmpty = false,
+): Uint8Array {
   if (
     !proof ||
     typeof proof !== "object" ||
@@ -74,7 +77,16 @@ export function inlineOutputBytes(proof: InlineOutput): Uint8Array {
   )
     throw Error("Invalid inline output proof");
   const bytes = decodeBase64(proof.base64, DEFAULTS.maxInlineOutputBytes);
-  if (!bytes.length) throw Error("Empty inline output proof");
+  if (!bytes.length && !allowEmpty) throw Error("Empty inline output proof");
+  return bytes;
+}
+export async function verifyOutputProof(
+  proof: InlineOutput,
+  allowEmpty = false,
+): Promise<Uint8Array> {
+  const bytes = inlineOutputBytes(proof, allowEmpty);
+  if ((await sha(bytes)) !== proof.sha256)
+    throw Error("Output proof integrity failure");
   return bytes;
 }
 export async function verifyInlineOutputs(root: CheckpointRoot): Promise<void> {

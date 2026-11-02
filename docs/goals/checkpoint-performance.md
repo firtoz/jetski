@@ -55,72 +55,46 @@ as a substitute for a contemporaneous comparison.
 | Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.                  |
 | Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; latest embedded save 4.052 s vs3.007 s reference; parity open.              |
 | Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.                |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 224 TypeScript/107 Python tests and live R2 recovery pass; new hosted replacement open.                             |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 231 TypeScript/108 Python tests and live R2 recovery pass; new hosted replacement open.                             |
 | Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Six separate five-per-arm screens, one pretrial failure preserved; all owned hosts retired; final replication open. |
 | Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                            |
 | Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.                   |
 
-## Current local screen
+## Current candidate and evidence
 
-With physical packing, the local64 MiB fixture changed259,147 encoded bytes
-using256 KiB members, versus1,045,819 bytes using1 MiB members. Both initial
-archives occupied nine8 MiB packs; local capture measured349 versus377 ms.
-The next hosted candidate opts into256 KiB members; the general default remains
-1 MiB. Geometry is persisted per shutdown, grows toward4 MiB for large archives,
-and never narrows the accepted bounds of old checkpoints. These are local encoding
-measurements, not end-to-end timing. Local and live R2 recovery checks preserve
-acknowledgement-loss and source-deleted exact reconstruction evidence.
+The source now includes bounded verification/transfer concurrency, verified
+physical packs, adaptive gzip, atomic local-cache publication, negotiated4 MiB
+imports and replay-safe host finalization. It also persists terminal outcomes and
+bounded output proofs, overlaps capture with output upload, and coalesces adjacent
+source reads. Every original publication, fencing and failed-sibling barrier stays
+required. Stable operator choices are documented in [standalone.md](../standalone.md).
 
-The [hosted screens](../benchmarks.md#follow-on-checkpoint-optimization-screens)
-remain below target. The latest embedded native-store composition measured
-4.052 s save versus 3.007 s reference, and 7.198 s whole cycle versus 4.820 s.
-All completed oracles pass; the uncertain earlier setup remains preserved, and
-all sixteen test and diagnostic hosts are retired. Different controller compositions are reported
-separately. None closes the replicated comparison gate.
+The next hosted candidate selects256 KiB capture members,8 MiB packs and the
+opt-in8192-byte inline-output threshold. General defaults remain1 MiB members and
+inline output disabled. Geometry is persisted per shutdown; large captures grow
+toward4 MiB. Old4 MiB archives and output format1 remain readable. Format2 inline
+bytes require a supporting reader when rolling back controller binaries.
 
-Adaptive standard-gzip sampling now selects stored members for incompressible
-frames and level-one compression for compressible members. In the local screen,
-16 MiB binary encoding fell from307 to24 ms, while a mixed source-like fixture
-fell from180 to164 ms with0.36% more encoded bytes. These are capture-only local
-measurements, not hosted speed evidence. Every full member retains CRC and both
-compressed/expanded SHA-256 verification. Source-deleted filesystem tests pass;
-existing gzip checkpoints remain readable.
+Local quality passes231 TypeScript and108 Python tests, build, types, lint and
+Ruff. Fault checks cover lost acknowledgements, restart/settings changes, missing
+sources, exact bytes/modes/links, corrupt proofs blocking publication/read/GC and
+drained parallel failures. Mixed inline/object output also recovers exactly with
+live R2 and a restarted workerd SQLite fixture using the downstream state adapter.
+These checks do not close fresh-host or downstream staging qualification.
 
-The latest diagnostic separates host and storage timings: metadata transactions
-accounted for about1 ms per save, while repeated control requests, archive work
-and cleanup remain material. A new candidate uses atomic local-cache publication
-with cross-filesystem copy fallback, negotiated bounded1280 KiB source reads and
-one replay-safe finalization request. Every underlying cleanup receipt, publication
-check and fence remains required. Lost metadata/cleanup acknowledgements, corrupt
-cache bytes, stale leases and drained range failures pass locally. Hosted speed
-and replacement qualification for these changes remain open.
+In the local64 MiB geometry screen, changed encoded bytes fell from1,045,819
+with1 MiB members to259,147 with256 KiB members, using nine initial physical
+packs in either case. Capture measured377 versus349 ms; these are local encoding
+measurements. The [six hosted screens](../benchmarks.md#follow-on-checkpoint-optimization-screens)
+still miss parity: the latest save was4.052 versus3.007 s and complete cycle7.198
+versus4.820 s. Completed oracles pass; all sixteen comparison/diagnostic hosts are
+retired. Failures remain preserved, including a priming decoder-bound failure
+recovered on its original host. Different candidates/controllers are never pooled.
 
-The first diagnostic on this candidate stopped during priming: its larger source
-range reached the controller intact, but the shared decoder still enforced the
-ordinary output bound. Checkpoint decoding now uses the exact negotiated request
-bound; ordinary output remains unchanged. A full-size lifecycle regression passes.
-The original save journal subsequently recovered on its retained host after a
-controller update. Three exact cycles passed; the source host and controller were
-retired. The failed attempt remains recorded separately from timed comparisons.
-
-The pipeline candidate overlaps filesystem capture with output retention
-only after quiescence and stream/input settlement. Both branches drain before a
-failure escapes; neither checkpoint publication nor source release can precede
-successful output retention. Interruption tests hold each branch independently,
-reopen controller state and verify exact outputs and one archive publication.
-
-The next candidate starts capture only once an output upload can overlap it,
-persists terminal command outcomes and offers a bounded short-command start wait
-(default250 ms, operator range0–1000 ms; terminals remain immediate). Uncertain
-starts retain their original identities and never relaunch on reconnect. Local
-restart, cancellation and drained-failure checks pass; hosted parity remains open.
-
-An opt-in tiny-output path stores complete channels up to8192 bytes in durable
-transactional metadata, with full hashes and format2 roots. Partial/larger output
-uses the existing object path; old format1 roots remain readable. Local tests cover
-journal/publication ACK loss, restart with settings changed, absent sources, owner/
-generation rejection and corrupt inline data blocking publication, reads and GC.
-It remains disabled by default and needs hosted performance/client qualification.
+The next step is one frozen replicated comparison of the combined candidate,
+followed by the large cold/replacement and pinned-client staging gates. Whole
+request timings govern performance decisions; phase traces alone are not CPU
+accounting. Keep private receipts and recovery handles in the private QA handoff.
 
 ## Execution order
 
