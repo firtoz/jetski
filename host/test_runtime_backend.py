@@ -2,13 +2,35 @@ import copy
 import json
 import hashlib
 import unittest
-from runtime_backend import PodmanBackend
+import os
+import pathlib
+import tempfile
+import types
+from unittest.mock import patch
+from runtime_backend import (
+    PodmanBackend,
+    WORKLOAD_USER_NAMESPACE,
+    PREPARED_USER_NAMESPACE,
+    mapped_identity,
+    write_workload_identity,
+    read_workload_identity,
+)
 
 
 class BackendProbeTests(unittest.TestCase):
     def test_podman_probe_checks_runtime_requirements(self):
         info = dict(
-            host=dict(security=dict(rootless=True), cgroupVersion="v2"),
+            host=dict(
+                security=dict(rootless=True),
+                cgroupVersion="v2",
+                idMappings={
+                    kind: [
+                        dict(container_id=0, host_id=1001, size=1),
+                        dict(container_id=1, host_id=100000, size=65536),
+                    ]
+                    for kind in ("uidmap", "gidmap")
+                },
+            ),
             version=dict(Version="4.9.3"),
             store=dict(graphDriverName="overlay"),
         )
@@ -19,7 +41,15 @@ class BackendProbeTests(unittest.TestCase):
             return dict(exitCode=0, stdout=json.dumps(info))
 
         self.assertEqual(
-            PodmanBackend().probe(run), dict(podmanVersion="4.9.3", storageDriver="overlay")
+            PodmanBackend().probe(run),
+            dict(
+                podmanVersion="4.9.3",
+                storageDriver="overlay",
+                runtimeUid=1001,
+                runtimeGid=1001,
+                workloadUid=100999,
+                workloadGid=100999,
+            ),
         )
         self.assertEqual(calls, [["info", "--format", "json"]])
         info["store"]["graphOptions"] = {
@@ -46,7 +76,7 @@ class BackendProbeTests(unittest.TestCase):
 
     def test_image_mapping_preparation_never_starts_a_workload(self):
         image = "example/linux@sha256:" + "a" * 64
-        label = hashlib.sha256(image.encode()).hexdigest()
+        label = hashlib.sha256((image + "\0" + WORKLOAD_USER_NAMESPACE).encode()).hexdigest()
         name = "jetski-bootstrap-" + label[:32]
         image_id = "b" * 64
         container = dict(
@@ -128,6 +158,101 @@ class BackendProbeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "digest_pinned"):
             backend.prepare_image(run, "unapproved:latest")
         self.assertEqual(calls, [])
+
+    def test_observed_identity_maps_are_complete_and_unambiguous(self):
+        info = dict(
+            host=dict(
+                idMappings={
+                    kind: [
+                        dict(container_id=0, host_id=1001, size=1),
+                        dict(container_id=1, host_id=100000, size=65536),
+                    ]
+                    for kind in ("uidmap", "gidmap")
+                }
+            )
+        )
+        self.assertEqual(
+            mapped_identity(info),
+            dict(runtimeUid=1001, runtimeGid=1001, workloadUid=100999, workloadGid=100999),
+        )
+        for value in [
+            None,
+            [],
+            [dict(container_id=1, host_id=100000, size=65536)],
+            [dict(container_id=0, host_id=0, size=65536)],
+            [dict(container_id=0, host_id=1001, size=True)],
+        ]:
+            invalid = copy.deepcopy(info)
+            invalid["host"]["idMappings"]["uidmap"] = value
+            with self.assertRaises(ValueError):
+                mapped_identity(invalid)
+        invalid = copy.deepcopy(info)
+        invalid["host"]["idMappings"]["uidmap"].append(
+            dict(container_id=900, host_id=200000, size=200)
+        )
+        with self.assertRaisesRegex(ValueError, "overlapping"):
+            mapped_identity(invalid)
+        invalid = copy.deepcopy(info)
+        invalid["host"]["idMappings"]["uidmap"].append(
+            dict(container_id=70000, host_id=100000, size=200)
+        )
+        with self.assertRaisesRegex(ValueError, "overlapping"):
+            mapped_identity(invalid)
+
+    def test_storage_identity_is_atomic_immutable_and_bound_to_engine_account(self):
+        account = types.SimpleNamespace(pw_uid=1001, pw_gid=1001)
+        proof = dict(runtimeUid=1001, runtimeGid=1001, workloadUid=100999, workloadGid=100999)
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "identity.json"
+            write_workload_identity(account, proof, path, os.getuid())
+            original = path.read_bytes()
+            read = read_workload_identity(account, path, os.getuid())
+            self.assertEqual(read["namespace"], PREPARED_USER_NAMESPACE)
+            write_workload_identity(account, proof, path, os.getuid())
+            self.assertEqual(path.read_bytes(), original)
+            changed = {**proof, "workloadUid": 200000}
+            with self.assertRaisesRegex(ValueError, "conflict"):
+                write_workload_identity(account, changed, path, os.getuid())
+            self.assertEqual(path.read_bytes(), original)
+            with self.assertRaisesRegex(ValueError, "conflict"):
+                read_workload_identity(
+                    types.SimpleNamespace(pw_uid=1002, pw_gid=1001), path, os.getuid()
+                )
+            corrupted = json.loads(original)
+            corrupted["workloadUid"] += 1
+            path.write_text(json.dumps(corrupted))
+            with self.assertRaisesRegex(ValueError, "integrity"):
+                read_workload_identity(account, path, os.getuid())
+            path.write_bytes(original)
+            os.chmod(path, 0o644)
+            with self.assertRaisesRegex(ValueError, "unsafe_workload_identity"):
+                read_workload_identity(account, path, os.getuid())
+            os.chmod(path, 0o600)
+            path.unlink()
+            path.symlink_to("/etc/passwd")
+            with self.assertRaises(OSError):
+                read_workload_identity(account, path, os.getuid())
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, "conflict"):
+                write_workload_identity(account, {**proof, "runtimeUid": 1002}, path, os.getuid())
+            self.assertFalse(path.exists())
+
+    def test_identity_recovers_lost_directory_sync_without_replacing_acknowledged_bytes(self):
+        account = types.SimpleNamespace(pw_uid=1001, pw_gid=1001)
+        proof = dict(runtimeUid=1001, runtimeGid=1001, workloadUid=100999, workloadGid=100999)
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "identity.json"
+            with patch("archive.sync_dir", side_effect=OSError("sync interrupted")):
+                with self.assertRaisesRegex(OSError, "sync interrupted"):
+                    write_workload_identity(account, proof, path, os.getuid())
+            original = path.read_bytes()
+            write_workload_identity(account, proof, path, os.getuid())
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(len(list(path.parent.iterdir())), 1)
+            extra = path.parent / "hardlink"
+            os.link(path, extra)
+            with self.assertRaisesRegex(ValueError, "unsafe_workload_identity"):
+                read_workload_identity(account, path, os.getuid())
 
     def test_injected_probe_cannot_replace_shared_host_identity(self):
         import types

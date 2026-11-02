@@ -19,6 +19,7 @@ import uuid
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from fence import Fence, identity  # noqa: E402
+from runtime_backend import WORKLOAD_USER_NAMESPACE  # noqa: E402
 
 OUTPUT_BYTES = 16 * 1024 * 1024
 QUIESCE_COMMAND_SECONDS = 10
@@ -288,18 +289,22 @@ class Commands:
 
 
 def worker(command, expected_lease):
-    from supervisor import CONTROL_ROOT
+    from supervisor import CONTROL_ROOT, runtime_account
+    from runtime_backend import read_workload_identity
 
+    ownership = read_workload_identity(runtime_account())
     expected_lease = identity(expected_lease)
     command_id(command)
     fence = Fence(CONTROL_ROOT / "slot")
     with worker_guard(fence, expected_lease, command, create=True) as acquired:
         if not acquired:
             return
-        run_worker(command, expected_lease, fence)
+        run_worker(command, expected_lease, fence, user_namespace=ownership["namespace"])
 
 
-def run_worker(command, expected_lease, fence, backend=None):
+def run_worker(
+    command, expected_lease, fence, backend=None, user_namespace=WORKLOAD_USER_NAMESPACE
+):
     import secrets
     import threading
     from podman_exec import CompletionDecoder
@@ -345,6 +350,7 @@ def run_worker(command, expected_lease, fence, backend=None):
         pathlib.Path("/var/lib/jetski/data"),
         config["images"],
         network_mode=config.get("networkMode", "none"),
+        user_namespace=user_namespace,
     )
     root = CONTROL_ROOT / "commands" / lease["assignmentId"] / command
     spec = receipt["spec"]

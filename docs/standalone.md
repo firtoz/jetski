@@ -210,12 +210,18 @@ files to build the supervisor, and enables the private rootless Podman socket.
 After bootstrap, lifecycle and execution share that private engine. Lifecycle
 commands use the rootless remote client through the validated Unix socket;
 bootstrap alone uses local image preparation. The socket stays outside workloads.
-Bootstrap prepares the exact workload user-namespace mapping for each approved
-image before readiness. Its temporary container is never started or given
-persistent mounts, and removal must be confirmed. This can add substantial first
-boot work for large images on native overlay; it belongs to host setup, rather
-than an uncertain first assignment. A matching unstarted preparation can recover
-a lost acknowledgement; a foreign or running container blocks readiness.
+Bootstrap derives filesystem ownership from the rootless engine's observed UID/GID
+maps. Workloads remain UID/GID1000 inside their private namespace; persistent files
+use subordinate host IDs, distinct from the engine account. Aligning that private
+mapping with the image layers avoids requesting a different ownership layout.
+The immutable root-owned `/etc/jetski/workload.json` record is integrity-checked
+and bound to the engine account. Missing, corrupt, ambiguous or changed identities
+block readiness. Bootstrap also confirms its isolated preparation container was
+never started and was removed; no persistent paths are mounted into that probe.
+Existing host bundles require replacement, rather than changing identity under an
+active assignment. Checkpoint bytes, modes and link identities retain their
+existing format and validation. Trusted direct runtime embeddings can supply a
+namespace and filesystem owner; their existing default remains available.
 
 Terminal sessions use `POST /v1/sandboxes/{sandbox}/terminals` with the same
 `id`, `argv`, `cwd`, `timeout` fields as commands. Their `output` endpoint exposes

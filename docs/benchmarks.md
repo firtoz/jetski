@@ -138,3 +138,11 @@ more encoded bytes. With physical packing, a64 MiB fixture's4 KiB edit changed
 259,147 encoded bytes at256 KiB geometry versus1,045,819 at1 MiB. Both initial
 archives used nine8 MiB packs; capture measured349 versus377 ms. These local
 measurements do not establish end-to-end speed.
+
+
+A subsequent native-overlay preparation pilot timed out before admitting an
+assignment or starting timed work. The original operation, process I/O receipts
+and state backup are retained; its owned VM was retired with provider absence
+confirmed and its controller removed. The follow-on count is now26 starts, all
+retired. This rejects early preparation of the unchanged mapping as a sufficient
+solution; it is neither a successful speed trial nor evidence of lost bytes.

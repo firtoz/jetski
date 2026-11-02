@@ -12,6 +12,7 @@ import subprocess
 import select
 import struct
 import time
+from types import SimpleNamespace
 
 # Python -I excludes the script directory. Installation makes this directory
 # root-owned and not group/world writable before enabling the SSH command.
@@ -26,7 +27,7 @@ from file_upload import FileUpload  # noqa: E402
 from import_checkpoint import CheckpointImport, IMPORT_REQUEST_BYTES  # noqa: E402
 from local_checkpoint import LocalCheckpoint  # noqa: E402
 from fence import Fence, identity  # noqa: E402
-from runtime_backend import DEFAULT_BACKEND  # noqa: E402
+from runtime_backend import DEFAULT_BACKEND, WORKLOAD_USER_NAMESPACE, read_workload_identity  # noqa: E402
 from supervisor import (  # noqa: E402
     ARCHIVE_ROOT,
     CONTROL_ROOT,
@@ -39,7 +40,16 @@ from supervisor import (  # noqa: E402
 )
 
 
-def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND):
+def dispatch(
+    request,
+    config,
+    account,
+    run,
+    launch=None,
+    backend=DEFAULT_BACKEND,
+    storage_owner=None,
+    user_namespace=WORKLOAD_USER_NAMESPACE,
+):
     if (
         not isinstance(request, dict)
         or set(request) != {"version", "id", "action", "payload"}
@@ -50,7 +60,16 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
         raise ValueError("invalid_request_id")
     action = request["action"]
     if action == "status":
-        return preflight(config, account, run, backend)
+        proof = preflight(config, account, run, backend)
+        if storage_owner is not None and (
+            proof.get("workloadUid") != storage_owner.pw_uid
+            or proof.get("workloadGid") != storage_owner.pw_gid
+            or proof.get("runtimeUid") != account.pw_uid
+            or proof.get("runtimeGid") != account.pw_gid
+        ):
+            raise ValueError("runtime_ownership_changed")
+        return proof
+    persistent = storage_owner if storage_owner is not None else account
     payload = request["payload"]
     if not isinstance(payload, dict) or "lease" not in payload:
         raise ValueError("missing_lease")
@@ -80,6 +99,7 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
         "/opt/jetski/command-supervisor",
         "/opt/jetski/tcp-relay",
         network_mode=config.get("networkMode", "none"),
+        user_namespace=user_namespace,
     )
     streams = Streams(fence)
     if action == "stream-reserve":
@@ -88,7 +108,7 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
         return streams.status(lease, payload.get("streamId"))
     if action == "stream-cancel":
         return streams.cancel(lease, payload.get("streamId"))
-    importer = CheckpointImport(fence, ARCHIVE_ROOT, DATA_ROOT, account)
+    importer = CheckpointImport(fence, ARCHIVE_ROOT, DATA_ROOT, persistent)
     if action == "import-begin":
         return importer.begin(
             lease, payload.get("checkpointId"), payload.get("sha256"), payload.get("bytes")
@@ -99,7 +119,7 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
         )
     if action == "import-finish":
         return importer.finish(lease)
-    upload = FileUpload(fence, DATA_ROOT, account)
+    upload = FileUpload(fence, DATA_ROOT, persistent)
     if action == "file-write-begin":
         return upload.begin(
             lease,
@@ -121,7 +141,7 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
         return upload.finish(lease, payload.get("uploadId"))
     if action == "file-write-status":
         return upload.status(lease, payload.get("uploadId"))
-    files = Files(fence, DATA_ROOT, account.pw_uid)
+    files = Files(fence, DATA_ROOT, persistent.pw_uid)
     if action == "file-read":
         return files.read(
             lease,
@@ -202,9 +222,9 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
             for path in [assignment, assignment / "workspace", assignment / "home"]:
                 path.mkdir(mode=0o700, exist_ok=True)
                 meta = path.lstat()
-                if not stat.S_ISDIR(meta.st_mode) or meta.st_uid not in (0, account.pw_uid):
+                if not stat.S_ISDIR(meta.st_mode) or meta.st_uid not in (0, persistent.pw_uid):
                     raise ValueError("unsafe_persistent_root")
-                os.chown(path, account.pw_uid, account.pw_gid, follow_symlinks=False)
+                os.chown(path, persistent.pw_uid, persistent.pw_gid, follow_symlinks=False)
         return runtime.create(lease, payload.get("memoryMb", 512), payload.get("cpus", 1))
     if action == "quiesce":
         commands.prepare_quiesce(lease)
@@ -231,7 +251,16 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
         for step in (
             ("release", "purge-source") if released else ("remove", "release", "purge-source")
         ):
-            dispatch({**request, "action": step}, config, account, run, launch, backend)
+            dispatch(
+                {**request, "action": step},
+                config,
+                account,
+                run,
+                launch,
+                backend,
+                storage_owner=storage_owner,
+                user_namespace=user_namespace,
+            )
         return dict(finalized=True, checkpointId=publication["checkpointId"])
     if action == "remove":
         return runtime.remove(lease)
@@ -386,6 +415,8 @@ def main():
     request = decode_request(raw)
     config = configuration()
     account = runtime_account()
+    ownership = read_workload_identity(account)
+    persistent = SimpleNamespace(pw_uid=ownership["workloadUid"], pw_gid=ownership["workloadGid"])
 
     def run(args):
         return bounded_command(runtime_control_argv(account) + args, CONTROL_ROOT)
@@ -407,7 +438,15 @@ def main():
             env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
         )
 
-    result = dispatch(request, config, account, run, launch)
+    result = dispatch(
+        request,
+        config,
+        account,
+        run,
+        launch,
+        storage_owner=persistent,
+        user_namespace=ownership["namespace"],
+    )
     output = json.dumps(dict(version=1, id=request["id"], result=result), separators=(",", ":"))
     if len(output.encode("utf8")) > 2 * 1024 * 1024:
         raise ValueError("host_response_limit")

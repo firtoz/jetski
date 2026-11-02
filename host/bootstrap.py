@@ -26,7 +26,7 @@ from supervisor import (
     bounded_command,
 )
 
-from runtime_backend import DEFAULT_BACKEND
+from runtime_backend import DEFAULT_BACKEND, PREPARED_USER_NAMESPACE, write_workload_identity
 
 MODULES = (
     "archive.py",
@@ -190,11 +190,12 @@ def bootstrap(config):
         return bounded_command(runtime_argv(account) + args, CONTROL_ROOT, timeout=600)
 
     proof = preflight(config, account, run)
+    write_workload_identity(account, proof)
     for image in config["images"]:
         result = run(["pull", image])
         if result["exitCode"]:
             raise RuntimeError("approved_image_pull_failed")
-        DEFAULT_BACKEND.prepare_image(run, image)
+        DEFAULT_BACKEND.prepare_image(run, image, PREPARED_USER_NAMESPACE)
     source = pathlib.Path(__file__).resolve().parent
     for name in ("command-supervisor", "tcp-relay"):
         native = source / "native" / f"{name}.c"

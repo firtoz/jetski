@@ -55,6 +55,79 @@ class ControlTests(unittest.TestCase):
             self.run_command,
         )
 
+    def test_private_mapping_uses_distinct_storage_ownership_and_fenced_configuration(self):
+        self.request("claim", dict(lease=self.lease))
+        engine = types.SimpleNamespace(pw_uid=os.getuid() + 17, pw_gid=os.getgid() + 17)
+        payload = dict(lease=self.lease, image=self.config["images"][0])
+        from runtime_backend import PREPARED_USER_NAMESPACE
+
+        request = dict(version=1, id=str(uuid.uuid4()), action="create", payload=payload)
+        result = control.dispatch(
+            request,
+            self.config,
+            engine,
+            self.run_command,
+            storage_owner=self.account,
+            user_namespace=PREPARED_USER_NAMESPACE,
+        )
+        self.assertEqual(result["configuration"]["userNamespace"], PREPARED_USER_NAMESPACE)
+        self.assertIn("--userns=" + PREPARED_USER_NAMESPACE, self.calls[0])
+        self.assertIn("1000:1000", self.calls[0])
+        self.assertEqual(
+            (self.data / self.lease["assignmentId"] / "workspace").stat().st_uid,
+            self.account.pw_uid,
+        )
+        import hashlib
+
+        upload = str(uuid.uuid4())
+        raw = b"exact\x00bytes"
+        sha = hashlib.sha256(raw).hexdigest()
+
+        def files(action, **extra):
+            return control.dispatch(
+                dict(version=1, id=str(uuid.uuid4()), action=action, payload={**payload, **extra}),
+                self.config,
+                engine,
+                self.run_command,
+                storage_owner=self.account,
+                user_namespace=PREPARED_USER_NAMESPACE,
+            )
+
+        files(
+            "file-write-begin",
+            uploadId=upload,
+            path="/workspace/result",
+            bytes=len(raw),
+            sha256=sha,
+            mode=0o640,
+        )
+        files(
+            "file-write-chunk",
+            uploadId=upload,
+            offset=0,
+            base64=base64.b64encode(raw).decode(),
+            sha256=sha,
+        )
+        files("file-write-finish", uploadId=upload)
+        result = files("file-read", path="/workspace/result", offset=0, bytes=len(raw))
+        self.assertEqual(base64.b64decode(result["base64"]), raw)
+        self.assertEqual(
+            (self.data / self.lease["assignmentId"] / "workspace/result").stat().st_uid,
+            self.account.pw_uid,
+        )
+        from runtime_backend import WORKLOAD_USER_NAMESPACE
+
+        with self.assertRaisesRegex(ValueError, "configuration_conflict"):
+            control.dispatch(
+                request,
+                self.config,
+                engine,
+                self.run_command,
+                storage_owner=self.account,
+                user_namespace=WORKLOAD_USER_NAMESPACE,
+            )
+        self.assertEqual(len(self.calls), 1)
+
     def test_finalize_replays_after_each_interruption_and_rejects_stale_lease(self):
         self.request("claim", dict(lease=self.lease))
         archives = self.root / "archives"

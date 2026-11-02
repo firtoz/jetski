@@ -173,6 +173,9 @@ def install(data):
             if path.read_bytes() != decoded[name]:
                 raise ValueError("installed_module_corrupt")
         account = runtime_account()
+        from runtime_backend import read_workload_identity
+
+        ownership = read_workload_identity(account)
         proof = preflight(
             config,
             account,
@@ -180,6 +183,11 @@ def install(data):
                 runtime_control_argv(account) + args, CONTROL_ROOT, timeout=60
             ),
         )
+        if any(
+            proof.get(key) != ownership[key]
+            for key in ("runtimeUid", "runtimeGid", "workloadUid", "workloadGid")
+        ):
+            raise ValueError("runtime_ownership_changed")
         return {
             "version": 1,
             "digest": digest,
