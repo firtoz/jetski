@@ -207,6 +207,9 @@ reaped. An unrelated command can continue; missing cleanup proof quarantines the
 assignment and reports uncertainty. A naturally completed command retains its
 original outcome. Host bootstrap requires a C compiler and static libc development
 files to build the supervisor, and enables the private rootless Podman socket.
+After bootstrap, lifecycle and execution share that private engine. Lifecycle
+commands use the rootless remote client through the validated Unix socket;
+bootstrap alone uses local image preparation. The socket stays outside workloads.
 
 Terminal sessions use `POST /v1/sandboxes/{sandbox}/terminals` with the same
 `id`, `argv`, `cwd`, `timeout` fields as commands. Their `output` endpoint exposes

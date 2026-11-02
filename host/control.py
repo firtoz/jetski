@@ -35,7 +35,7 @@ from supervisor import (  # noqa: E402
     configuration,
     preflight,
     runtime_account,
-    runtime_argv,
+    runtime_control_argv,
 )
 
 
@@ -388,7 +388,7 @@ def main():
     account = runtime_account()
 
     def run(args):
-        return bounded_command(runtime_argv(account) + args, CONTROL_ROOT)
+        return bounded_command(runtime_control_argv(account) + args, CONTROL_ROOT)
 
     def launch(command):
         subprocess.Popen(

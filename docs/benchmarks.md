@@ -113,7 +113,14 @@ Two further diagnostic hosts are excluded from the comparison table. One exposed
 a priming failure: negotiated source ranges reached the controller intact, but a
 shared decoder still enforced the ordinary output limit. The retained save journal
 recovered on that same host after the bound was fixed; three exact cycles passed.
-Both diagnostic hosts were retired, bringing the follow-on total to sixteen starts.
+Both diagnostic hosts were retired. Three later attempts failed before timed
+trials, bringing the follow-on total to twenty-one starts, all retired. Two
+quarantined an empty runtime during initial creation; one stopped before reference
+setup. On the latest failed host, a read-only local Podman listing hung until the
+dedicated API service was stopped, then both API and CLI checks passed after
+restart. The exact upstream cause remains uncertain. These failed attempts are
+not successful comparisons; no workload commands had started on those candidate
+hosts. Private-socket lifecycle control is being qualified before further trials.
 
 Local encoding screens informed later candidates: adaptive gzip reduced a16 MiB
 binary encode from307 to24 ms, and a source-like mix from180 to164 ms with0.36%

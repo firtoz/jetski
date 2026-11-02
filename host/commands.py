@@ -309,7 +309,7 @@ def run_worker(command, expected_lease, fence, backend=None):
         CONTROL_ROOT,
         configuration,
         runtime_account,
-        runtime_argv,
+        runtime_control_argv,
         bounded_command,
     )
 
@@ -336,7 +336,7 @@ def run_worker(command, expected_lease, fence, backend=None):
         image = state["runtime"]["image"]
 
     def run(args):
-        return bounded_command(runtime_argv(account) + args, CONTROL_ROOT)
+        return bounded_command(runtime_control_argv(account) + args, CONTROL_ROOT)
 
     runtime = backend.lifecycle(
         fence,

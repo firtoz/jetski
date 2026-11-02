@@ -119,7 +119,7 @@ def install(data):
             configuration,
             preflight,
             runtime_account,
-            runtime_argv,
+            runtime_control_argv,
             bounded_command,
             CONTROL_ROOT,
         )
@@ -176,7 +176,9 @@ def install(data):
         proof = preflight(
             config,
             account,
-            lambda args: bounded_command(runtime_argv(account) + args, CONTROL_ROOT, timeout=60),
+            lambda args: bounded_command(
+                runtime_control_argv(account) + args, CONTROL_ROOT, timeout=60
+            ),
         )
         return {
             "version": 1,

@@ -92,6 +92,24 @@ def runtime_argv(account):
     ]
 
 
+def runtime_control_argv(account):
+    """Use the private running engine for lifecycle control after bootstrap.
+
+    Local engine initialization can contend with a long-lived API service's
+    storage state. Bootstrap still uses local commands before starting the
+    service; assigned workloads share the same engine as execution sessions.
+    Validate the private socket before handing it to the rootless client.
+    """
+    from podman_exec import ExecApi
+
+    connection = ExecApi(account.pw_uid).connection()
+    connection.close()
+    return runtime_argv(account) + [
+        "--remote",
+        "--url=unix:///run/user/" + str(account.pw_uid) + "/podman/podman.sock",
+    ]
+
+
 def bounded_command(argv, root, timeout=120, max_output=MAX_OUTPUT):
     if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("invalid_host_command_timeout")

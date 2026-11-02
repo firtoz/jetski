@@ -9,11 +9,31 @@ import sys
 import tempfile
 import time
 import unittest
+import types
+from unittest.mock import patch, Mock
 
-from supervisor import bounded_command
+from supervisor import bounded_command, runtime_argv, runtime_control_argv
 
 
 class SupervisorTests(unittest.TestCase):
+    def test_control_uses_same_private_engine_and_rejects_unsafe_socket(self):
+        account = types.SimpleNamespace(pw_uid=1002, pw_dir="/var/lib/jetski-runtime")
+        connection = Mock()
+        with patch("podman_exec.ExecApi.connection", return_value=connection):
+            argv = runtime_control_argv(account)
+        self.assertEqual(
+            argv,
+            runtime_argv(account) + ["--remote", "--url=unix:///run/user/1002/podman/podman.sock"],
+        )
+        connection.close.assert_called_once_with()
+        with patch(
+            "podman_exec.ExecApi.connection", side_effect=ValueError("unsafe_runtime_socket")
+        ):
+            with self.assertRaisesRegex(ValueError, "unsafe_runtime_socket"):
+                runtime_control_argv(account)
+        with self.assertRaisesRegex(ValueError, "invalid_runtime_uid"):
+            runtime_control_argv(types.SimpleNamespace(pw_uid=0))
+
     def test_exact_output_and_nonzero_exit(self):
         with tempfile.TemporaryDirectory() as root:
             result = bounded_command(
@@ -53,7 +73,7 @@ class SupervisorTests(unittest.TestCase):
             )
             parent = (
                 f"import sys;sys.path.insert(0,{str(pathlib.Path(__file__).parent)!r});"
-                "from supervisor import bounded_command;"
+                "from supervisor import bounded_command, runtime_argv, runtime_control_argv;"
                 f"bounded_command({[sys.executable, '-c', child]!r},{root!r},timeout=0.5)"
             )
             proc = subprocess.Popen([sys.executable, "-c", parent])
