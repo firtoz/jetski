@@ -1,5 +1,6 @@
-Host generation fencing and filesystem capture/restore principles is adapted from firtoz-authored
-supervisor code in host/fence.py and host/archive.py, with permission to distribute under this project's MIT license.
+The native storage-binding adapter and host generation fencing and filesystem
+capture/restore principles are adapted from firtoz-authored code in src/storage/r2.ts,
+host/fence.py and host/archive.py, with permission to distribute under this project's MIT license.
 Copyright (c) 2026 firtoz and Jetski contributors.
 
 No third-party source has been vendored. Dependencies retain their own licenses

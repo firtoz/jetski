@@ -45,6 +45,14 @@ grace, fail-closed ambiguity, durable journals, explicit pins and no silent expi
 of acknowledged history. No cross-owner deduplication. Adapters must pass failure
 and consistency contracts; plugins cannot bypass verification/fencing.
 
+Transfers may prepare unpublished immutable objects before publication. Only a
+verified, fenced root makes a checkpoint restorable or permits source release;
+publication changes metadata rather than copying payloads. Failure leaves the
+last acknowledged root authoritative. Restore receives into isolated staging and
+admits execution only after complete verification. Any future prefetch from an
+unpublished save must remain isolated and wait for that same publication gate;
+it must not expose provisional bytes to commands, file APIs or previews.
+
 Standalone: SQLite state, durable worker loop, bearer owner authentication,
 public-key SSH gateway (never an outer-host shell), PTY stdin/resize/signals,
 authenticated HTTP/WebSocket previews and TCP tunnels. CLI forwarding binds

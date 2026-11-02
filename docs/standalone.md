@@ -753,3 +753,6 @@ command receipt. The controller verifies and durably caches those bytes by comma
 identity, preserving status/output reconnects without another host request. Larger
 channels keep bounded cursor streaming. This cache never substitutes for verified
 checkpoint publication or permits replay of uncertain commands.
+
+Native bucket bindings in embedded deployments can use the optional
+[native R2 adapter](storage-r2.md), including its qualified checksum-reuse policy.
