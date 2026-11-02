@@ -420,3 +420,62 @@ test("rolling pack window crosses a slow upload without exceeding its buffer bud
   assert.equal(cursor, archive.bytes.length);
   assert.deepEqual(await f.read("rolling"), archive.bytes);
 });
+
+test("four buffer-capable uploads preserve bounded packs and exact archive bytes", {
+  timeout: 5000,
+}, async (t) => {
+  const f = await fixture(t),
+    archive = capture(
+      Array.from({ length: 10 }, () => randomBytes(256 * 1024)),
+    );
+  const gate = deferred();
+  t.after(() => gate.resolve());
+  let active = 0,
+    peak = 0,
+    calls = 0;
+  const store = new Proxy(f.store, {
+    get(target, key) {
+      if (key === "transferConcurrency") return 4;
+      if (key === "putBuffer")
+        return async (
+          address: Parameters<typeof target.put>[0],
+          bytes: Uint8Array<ArrayBuffer>,
+          expected: Parameters<typeof target.put>[2],
+        ) => {
+          calls++;
+          active++;
+          peak = Math.max(peak, active);
+          assert.ok(bytes.length <= 1024 * 1024);
+          assert.equal(sha(bytes), expected.sha256);
+          if (active === 4) gate.resolve();
+          await gate.promise;
+          try {
+            return await target.put(
+              address,
+              (async function* () {
+                yield bytes;
+              })(),
+              expected,
+            );
+          } finally {
+            active--;
+          }
+        };
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const transfer = new CheckpointTransfer(store, f.registry, undefined, {
+    packBytes: 1024 * 1024,
+  });
+  await transfer.save(
+    f.fence,
+    "four-buffers",
+    archive.manifest,
+    archive.source,
+  );
+  assert.equal(calls, 4);
+  assert.equal(peak, 4);
+  assert.equal(active, 0);
+  assert.deepEqual(await f.read("four-buffers"), archive.bytes);
+});

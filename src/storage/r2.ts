@@ -91,7 +91,7 @@ function providerChecksum(object: R2ObjectMetadata): string | undefined {
  * expire: even a failed or deleted object's physical identity stays consumed. */
 export class R2CheckpointStore implements CheckpointStore {
   readonly verificationConcurrency = DEFAULTS.verificationConcurrency;
-  readonly transferConcurrency = DEFAULTS.transferConcurrency;
+  readonly transferConcurrency: number;
   private readonly verified = new Map<string, VerifiedObject>();
   private readonly writeVerification: R2WriteVerification;
   private verifiedRangeEntries = 0;
@@ -122,6 +122,10 @@ export class R2CheckpointStore implements CheckpointStore {
     this.writeVerification = options.writeVerification ?? "readback";
     if (!R2_WRITE_VERIFICATION.includes(this.writeVerification))
       throw Error("Invalid R2 verification policy");
+    this.transferConcurrency =
+      this.writeVerification === "provider-sha256"
+        ? DEFAULTS.maxTransferConcurrency
+        : DEFAULTS.transferConcurrency;
     if (
       !prefix ||
       prefix.length > 256 ||
@@ -139,10 +143,38 @@ export class R2CheckpointStore implements CheckpointStore {
   ) {
     return `${this.scoped(address, kind)}${identifier(address.id)}`;
   }
-  async put(
+  put(
     address: ObjectAddress,
     source: ByteStream,
     expected: ObjectWriteMetadata,
+  ): Promise<ObjectInfo> {
+    return this.write(address, source, expected);
+  }
+  putBuffer(
+    address: ObjectAddress,
+    bytes: Uint8Array<ArrayBuffer>,
+    expected: ObjectWriteMetadata,
+  ): Promise<ObjectInfo> {
+    if (
+      !(bytes instanceof Uint8Array) ||
+      !(bytes.buffer instanceof ArrayBuffer) ||
+      bytes.length !== expected.bytes
+    )
+      return Promise.reject(Error("Invalid R2 upload buffer"));
+    return this.write(
+      address,
+      (async function* () {
+        yield bytes;
+      })(),
+      expected,
+      bytes,
+    );
+  }
+  private async write(
+    address: ObjectAddress,
+    source: ByteStream,
+    expected: ObjectWriteMetadata,
+    buffer?: Uint8Array<ArrayBuffer>,
   ): Promise<ObjectInfo> {
     if (
       !Number.isSafeInteger(expected.bytes) ||
@@ -170,7 +202,12 @@ export class R2CheckpointStore implements CheckpointStore {
     if (!reserved) {
       throw Error("Jetski object identity already reserved");
     }
-    const body = new Uint8Array(expected.bytes);
+    // Only the explicit buffer capability borrows caller memory. Generic streams
+    // may reuse/mutate a yielded buffer after next(), so they always copy.
+    const body =
+      this.writeVerification === "provider-sha256" && buffer
+        ? buffer
+        : new Uint8Array(expected.bytes);
     const verifier = new ObjectStreamVerifier(expected, expected.ranges);
     let bytes = 0;
     for await (const chunk of source) {
@@ -182,7 +219,7 @@ export class R2CheckpointStore implements CheckpointStore {
       if (bytes > expected.bytes) {
         throw Error("Jetski object exceeds declared size");
       }
-      body.set(chunk, offset);
+      if (chunk !== body) body.set(chunk, offset);
       verifier.update(body.subarray(offset, bytes));
     }
     const proofs = verifier.finish();

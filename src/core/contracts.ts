@@ -40,6 +40,7 @@ export const DEFAULTS = Object.freeze({
   frameBytes: 1024 * 1024,
   verificationConcurrency: 4,
   transferConcurrency: 2,
+  maxTransferConcurrency: 4,
   maxObjectBytes: 8 * 1024 * 1024,
   outputChannelBytes: 16 * 1024 * 1024,
   outputChunkBytes: 256 * 1024,
@@ -85,12 +86,20 @@ export type ByteStream = AsyncIterable<Uint8Array>;
 export interface CheckpointStore {
   /** Opt-in bound for overlapping independent object verification calls (1..4). Omission is serial. */
   readonly verificationConcurrency?: number;
-  /** Opt into independent frame uploads, bounded to two; omitted means serial. */
+  /** Opt into independent uploads, bounded to four; omitted means serial. */
   readonly transferConcurrency?: number;
   /** Create-only. Never replace a physical object identity, even after deletion. */
   put(
     address: ObjectAddress,
     source: ByteStream,
+    expected: ObjectWriteMetadata,
+  ): Promise<ObjectInfo>;
+  /** Optional bounded-buffer upload. The caller keeps bytes unchanged until this
+   * promise settles; implementations must enforce the same complete integrity and
+   * immutable-identity contract as put. Missing support uses the streaming path. */
+  putBuffer?(
+    address: ObjectAddress,
+    bytes: Uint8Array<ArrayBuffer>,
     expected: ObjectWriteMetadata,
   ): Promise<ObjectInfo>;
   head(address: ObjectAddress): Promise<ObjectInfo | undefined>;

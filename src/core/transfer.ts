@@ -74,7 +74,7 @@ export class CheckpointTransfer {
     if (
       !Number.isSafeInteger(storeConcurrency) ||
       storeConcurrency < 1 ||
-      storeConcurrency > DEFAULTS.transferConcurrency
+      storeConcurrency > DEFAULTS.maxTransferConcurrency
     )
       throw Error("Invalid checkpoint transfer concurrency");
     // Share the source budget across frames, never multiply it by the number

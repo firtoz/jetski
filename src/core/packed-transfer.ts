@@ -58,7 +58,7 @@ export class PackedCheckpointTransfer {
     if (
       !Number.isSafeInteger(writeLimit) ||
       writeLimit < 1 ||
-      writeLimit > DEFAULTS.transferConcurrency
+      writeLimit > DEFAULTS.maxTransferConcurrency
     )
       throw Error("Invalid checkpoint transfer concurrency");
     if (
@@ -270,13 +270,29 @@ export class PackedCheckpointTransfer {
         position += frame.bytes;
         return { start, endExclusive: position, sha256: frame.sha256 };
       });
-      const stored = await this.objects.put(
-        { owner: object.owner, sandbox: object.sandbox, id: object.id },
-        (async function* () {
-          yield buffer;
-        })(),
-        { bytes: object.bytes, sha256: object.sha256, ranges: proofs },
-      );
+      const address = {
+        owner: object.owner,
+        sandbox: object.sandbox,
+        id: object.id,
+      };
+      const expected = {
+        bytes: object.bytes,
+        sha256: object.sha256,
+        ranges: proofs,
+      };
+      let stored: ObjectInfo;
+      if (this.objects.putBuffer) {
+        // This task owns the prepared buffer until the adapter promise settles.
+        stored = await this.objects.putBuffer(address, buffer, expected);
+      } else {
+        stored = await this.objects.put(
+          address,
+          (async function* () {
+            yield buffer;
+          })(),
+          expected,
+        );
+      }
       if (!sameObject(stored, object))
         throw Error("Packed upload receipt mismatch");
       physical[index] = object;

@@ -306,13 +306,16 @@ export class SandboxManager {
             .scan<CommandRecord>(`command/${scopeKey(scope)}/`)
             .map((row) => row.value),
         );
-        const concurrency = objects.transferConcurrency ?? 1;
+        const advertised = objects.transferConcurrency ?? 1;
         if (
-          !Number.isSafeInteger(concurrency) ||
-          concurrency < 1 ||
-          concurrency > DEFAULTS.transferConcurrency
+          !Number.isSafeInteger(advertised) ||
+          advertised < 1 ||
+          advertised > DEFAULTS.maxTransferConcurrency
         )
           throw Error("Invalid command retention concurrency");
+        // Command output can retain larger buffers than one prepared pack. Keep
+        // its original two-command bound even when packed uploads opt into four.
+        const concurrency = Math.min(advertised, DEFAULTS.transferConcurrency);
         for (let at = 0; at < commands.length; at += concurrency) {
           const settled = await Promise.allSettled(
             commands.slice(at, at + concurrency).map(async (command) => {

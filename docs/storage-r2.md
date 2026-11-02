@@ -35,6 +35,13 @@ members without forcing a second payload download. Eviction discards trust and
 falls back to readback; every reused proof still needs a fresh stored-version
 observation.
 
+The validated-write policy advertises four overlapping uploads. Packed transfers
+use `putBuffer` to lend their prepared bytes until completion, avoiding a second
+payload buffer. Generic streams still copy their chunks, so generators may safely
+reuse yielded memory. Native checksum validation rejects a borrowed buffer changed
+before storage receives it. The readback policy keeps two uploads and copies both
+input forms; neither policy relaxes final publication or failure draining.
+
 Use an explicit private prefix. Reservation markers remain consumed after failed
 or deleted uploads; do not expire them or reuse identities. Delete only through the
 core's fenced collector. This adapter does not replace writer/reader coordination,

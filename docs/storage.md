@@ -173,14 +173,19 @@ transaction rechecks the writer and generation before publishing. This capabilit
 does not relax the adapter's byte/hash verification contract or the S3 upload
 readback requirement. Source reads remain separately opt-in.
 
-Adapters may also opt into `transferConcurrency` from 1 to 2. Local and S3
-adapters enable two frame transfers; custom adapters remain serial by default.
+Adapters may also opt into `transferConcurrency` from 1 to 4. Local and S3
+adapters enable two transfers; custom adapters remain serial by default. Native R2
+validated writes enable four. Optional `putBuffer` lets the packed path lend its
+already-prepared bounded buffer until the adapter promise settles, avoiding a
+second payload copy. It has the same integrity and immutable-identity contract as
+streaming `put`; callers must keep the buffer unchanged until completion.
 Reuse observations finish in their own bounded verification phase before any
 upload begins. Missing candidates can be repaired from the retained capture.
 The save pipeline divides the source's existing read budget across that batch,
-never exceeding four concurrent range reads and two storage transfers. It drains
+never exceeding four concurrent range reads and the adapter's upload bound. It drains
 all started transfers on failure and preserves per-frame upload identities for
-replay after lost acknowledgements. A serial-only source also serializes uploads.
+replay after lost acknowledgements. Plain frame transfers serialize with a serial
+source; packed transfers can overlap serial preparation with bounded uploads.
 
 New captures start with 1 MiB independent gzip frames. After 1,024 frames and
 again after 2,048, capture doubles the bound up to 4 MiB. This deterministic

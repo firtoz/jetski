@@ -363,3 +363,51 @@ test("the aggregate range-proof budget evicts old proofs with safe readback fall
   await store.verifyRanges(addresses[2]!, ranges);
   assert.deepEqual(f.metrics, { gets: 3, bodies: 1 });
 });
+
+test("explicit buffer uploads borrow only for validated native writes; stream inputs remain copy-safe", async () => {
+  for (const mode of ["readback", "provider-sha256"] as const) {
+    const f = fixture(),
+      store = f.open(mode),
+      body = Buffer.from(bytes);
+    const nativePut = f.bucket.put.bind(f.bucket);
+    let uploaded: Uint8Array | undefined;
+    f.bucket.put = async (key, value, options) => {
+      if (key.includes("/objects/")) uploaded = value;
+      return nativePut(key, value, options);
+    };
+    await store.putBuffer(address, body, expected);
+    assert.equal(uploaded === body, mode === "provider-sha256");
+    assert.equal(store.transferConcurrency, mode === "provider-sha256" ? 4 : 2);
+    const mutable = Buffer.from(bytes);
+    await store.put(
+      { ...address, id: "stream" },
+      (async function* () {
+        yield mutable;
+        mutable[0] = mutable[0]! ^ 255;
+      })(),
+      expected,
+    );
+    assert.notEqual(uploaded, mutable);
+    assert.deepEqual(
+      f.objects.get("fixture/v1/owner/sandbox/objects/stream")!.bytes,
+      Uint8Array.from(bytes),
+    );
+  }
+});
+
+test("a changed borrowed buffer cannot receive a verified native-write acknowledgement", async () => {
+  const f = fixture(),
+    store = f.open("provider-sha256"),
+    body = Buffer.from(bytes);
+  const nativePut = f.bucket.put.bind(f.bucket);
+  f.bucket.put = async (key, value, options) => {
+    if (key.includes("/objects/")) value[0] = value[0]! ^ 255;
+    return nativePut(key, value, options);
+  };
+  await assert.rejects(
+    store.putBuffer(address, body, expected),
+    /server checksum mismatch/,
+  );
+  assert.equal(await store.head(address), undefined);
+  assert.ok(f.objects.has("fixture/v1/owner/sandbox/reservations/object"));
+});
