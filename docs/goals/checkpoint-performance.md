@@ -50,10 +50,10 @@ older historical time, for acceptance.
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                                       |
 | Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 256 KiB capture members and 8 MiB packs selected; legacy 4 MiB reads and adaptive gzip qualified.                                          |
-| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline implemented; latest warm medians beat reference on both pairs; large save gap and tails remain.                           |
+| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline implemented; current durable-save median beats reference; warm readiness/full-cycle target remains unmet.                 |
 | Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Optional16 MiB raw import qualified locally and on fresh hosts; exact source-deleted recovery, progress and cleanup pass.                  |
 | Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 236 TypeScript/124 Python tests, all seven host CI jobs and large source-deleted/lost-ACK recovery pass.                                   |
-| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Frozen ten-per-arm comparison completed with all20 exact and lower warm medians on both pairs; tails remain worse.                         |
+| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Latest frozen ten-per-arm comparison has all20 exact; save improves but readiness/full-cycle regress; next candidate needs measurement.    |
 | Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Fresh raw-import recovery and repeated saves pass; whole readiness101.045 vs218.556 s in one pair; larger first-save gap remains.          |
 | Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Pinned deployment and guarded profile adoption pass; real file inspection and single-file edit pass; publication and recovery remain open. |
 
@@ -117,9 +117,17 @@ cycle is8.890 versus7.590 s and readiness3.157 versus1.957 s. All four hosts and
 controllers are retired. A local qualification-driver defect also added250 ms
 after successful reconciliation. Its immediate-recheck fix passes three local
 checks, but the measured matrix is preserved without subtracting estimated delays.
-Next, profile and implement warm activation improvements before further paid
-qualification; preserve every cache proof, reader lease and activation fence. Provisional transfer may overlap work, but completion and
-execution remain behind the verified root. Publication changes metadata rather
+The next candidate uses a forward-only private restore: hash and validate while
+unpacking, apply final ownership/modes and sync each primary inode once, then
+publish atomically. Warm cache selection checks eligibility without an upfront
+full rehash; the complete streamed proof still gates readiness. A corrupt
+unpublished candidate falls back to remote bytes with unchanged authority.
+Successful cache import finishes within begin, removing one control round trip.
+All 257 TypeScript tests, 51 affected archive/import/cache/control checks, build,
+types and lint pass. Hosted timings remain open. Local screens did not establish
+a speedup; no latency reduction is claimed from removing reads or a control call.
+Provisional transfer may overlap work, but completion and execution remain behind
+the verified root. Publication changes metadata rather
 than copying payloads.
 
 Downstream artifact pinning and guarded idle-profile adoption are implemented.

@@ -48,9 +48,15 @@ and consistency contracts; plugins cannot bypass verification/fencing.
 Transfers may prepare unpublished immutable objects before publication. Only a
 verified, fenced root makes a checkpoint restorable or permits source release;
 publication changes metadata rather than copying payloads. Failure leaves the
-last acknowledged root authoritative. Restore receives into isolated staging and
-admits execution only after complete verification. Any future prefetch from an
-unpublished save must remain isolated and wait for that same publication gate;
+last acknowledged root authoritative. Restore hashes, validates and unpacks in a
+single forward pass into isolated staging. Final ownership, modes and inode
+synchronization precede atomic directory publication and its durable ready
+receipt. A local cache candidate passes scope and file-metadata checks first;
+its bytes must still pass the complete streamed proof before use. Corrupt cache
+candidates may fall back to remote bytes only before publication with unchanged
+authority. Valid-source I/O failures and uncertain ready acknowledgements remain
+failures. Execution, file access and previews stay blocked until verified ready.
+Any future prefetch from an unpublished save must remain isolated and wait for that same publication gate;
 it must not expose provisional bytes to commands, file APIs or previews.
 
 Standalone: SQLite state, durable worker loop, bearer owner authentication,

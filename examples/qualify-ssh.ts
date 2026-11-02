@@ -486,11 +486,11 @@ try {
       ...publication,
       bytes: manifest.bytes,
     })) as { phase: string; offset: number };
-    assert.equal(cachedImport.phase, "extracting");
+    assert.equal(cachedImport.phase, "ready");
     assert.equal(cachedImport.offset, manifest.bytes);
     // No store reads or import-chunk calls: published local archive survives
-    // source-tree purge and is checked again by the real host before extraction.
-    await request("import-finish", activePayload);
+    // source-tree purge. Begin completes verification/extraction before ready;
+    // no extra finish RPC is needed for this installed host bundle.
     await request("create", activePayload);
     const recoveredCommand = randomUUID();
     await request("command-start", {

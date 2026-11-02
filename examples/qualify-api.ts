@@ -104,7 +104,7 @@ const manager = new SandboxManager(
         response.result &&
         typeof response.result === "object" &&
         !Array.isArray(response.result) &&
-        response.result.phase === "extracting"
+        ["extracting", "ready"].includes(String(response.result.phase))
       )
         cacheHits++;
       if (request.action === "terminal-input" && loseTerminalInputAck) {

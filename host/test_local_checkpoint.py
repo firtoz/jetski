@@ -4,6 +4,7 @@ import hashlib
 import os
 import pathlib
 import shutil
+import stat
 import tempfile
 import types
 import unittest
@@ -92,7 +93,7 @@ class LocalCheckpointTests(unittest.TestCase):
         self.publish()
         lease, importer = self.next()
         receipt = self.begin(lease, importer)
-        self.assertEqual(receipt["phase"], "extracting")
+        self.assertEqual(receipt["phase"], "ready")
         self.assertEqual(receipt["offset"], len(self.bytes))
         self.assert_restored(lease, importer)
         with self.assertRaisesRegex(ValueError, "stale"):
@@ -139,7 +140,7 @@ class LocalCheckpointTests(unittest.TestCase):
                 self.begin(lease, importer)
         self.assertFalse(importer.path(lease).exists())
         self.assertEqual((self.archives / "cache/archive.tgz").read_bytes(), self.bytes)
-        self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
+        self.assertEqual(self.begin(lease, importer)["phase"], "ready")
         self.assert_restored(lease, importer)
 
     def test_cache_publication_lost_metadata_ack_replays_after_source_rename(self):
@@ -154,7 +155,7 @@ class LocalCheckpointTests(unittest.TestCase):
         self.cache.publish(self.lease, self.publication)
         self.source.unlink(missing_ok=True)
         lease, importer = self.next()
-        self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
+        self.assertEqual(self.begin(lease, importer)["phase"], "ready")
         self.assert_restored(lease, importer)
 
     def test_cache_rename_preserves_inode_and_sync_failure_replays(self):
@@ -169,7 +170,7 @@ class LocalCheckpointTests(unittest.TestCase):
         self.assertNotIn("localCheckpoint", self.fence.read())
         self.cache.publish(self.lease, self.publication)
         lease, importer = self.next()
-        self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
+        self.assertEqual(self.begin(lease, importer)["phase"], "ready")
         self.assert_restored(lease, importer)
 
     def test_cache_cross_filesystem_fallback_and_io_failure(self):
@@ -218,7 +219,7 @@ class LocalCheckpointTests(unittest.TestCase):
         other_id = str(uuid.uuid4())
         receipt = importer.begin(lease, other_id, self.archive["sha256"], len(self.bytes))
         self.assertEqual(receipt["id"], other_id)
-        self.assertEqual(receipt["phase"], "extracting")
+        self.assertEqual(receipt["phase"], "ready")
         self.assert_restored(lease, importer)
 
     def test_borrowed_cache_cannot_be_written_by_chunk_replay(self):
@@ -226,7 +227,7 @@ class LocalCheckpointTests(unittest.TestCase):
         path = self.archives / "cache/archive.tgz"
         inode = path.stat().st_ino
         lease, importer = self.next()
-        self.assertEqual(self.begin(lease, importer)["phase"], "extracting")
+        self.assertEqual(self.begin(lease, importer)["phase"], "ready")
         self.assertFalse(importer.path(lease).exists())
         with self.assertRaisesRegex(ValueError, "import_chunk_extent"):
             importer.chunk(
@@ -246,7 +247,11 @@ class LocalCheckpointTests(unittest.TestCase):
             try:
                 case.publish()
                 lease, importer = case.next()
-                case.begin(lease, importer)
+                with patch.object(
+                    importer, "finish_locked", side_effect=OSError("paused cached restore")
+                ):
+                    with self.assertRaisesRegex(OSError, "paused cached restore"):
+                        case.begin(lease, importer)
                 if changed == "bytes":
                     path = case.archives / "cache/archive.tgz"
                     data = bytearray(path.read_bytes())
@@ -271,7 +276,6 @@ class LocalCheckpointTests(unittest.TestCase):
     def test_borrowed_cache_replays_lost_ready_receipt_without_losing_original(self):
         self.publish()
         lease, importer = self.next()
-        self.begin(lease, importer)
         write = self.fence.write
 
         def interrupted(state):
@@ -281,7 +285,7 @@ class LocalCheckpointTests(unittest.TestCase):
 
         with patch.object(self.fence, "write", side_effect=interrupted):
             with self.assertRaisesRegex(OSError, "ready ACK lost"):
-                importer.finish(lease)
+                self.begin(lease, importer)
         self.assertEqual((self.archives / "cache/archive.tgz").read_bytes(), self.bytes)
         self.assertFalse(importer.path(lease).exists())
         self.assert_restored(lease, importer)
@@ -289,7 +293,7 @@ class LocalCheckpointTests(unittest.TestCase):
     def test_complete_legacy_import_staging_stays_independent_and_readable(self):
         self.publish()
         lease, importer = self.next()
-        with patch.object(LocalCheckpoint, "source_locked", return_value=None):
+        with patch.object(LocalCheckpoint, "provisional_locked", return_value=None):
             self.assertEqual(self.begin(lease, importer)["phase"], "receiving")
         importer.path(lease).write_bytes(self.bytes)
         receipt = self.begin(lease, importer)
@@ -326,6 +330,86 @@ class LocalCheckpointTests(unittest.TestCase):
             self.fence.claim(
                 {**self.lease, "owner": "other", "generation": 2, "assignmentId": str(uuid.uuid4())}
             )
+
+    def test_cached_begin_flushes_each_primary_inode_with_final_ownership_and_links_once(self):
+        self.publish()
+        lease, importer = self.next()
+        sync = os.fsync
+        observed = []
+
+        def record(fd):
+            meta = os.fstat(fd)
+            if stat.S_ISREG(meta.st_mode):
+                observed.append(meta)
+            return sync(fd)
+
+        with patch("archive.os.fsync", side_effect=record):
+            self.assertEqual(self.begin(lease, importer)["phase"], "ready")
+        path = self.data / lease["assignmentId"] / "workspace/bytes"
+        meta = path.stat()
+        flushes = [
+            item
+            for item in observed
+            if item.st_ino == meta.st_ino
+            and item.st_dev == meta.st_dev
+            and item.st_size == meta.st_size
+        ]
+        self.assertEqual(len(flushes), 1)
+        self.assertEqual(flushes[0].st_nlink, 2)
+        self.assertEqual(stat.S_IMODE(flushes[0].st_mode), 0o640)
+        self.assertEqual((flushes[0].st_uid, flushes[0].st_gid), (os.getuid(), os.getgid()))
+        self.assert_restored(lease, importer)
+
+    def test_cached_owner_or_file_sync_failure_never_acknowledges_ready_and_can_recover(self):
+        for failure in ("owner", "sync"):
+            case = LocalCheckpointTests()
+            case.setUp()
+            try:
+                case.publish()
+                lease, importer = case.next()
+                sync = os.fsync
+
+                def fail_file(fd):
+                    if os.fstat(fd).st_size == 76800:
+                        raise OSError("file sync unavailable")
+                    return sync(fd)
+
+                target = "archive.os.fchown" if failure == "owner" else "archive.os.fsync"
+                effect = OSError("owner unavailable") if failure == "owner" else fail_file
+                with patch(target, side_effect=effect):
+                    with self.assertRaises(OSError):
+                        case.begin(lease, importer)
+                self.assertEqual(case.fence.read()["import"]["phase"], "extracting")
+                self.assertFalse((case.data / lease["assignmentId"]).exists())
+                self.assertEqual((case.archives / "cache/archive.tgz").read_bytes(), case.bytes)
+                case.assert_restored(lease, importer)
+            finally:
+                case.doCleanups()
+
+    def test_same_size_corrupt_cache_is_discarded_before_ready_and_remote_fallback_is_replayable(
+        self,
+    ):
+        self.publish()
+        path = self.archives / "cache/archive.tgz"
+        changed = bytearray(self.bytes)
+        changed[len(changed) // 2] ^= 1
+        path.write_bytes(changed)
+        lease, importer = self.next()
+        receipt = self.begin(lease, importer)
+        self.assertEqual(receipt["phase"], "receiving")
+        self.assertTrue(receipt["cacheRejected"])
+        self.assertNotIn("cacheSource", receipt)
+        self.assertFalse((self.data / lease["assignmentId"]).exists())
+        self.assertFalse(importer.path(lease).exists())
+        with patch(
+            "import_checkpoint.restore", side_effect=AssertionError("replayed rejected cache")
+        ):
+            self.assertEqual(self.begin(lease, importer)["phase"], "receiving")
+        importer.chunk(
+            lease, 0, base64.b64encode(self.bytes).decode(), hashlib.sha256(self.bytes).hexdigest()
+        )
+        self.assert_restored(lease, importer)
+        self.assertEqual(path.read_bytes(), bytes(changed))
 
 
 if __name__ == "__main__":

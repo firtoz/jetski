@@ -8,7 +8,7 @@ import re
 import shutil
 import stat
 import uuid
-from archive import digest, restore, sync_dir
+from archive import restore, sync_dir
 from fence import identity
 from local_checkpoint import LocalCheckpoint
 
@@ -181,6 +181,8 @@ class CheckpointImport:
             return self.advertised(self.cached(lease, state, receipt))
 
     def cached(self, lease, state, receipt):
+        if receipt.get("cacheRejected"):
+            return receipt
         expected = {key: receipt[key] for key in ("id", "sha256", "bytes")}
         cache = LocalCheckpoint(self.fence, self.archives)
         selected = None
@@ -188,13 +190,40 @@ class CheckpointImport:
             # Preserve complete staging left by an older host or a lost receipt.
             reusable = cache.verified(self.path(lease), expected)
         else:
-            selected = cache.source_locked(lease, state, expected)
+            selected = cache.provisional_locked(lease, state, expected)
             reusable = selected is not None
         if reusable:
             receipt = {**receipt, "offset": receipt["bytes"], "phase": "extracting"}
             if selected is not None:
                 receipt["cacheSource"] = state["localCheckpoint"]
             self.fence.write({**state, "import": receipt})
+            if selected is not None:
+                # The core already accepts a ready begin receipt. Complete this
+                # verified-cache restore under the existing fence, avoiding a
+                # separate control process/RPC without admitting work early.
+                try:
+                    return self.finish_locked(lease)
+                except (OSError, ValueError):
+                    # A failed unpublished cache candidate may fall back only
+                    # when authority is unchanged and its bytes fail verification.
+                    # Valid-source I/O, ownership, fsync and lost-ready-ACK errors
+                    # remain uncertain failures, never a successful release.
+                    current = self.state(lease)
+                    destination = self.data / lease["assignmentId"]
+                    if (
+                        os.path.lexists(destination)
+                        or current.get("localCheckpoint") != receipt["cacheSource"]
+                        or current.get("import") != receipt
+                        or cache.verified(selected, expected)
+                    ):
+                        raise
+                    receipt = {
+                        **{key: value for key, value in receipt.items() if key != "cacheSource"},
+                        "offset": 0,
+                        "phase": "receiving",
+                        "cacheRejected": True,
+                    }
+                    self.fence.write({**current, "import": receipt})
         return receipt
 
     def chunk(self, raw, offset, encoded, sha256):
@@ -257,63 +286,62 @@ class CheckpointImport:
     def finish(self, raw):
         lease = identity(raw)
         with self.fence.locked():
-            state = self.state(lease)
-            receipt = state.get("import")
-            if not receipt or receipt["offset"] != receipt["bytes"]:
-                raise ValueError("import_incomplete")
-            # Even a controller using the fallback protocol must not admit a
-            # workload while a prior binary attempt still owns staging files.
-            if self.transfer is not None:
-                self.file_close_locked(lease)
-            if receipt["phase"] == "ready":
-                return receipt
-            source = self.path(lease)
-            if "cacheSource" in receipt:
-                expected = {key: receipt[key] for key in ("id", "sha256", "bytes")}
-                source = LocalCheckpoint(self.fence, self.archives).candidate_locked(
-                    lease, state, expected
-                )
-                if source is None or receipt["cacheSource"] != state.get("localCheckpoint"):
-                    raise ValueError("import_cache_identity_changed")
-                meta = source.lstat()
-                if (
-                    not stat.S_ISREG(meta.st_mode)
-                    or meta.st_uid != os.geteuid()
-                    or meta.st_mode & 0o022
-                    or meta.st_size != receipt["bytes"]
-                ):
-                    raise ValueError("import_archive_integrity")
-                # restore() independently verifies the whole SHA before extracting.
-                # The fence prevents cache publication/eviction throughout this
-                # unpublished restore. No copy, hardlink or writable alias exists.
-            elif source.stat().st_size != receipt["bytes"] or digest(source) != receipt["sha256"]:
-                raise ValueError("import_archive_integrity")
-            destination = self.data / lease["assignmentId"]
-            if receipt["phase"] == "receiving" and os.path.lexists(destination):
-                raise ValueError("unexpected_import_destination")
-            # A crash after rename but before the ready receipt may replay only
-            # this unpublished restore. No workload is admitted in extracting.
-            receipt = {**receipt, "phase": "extracting"}
-            self.fence.write({**state, "import": receipt})
-            if os.path.lexists(destination):
-                if destination.is_symlink() or not destination.is_dir():
-                    raise ValueError("unsafe_import_destination")
-                shutil.rmtree(destination)
-            restored = restore(source, destination, receipt["sha256"])
-            for root, dirs, files in os.walk(destination, followlinks=False):
-                for path in [
-                    pathlib.Path(root),
-                    *(pathlib.Path(root) / name for name in dirs + files),
-                ]:
-                    os.chown(path, self.account.pw_uid, self.account.pw_gid, follow_symlinks=False)
-                    meta = path.lstat()
-                    if not stat.S_ISLNK(meta.st_mode):
-                        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-                        try:
-                            os.fsync(fd)
-                        finally:
-                            os.close(fd)
-            sync_dir(self.data)
-            receipt = {**receipt, "phase": "ready", "entries": restored["entries"]}
-            self.fence.write({**state, "import": receipt})
+            return self.finish_locked(lease)
+
+    def finish_locked(self, lease):
+        state = self.state(lease)
+        receipt = state.get("import")
+        if not receipt or receipt["offset"] != receipt["bytes"]:
+            raise ValueError("import_incomplete")
+        # Even a controller using the fallback protocol must not admit a
+        # workload while a prior binary attempt still owns staging files.
+        if self.transfer is not None:
+            self.file_close_locked(lease)
+        if receipt["phase"] == "ready":
             return receipt
+        source = self.path(lease)
+        if "cacheSource" in receipt:
+            expected = {key: receipt[key] for key in ("id", "sha256", "bytes")}
+            source = LocalCheckpoint(self.fence, self.archives).candidate_locked(
+                lease, state, expected
+            )
+            if source is None or receipt["cacheSource"] != state.get("localCheckpoint"):
+                raise ValueError("import_cache_identity_changed")
+            meta = source.lstat()
+            if (
+                not stat.S_ISREG(meta.st_mode)
+                or meta.st_uid != os.geteuid()
+                or meta.st_mode & 0o022
+                or meta.st_size != receipt["bytes"]
+            ):
+                raise ValueError("import_archive_integrity")
+            # restore() verifies the whole SHA before publishing its private staging.
+            # The fence prevents cache publication/eviction throughout this
+            # unpublished restore. No copy, hardlink or writable alias exists.
+        elif source.stat().st_size != receipt["bytes"]:
+            raise ValueError("import_archive_integrity")
+        destination = self.data / lease["assignmentId"]
+        if receipt["phase"] == "receiving" and os.path.lexists(destination):
+            raise ValueError("unexpected_import_destination")
+        # A crash after rename but before the ready receipt may replay only
+        # this unpublished restore. No workload is admitted in extracting.
+        receipt = {**receipt, "phase": "extracting"}
+        self.fence.write({**state, "import": receipt})
+        if os.path.lexists(destination):
+            if destination.is_symlink() or not destination.is_dir():
+                raise ValueError("unsafe_import_destination")
+            shutil.rmtree(destination)
+        try:
+            restored = restore(
+                source,
+                destination,
+                receipt["sha256"],
+                owner=(self.account.pw_uid, self.account.pw_gid),
+            )
+        except ValueError as error:
+            if str(error) == "archive_digest_mismatch":
+                raise ValueError("import_archive_integrity") from error
+            raise
+        receipt = {**receipt, "phase": "ready", "entries": restored["entries"]}
+        self.fence.write({**state, "import": receipt})
+        return receipt

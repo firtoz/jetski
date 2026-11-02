@@ -32,15 +32,32 @@ class LocalCheckpoint:
             return False
         with os.fdopen(fd, "rb") as source:
             meta = os.fstat(source.fileno())
-            if (
-                not stat.S_ISREG(meta.st_mode)
-                or meta.st_uid != os.geteuid()
-                or meta.st_mode & 0o022
-                or meta.st_size != expected["bytes"]
-            ):
+            if not self.metadata_matches(meta, expected):
                 return False
             digest = hashlib.file_digest(source, "sha256").hexdigest()
             return digest == expected["sha256"]
+
+    def metadata_matches(self, meta, expected):
+        return (
+            stat.S_ISREG(meta.st_mode)
+            and meta.st_uid == os.geteuid()
+            and not meta.st_mode & 0o022
+            and meta.st_size == expected["bytes"]
+        )
+
+    def provisional_locked(self, lease, state, expected):
+        """Eligibility only: bytes must still be verified in private staging."""
+        source = self.candidate_locked(lease, state, expected)
+        if source is None:
+            return None
+        try:
+            fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except OSError:
+            return None
+        try:
+            return source if self.metadata_matches(os.fstat(fd), expected) else None
+        finally:
+            os.close(fd)
 
     def publish(self, raw, publication):
         lease = identity(raw)

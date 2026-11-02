@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 import io
 import os
@@ -160,6 +161,77 @@ class ArchiveTests(unittest.TestCase):
                     restore(path, self.base / "target", digest(path))
                 self.assertFalse((self.base / "target").exists())
                 self.assertEqual(list(self.base.glob(".restore-*")), [])
+
+    def test_restore_is_forward_only_and_does_not_rehash_the_archive_upfront(self):
+        receipt = capture(self.roots, self.archive)
+        destination = self.base / "streamed"
+        with (
+            patch("archive.digest", side_effect=AssertionError("unexpected whole-file reread")),
+            patch("gzip.GzipFile.seek", side_effect=AssertionError("unexpected gzip rewind")),
+        ):
+            restore(self.archive, destination, receipt["sha256"])
+        self.assertEqual(oracle(destination), oracle(self.source))
+
+    def test_late_checksum_or_crc_failure_cannot_publish_private_staging(self):
+        capture(self.roots, self.archive)
+        original = self.archive.read_bytes()
+        for crc in (False, True):
+            with self.subTest(crc=crc):
+                data = bytearray(original)
+                if crc:
+                    data[-1] ^= 1
+                self.archive.write_bytes(data)
+                expected = hashlib.sha256(data).hexdigest() if crc else "0" * 64
+                destination = self.base / ("rejected-" + str(crc))
+                with patch("archive.os.rename") as rename:
+                    with self.assertRaisesRegex(ValueError, "digest_mismatch"):
+                        restore(self.archive, destination, expected)
+                    rename.assert_not_called()
+                self.assertFalse(destination.exists())
+                self.assertEqual(list(self.base.glob(".restore-*")), [])
+
+    def test_trailing_decompression_remains_bounded_before_publication(self):
+        content = io.BytesIO()
+        with tarfile.open(fileobj=content, mode="w") as archive:
+            for name in ("workspace", "home"):
+                member = tarfile.TarInfo(name)
+                member.type = tarfile.DIRTYPE
+                archive.addfile(member)
+        self.archive.write_bytes(gzip.compress(content.getvalue() + b"\0" * (1024 * 1024)))
+        limits = {"entries": 2, "bytes": 4096, "pathBytes": 16}
+        with self.assertRaisesRegex(ValueError, "archive_limit"):
+            restore(self.archive, self.base / "bomb", digest(self.archive), limits)
+        self.assertFalse((self.base / "bomb").exists())
+        self.assertEqual(list(self.base.glob(".restore-*")), [])
+
+    def test_final_owner_and_zero_mode_hardlinks_are_applied_after_all_links_exist(self):
+        with tarfile.open(self.archive, "w:gz") as archive:
+            for name in ("workspace", "home"):
+                member = tarfile.TarInfo(name)
+                member.type = tarfile.DIRTYPE
+                member.mode = 0o700
+                archive.addfile(member)
+            member = tarfile.TarInfo("workspace/private")
+            member.size = 4
+            member.mode = 0
+            archive.addfile(member, io.BytesIO(b"data"))
+            link = tarfile.TarInfo("home/hard")
+            link.type = tarfile.LNKTYPE
+            link.linkname = member.name
+            link.mode = 0
+            archive.addfile(link)
+        destination = self.base / "owned"
+        restore(self.archive, destination, digest(self.archive), owner=(os.getuid(), os.getgid()))
+        primary = destination / "workspace/private"
+        linked = destination / "home/hard"
+        for path in (destination, primary, linked):
+            meta = path.stat()
+            self.assertEqual((meta.st_uid, meta.st_gid), (os.getuid(), os.getgid()))
+        self.assertEqual(stat.S_IMODE(primary.stat().st_mode), 0)
+        self.assertEqual(stat.S_IMODE(linked.stat().st_mode), 0)
+        self.assertEqual(primary.stat().st_ino, linked.stat().st_ino)
+        os.chmod(primary, 0o600)
+        self.assertEqual(primary.read_bytes(), b"data")
 
 
 if __name__ == "__main__":
