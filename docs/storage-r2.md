@@ -29,6 +29,12 @@ immutable identity and requires observation. New processes rebuild their proofs
 from stored bytes. Ordinary reads always verify complete object contents before
 returning requested ranges. Existing objects need no format migration.
 
+Verified logical-range proofs use an aggregate LRU budget of 16,384 entries,
+alongside the 1,024-object limit. Dense compressed packs can retain all accepted
+members without forcing a second payload download. Eviction discards trust and
+falls back to readback; every reused proof still needs a fresh stored-version
+observation.
+
 Use an explicit private prefix. Reservation markers remain consumed after failed
 or deleted uploads; do not expire them or reuse identities. Delete only through the
 core's fenced collector. This adapter does not replace writer/reader coordination,

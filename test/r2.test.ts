@@ -300,3 +300,66 @@ test("a delayed conditional reply cannot revive a deleted proof", async () => {
   await assert.rejects(observed, /invalidated/);
   assert.equal(await store.head(address), undefined);
 });
+
+test("dense packed ranges retain verified-write proofs without another payload download", async () => {
+  const f = fixture(),
+    store = f.open("provider-sha256");
+  const body = Buffer.alloc(513, 42);
+  const ranges = Array.from(body, (_, start) => ({
+    start,
+    endExclusive: start + 1,
+    sha256: sha(body.subarray(start, start + 1)),
+  }));
+  await store.put(
+    address,
+    (async function* () {
+      yield body;
+    })(),
+    {
+      bytes: body.length,
+      sha256: sha(body),
+      ranges,
+    },
+  );
+  await store.verifyRanges(address, ranges);
+  assert.deepEqual(f.metrics, { gets: 1, bodies: 0 });
+  await assert.rejects(
+    store.verifyRanges(address, [{ ...ranges[0]!, sha256: "0".repeat(64) }]),
+    /slice integrity/,
+  );
+});
+
+test("the aggregate range-proof budget evicts old proofs with safe readback fallback", async () => {
+  const f = fixture(),
+    store = f.open("provider-sha256");
+  const body = Buffer.alloc(8192, 42);
+  const digest = sha(body.subarray(0, 1));
+  const ranges = Array.from(body, (_, start) => ({
+    start,
+    endExclusive: start + 1,
+    sha256: digest,
+  }));
+  const addresses = ["first", "second", "third"].map((id) => ({
+    ...address,
+    id,
+  }));
+  for (const object of addresses) {
+    await store.put(
+      object,
+      (async function* () {
+        yield body;
+      })(),
+      {
+        bytes: body.length,
+        sha256: sha(body),
+        ranges,
+      },
+    );
+  }
+  await store.verifyRanges(addresses[2]!, ranges);
+  assert.deepEqual(f.metrics, { gets: 1, bodies: 0 });
+  await store.verifyRanges(addresses[0]!, ranges);
+  assert.deepEqual(f.metrics, { gets: 2, bodies: 1 });
+  await store.verifyRanges(addresses[2]!, ranges);
+  assert.deepEqual(f.metrics, { gets: 3, bodies: 1 });
+});

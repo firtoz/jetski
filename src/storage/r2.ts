@@ -1,5 +1,6 @@
 import {
   type ByteStream,
+  CHECKPOINT_FORMAT,
   type CheckpointStore,
   DEFAULTS,
   identifier,
@@ -17,7 +18,9 @@ const LIST_MAX_PAGES = 10_000;
 const READ_PART_BYTES = 65_536;
 
 const VERIFIED_CACHE_ENTRIES = 1024;
-const VERIFIED_RANGE_ENTRIES = 128;
+// Dense compressed packs may contain every accepted logical frame. Bound the
+// total proof cache instead of discarding an otherwise valid dense pack proof.
+const VERIFIED_RANGE_BUDGET = 2 * CHECKPOINT_FORMAT.maxFrames;
 type VerifiedObject = {
   info: ObjectInfo;
   etag: string;
@@ -91,13 +94,23 @@ export class R2CheckpointStore implements CheckpointStore {
   readonly transferConcurrency = DEFAULTS.transferConcurrency;
   private readonly verified = new Map<string, VerifiedObject>();
   private readonly writeVerification: R2WriteVerification;
-  private remember(key: string, receipt: VerifiedObject) {
+  private verifiedRangeEntries = 0;
+  private forget(key: string) {
+    const prior = this.verified.get(key);
+    this.verifiedRangeEntries -= prior?.ranges?.size ?? 0;
     this.verified.delete(key);
+  }
+  private remember(key: string, receipt: VerifiedObject) {
+    this.forget(key);
     this.verified.set(key, receipt);
-    while (this.verified.size > VERIFIED_CACHE_ENTRIES) {
+    this.verifiedRangeEntries += receipt.ranges?.size ?? 0;
+    while (
+      this.verified.size > VERIFIED_CACHE_ENTRIES ||
+      this.verifiedRangeEntries > VERIFIED_RANGE_BUDGET
+    ) {
       const oldest = this.verified.keys().next().value;
       if (oldest !== undefined) {
-        this.verified.delete(oldest);
+        this.forget(oldest);
       }
     }
   }
@@ -210,9 +223,7 @@ export class R2CheckpointStore implements CheckpointStore {
             etag: written.etag,
             version: written.version,
             providerSha256: true,
-            ...(expected.ranges && proofs.size <= VERIFIED_RANGE_ENTRIES
-              ? { ranges: proofs }
-              : {}),
+            ...(expected.ranges ? { ranges: proofs } : {}),
           });
           return { ...info };
         }
@@ -244,11 +255,11 @@ export class R2CheckpointStore implements CheckpointStore {
         prior ? { onlyIf: { etagDoesNotMatch: prior.etag } } : {},
       );
     } catch (error) {
-      this.verified.delete(key);
+      this.forget(key);
       throw error;
     }
     if (!object) {
-      this.verified.delete(key);
+      this.forget(key);
       return undefined;
     }
     const reader = object.body?.getReader();
@@ -283,7 +294,7 @@ export class R2CheckpointStore implements CheckpointStore {
         if (prior.providerSha256) {
           const checksum = providerChecksum(object);
           if (checksum === undefined) {
-            this.verified.delete(key);
+            this.forget(key);
             return this.fetch(address, undefined, ranges, retainBytes);
           }
           if (checksum !== prior.info.sha256)
@@ -314,10 +325,10 @@ export class R2CheckpointStore implements CheckpointStore {
         sha256: storedSha256,
       };
       let proofs: ReadonlyMap<string, string> | undefined;
-      if (ranges && checkedProofs.size <= VERIFIED_RANGE_ENTRIES) {
+      if (ranges) {
         proofs = checkedProofs;
       }
-      this.verified.delete(key);
+      this.forget(key);
       if (validValidator(object.etag)) {
         this.remember(key, {
           info: { ...info },
@@ -330,7 +341,7 @@ export class R2CheckpointStore implements CheckpointStore {
       }
       return { info, ...(bytes ? { bytes } : {}) };
     } catch (error) {
-      this.verified.delete(key);
+      this.forget(key);
       throw error;
     } finally {
       await reader?.cancel();
@@ -423,7 +434,7 @@ export class R2CheckpointStore implements CheckpointStore {
   /** Call only after the core collector's fenced reachability validation. */
   async delete(address: ObjectAddress) {
     const key = this.key(address);
-    this.verified.delete(key);
+    this.forget(key);
     await this.bucket.delete(key);
   }
 }
