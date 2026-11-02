@@ -87,6 +87,7 @@ for (const failure of ["output", "capture"] as const)
           channel: string;
           offset: number;
           bytes: number;
+          frameBytes: number;
         };
         if (request.action === "command-status")
           statusCalls.set(
@@ -131,7 +132,11 @@ for (const failure of ["output", "capture"] as const)
         return { version: 1, id: request.id, result };
       },
     };
-    const options = { poolId: "pool", approvedImages: [image] };
+    const options = {
+      poolId: "pool",
+      approvedImages: [image],
+      checkpointFrameBytes: 256 * 1024,
+    };
     let manager = new SandboxManager(
       state,
       provider,
@@ -223,7 +228,10 @@ for (const failure of ["output", "capture"] as const)
     assert.ok(!actions.includes("release"));
     state.close();
     state = new SqliteState(path);
-    manager = new SandboxManager(state, provider, transport, objects, options);
+    manager = new SandboxManager(state, provider, transport, objects, {
+      ...options,
+      checkpointFrameBytes: 512 * 1024,
+    });
     await manager.reconcile(scope.owner);
     assert.equal((await manager.operation(scope, stop))?.phase, "succeeded");
     assert.equal(

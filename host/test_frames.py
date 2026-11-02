@@ -57,6 +57,24 @@ class FrameTests(unittest.TestCase):
             encoded.append((output.getvalue(), writer.frames))
         self.assertEqual(encoded[0], encoded[1])
 
+    def test_small_capture_members_keep_growing_to_the_accepted_maximum(self):
+        value = bytes(range(256)) * 400
+        encoded = []
+        for stride in (213, len(value)):
+            output = io.BytesIO()
+            with patch("frames.FRAMES_PER_LEVEL", 2), patch("frames.MAX_FRAME_BYTES", 8192):
+                with FrameWriter(output, 1024, adaptive=True) as writer:
+                    for offset in range(0, len(value), stride):
+                        writer.write(value[offset : offset + stride])
+            self.assertEqual(
+                [frame["expandedBytes"] for frame in writer.frames[:8]],
+                [1024, 1024, 2048, 2048, 4096, 4096, 8192, 8192],
+            )
+            self.assertTrue(all(frame["expandedBytes"] <= 8192 for frame in writer.frames))
+            self.assertEqual(gzip.decompress(output.getvalue()), value)
+            encoded.append((output.getvalue(), writer.frames))
+        self.assertEqual(encoded[0], encoded[1])
+
     def test_adaptive_gzip_handles_binary_source_and_mixed_members(self):
         binary = random.Random(4129).randbytes(1024 * 1024)
         text = (b"function fixture(value) { return value + 1; }\n" * 24000)[: 1024 * 1024]

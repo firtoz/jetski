@@ -284,7 +284,16 @@ def dispatch(request, config, account, run, launch=None, backend=DEFAULT_BACKEND
             roots = {
                 name: DATA_ROOT / lease["assignmentId"] / name for name in ("workspace", "home")
             }
-            receipt = capture(roots, ARCHIVE_ROOT / (lease["assignmentId"] + ".tgz"))
+            frame_bytes = payload.get("frameBytes", 1024 * 1024)
+            if type(frame_bytes) is not int or frame_bytes not in (
+                256 * 1024,
+                512 * 1024,
+                1024 * 1024,
+            ):
+                raise ValueError("invalid_capture_frame_size")
+            receipt = capture(
+                roots, ARCHIVE_ROOT / (lease["assignmentId"] + ".tgz"), frame_bytes=frame_bytes
+            )
             fence.write({**state, "checkpoint": receipt})
             return receipt
     if action == "read-checkpoint":

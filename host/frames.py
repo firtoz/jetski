@@ -95,5 +95,5 @@ class FrameWriter:
         self.pending.clear()
         # Keep the manifest within the existing bounded control response even
         # for large archives. Geometry depends only on the archive byte stream.
-        if self.adaptive and len(self.frames) in (FRAMES_PER_LEVEL, 2 * FRAMES_PER_LEVEL):
+        if self.adaptive and len(self.frames) % FRAMES_PER_LEVEL == 0:
             self.frame_bytes = min(MAX_FRAME_BYTES, 2 * self.frame_bytes)

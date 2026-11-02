@@ -4,6 +4,7 @@ import { checkpointArchive } from "./checkpoint-layout.js";
 import { CheckpointRegistry } from "./checkpoints.js";
 import { CommandOutputStore, type OutputChannel } from "./command-output.js";
 import {
+  CAPTURE_FRAME_BYTES,
   type CheckpointStore,
   canonical,
   DEFAULTS,
@@ -101,6 +102,8 @@ export type ManagerOptions = {
   automaticCollection?: boolean;
   /** Optional physical packing target; zero retains per-frame storage. */
   checkpointPackBytes?: number;
+  /** Independent capture members: 256 KiB, 512 KiB or the default 1 MiB. */
+  checkpointFrameBytes?: number;
   /** Bounded wait for short noninteractive commands; zero returns immediately. */
   commandStartWaitMs?: number;
   /** Store tiny complete output channels in durable transactional metadata. Opt-in. */
@@ -154,6 +157,9 @@ export class SandboxManager {
       this.commandStartWaitMs > DEFAULTS.maxCommandStartWaitMs
     )
       throw Error("Invalid command start wait");
+    const frameBytes = options.checkpointFrameBytes ?? DEFAULTS.frameBytes;
+    if (!(CAPTURE_FRAME_BYTES as readonly number[]).includes(frameBytes))
+      throw Error("Invalid checkpoint capture frame size");
     const packBytes = options.checkpointPackBytes ?? 0;
     if (
       !Number.isSafeInteger(packBytes) ||
@@ -243,6 +249,7 @@ export class SandboxManager {
       (lease, action, payload) => this.request(lease, action, payload),
     );
     this.shutdown = new ShutdownCoordinator({
+      captureFrameBytes: frameBytes,
       settleUploads: (scope) => this.uploads.settle(scope),
       state,
       operations: this.operations,

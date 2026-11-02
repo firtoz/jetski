@@ -24,6 +24,11 @@ export const CHECKPOINT_FORMAT = Object.freeze({
   maxExpandedFrameBytes: 4 * 1024 * 1024,
   maxFrames: 8192,
 });
+export const CAPTURE_FRAME_BYTES = [
+  256 * 1024,
+  512 * 1024,
+  1024 * 1024,
+] as const;
 export const DEFAULTS = Object.freeze({
   idleMs: 10 * 60_000,
   hostLifetimeMs: 60 * 60_000,

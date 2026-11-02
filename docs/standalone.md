@@ -677,3 +677,10 @@ retain the object-store path. Full content hashes, writer admission and GC check
 still apply. Back up control-plane metadata as well as checkpoint objects. Once
 inline output roots have been written, use a reader that supports output format2;
 older binaries must not be used to roll back that control-plane state.
+
+
+`checkpointFrameBytes` selects256 KiB,512 KiB or the default1 MiB capture
+members. Smaller members can reduce incremental transfer with physical packing;
+measure your workload. The admitted geometry survives controller restart and
+settings changes. Large captures grow members toward4 MiB to bound metadata;
+existing4 MiB archives stay readable. Only an opted-in size is sent to the host.

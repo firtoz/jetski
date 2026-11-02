@@ -46,6 +46,7 @@ if (command === "serve") {
     port?: number;
     hostsPerOwner?: number;
     checkpointPackBytes?: number;
+    checkpointFrameBytes?: number;
     commandStartWaitMs?: number;
     inlineCommandOutputBytes?: number;
     sshGateway?: {
@@ -106,6 +107,9 @@ if (command === "serve") {
         : {}),
       ...(config.commandStartWaitMs !== undefined
         ? { commandStartWaitMs: config.commandStartWaitMs }
+        : {}),
+      ...(config.checkpointFrameBytes !== undefined
+        ? { checkpointFrameBytes: config.checkpointFrameBytes }
         : {}),
       ...(config.checkpointPackBytes !== undefined
         ? { checkpointPackBytes: config.checkpointPackBytes }

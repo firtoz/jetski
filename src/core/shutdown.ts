@@ -8,6 +8,7 @@ import { decodeBase64 } from "./command-output.js";
 import {
   type CheckpointStore,
   canonical,
+  DEFAULTS,
   type Fence,
   identifier,
   type Json,
@@ -53,6 +54,7 @@ type Shutdown = {
   recoveredBy?: string;
   finalizeVersion?: 1;
   readChunkBytes?: number;
+  captureFrameBytes?: number;
 };
 export type MissingSourceRecovery = {
   generation: number;
@@ -102,6 +104,7 @@ export function missingSourceRecovery(value: unknown): MissingSourceRecovery {
   return structuredClone(value) as MissingSourceRecovery;
 }
 type Dependencies = {
+  captureFrameBytes: number;
   state: StateStore;
   operations: OperationJournal;
   pool: PoolJournal;
@@ -263,6 +266,7 @@ export class ShutdownCoordinator {
       stage: "quiesce",
       archive: null,
       blocked: false,
+      captureFrameBytes: this.deps.captureFrameBytes,
     });
     // Shares the command-admission transaction boundary: no later command starts.
     tx.put(sandboxKey(scope), { ...sandbox, phase: "stopping" });
@@ -320,6 +324,13 @@ export class ShutdownCoordinator {
     if (operation?.phase === "queued")
       await operations.claim(operationFence, record.id);
     const payload = { lease: record.lease, image: record.image };
+    const capturePayload = {
+      ...payload,
+      ...(record.captureFrameBytes !== undefined &&
+      record.captureFrameBytes !== DEFAULTS.frameBytes
+        ? { frameBytes: record.captureFrameBytes }
+        : {}),
+    };
     try {
       if (record.stage === "quiesce") {
         await this.deps.settleUploads(scope);
@@ -361,7 +372,7 @@ export class ShutdownCoordinator {
           | undefined;
         const startCapture = () => {
           capturing ??= Promise.allSettled([
-            request(record.lease, "capture", payload).then(parseArchive),
+            request(record.lease, "capture", capturePayload).then(parseArchive),
           ]).then((results) => results[0]!);
         };
         const [outputs] = await Promise.allSettled([
@@ -378,7 +389,7 @@ export class ShutdownCoordinator {
       }
       if (record.stage === "capture") {
         const archive = parseArchive(
-          await request(record.lease, "capture", payload),
+          await request(record.lease, "capture", capturePayload),
         );
         record = await this.advance(record, "publish", archive);
       }

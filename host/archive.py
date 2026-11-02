@@ -12,7 +12,7 @@ import pathlib
 import shutil
 import tarfile
 import tempfile
-from frames import FrameWriter
+from frames import FrameWriter, FRAME_BYTES
 
 FORMAT = 1
 DEFAULT_LIMITS = {"entries": 100000, "bytes": 16 * 1024**3, "pathBytes": 4096}
@@ -77,7 +77,7 @@ def canonical_name(value, limits):
     return path
 
 
-def capture(roots, target, limits=None):
+def capture(roots, target, limits=None, frame_bytes=FRAME_BYTES):
     roots = roots_checked(roots)
     limits = limits_checked(limits)
     target = pathlib.Path(target).absolute()
@@ -91,7 +91,7 @@ def capture(roots, target, limits=None):
     count = total = 0
     try:
         with os.fdopen(fd, "wb") as output:
-            with FrameWriter(output, adaptive=True) as compressed:
+            with FrameWriter(output, frame_bytes=frame_bytes, adaptive=True) as compressed:
                 with tarfile.open(
                     fileobj=compressed, mode="w|", dereference=False, format=tarfile.PAX_FORMAT
                 ) as archive:

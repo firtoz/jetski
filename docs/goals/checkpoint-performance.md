@@ -55,21 +55,21 @@ as a substitute for a contemporaneous comparison.
 | Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.                  |
 | Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; latest embedded save 4.052 s vs3.007 s reference; parity open.              |
 | Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.                |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 224 TypeScript/105 Python tests and live R2 recovery pass; new hosted replacement open.                             |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 224 TypeScript/107 Python tests and live R2 recovery pass; new hosted replacement open.                             |
 | Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Six separate five-per-arm screens, one pretrial failure preserved; all owned hosts retired; final replication open. |
 | Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                            |
 | Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.                   |
 
 ## Current local screen
 
-For a deterministic 16 MiB binary with a 4 KiB same-length edit, 256 KiB,
-1 MiB and 4 MiB frames uploaded 0.258, 1.045 and 4.192 MB respectively, with
-64, 16 and 4 objects. The candidate selects 1 MiB for hosted evaluation. This
-geometry screen does not establish end-to-end speed. Packing and larger import
-chunks are implemented; final hosted trials must measure their combined cost.
-Local and live R2 checkpoint recovery pass all eleven runner checks, including
-acknowledgement loss, reopen, retained reconstruction and scoped cleanup. Their
-synthetic-clock collection checks do not replace the protected real-grace test.
+With physical packing, the local64 MiB fixture changed259,147 encoded bytes
+using256 KiB members, versus1,045,819 bytes using1 MiB members. Both initial
+archives occupied nine8 MiB packs; local capture measured349 versus377 ms.
+The next hosted candidate opts into256 KiB members; the general default remains
+1 MiB. Geometry is persisted per shutdown, grows toward4 MiB for large archives,
+and never narrows the accepted bounds of old checkpoints. These are local encoding
+measurements, not end-to-end timing. Local and live R2 recovery checks preserve
+acknowledgement-loss and source-deleted exact reconstruction evidence.
 
 The [hosted screens](../benchmarks.md#follow-on-checkpoint-optimization-screens)
 remain below target. The latest embedded native-store composition measured

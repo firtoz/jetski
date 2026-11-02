@@ -146,6 +146,16 @@ test("command cancellation survives controller restart before dispatch and after
   };
   let clock = 1;
   const options = { poolId: "pool", approvedImages: [image], now: () => clock };
+  for (const checkpointFrameBytes of [0, 128 * 1024, NaN, 4 * 1024 * 1024])
+    assert.throws(
+      () =>
+        new SandboxManager(state, provider, transport, objects, {
+          ...options,
+          checkpointFrameBytes,
+        }),
+      /Invalid checkpoint capture frame size/,
+    );
+
   let manager = new SandboxManager(
     state,
     provider,

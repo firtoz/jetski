@@ -63,6 +63,19 @@ class ArchiveTests(unittest.TestCase):
         (workspace / ".git" / "config").write_text("[core]\nfilemode = true\n")
         self.archive = self.base / "checkpoint.tgz"
 
+    def test_capture_member_policies_and_legacy_large_members_restore_exactly(self):
+        expected = oracle(self.source)
+        for frame_bytes in (256 * 1024, 512 * 1024, 1024 * 1024, 4 * 1024 * 1024):
+            with self.subTest(frame_bytes=frame_bytes):
+                target = self.base / (str(frame_bytes) + ".tgz")
+                receipt = capture(self.roots, target, frame_bytes=frame_bytes)
+                self.assertTrue(
+                    all(frame["expandedBytes"] <= frame_bytes for frame in receipt["frames"])
+                )
+                destination = self.base / ("restored-" + str(frame_bytes))
+                restore(target, destination, receipt["sha256"])
+                self.assertEqual(oracle(destination), expected)
+
     def test_exact_recovery_and_deterministic_capture(self):
         original = oracle(self.source)
         receipt = capture(self.roots, self.archive)
