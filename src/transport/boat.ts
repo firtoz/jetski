@@ -2,11 +2,13 @@ import type { CapturedArchive } from "../core/archive-format.js";
 import type { ArchiveSource } from "../core/archive-source.js";
 import { MAX_CHECKPOINT_READ_BYTES } from "../core/archive-source.js";
 import { decodeBase64 } from "../core/command-output.js";
-import type { StateStore } from "../core/contracts.js";
+import type { Json, StateStore } from "../core/contracts.js";
 import { identifier } from "../core/contracts.js";
 import type { HostLease } from "../core/pool.js";
 import {
+  type CheckpointImportSink,
   HOST_CONTROL_TIMEOUT_MS,
+  HOST_IMPORT_FILE_BYTES,
   HOST_PROTOCOL_VERSION,
   type HostRequest,
   type HostResponse,
@@ -20,6 +22,11 @@ import { BoatControlChannel } from "./boat-channel.js";
 /** Fixed privileged control program; workload bytes enter only through stdin. */
 export class BoatTransport implements HostTransport {
   private readonly channel: BoatControlChannel;
+  readonly checkpointImport?: (
+    host: string,
+    lease: HostLease,
+    image: string,
+  ) => Promise<CheckpointImportSink>;
   readonly checkpointSource?: (
     host: string,
     lease: HostLease,
@@ -30,7 +37,7 @@ export class BoatTransport implements HostTransport {
     state: StateStore,
     private readonly api: BoatApi,
     timeoutSeconds = HOST_CONTROL_TIMEOUT_MS / 1000,
-    options: { archiveReads?: boolean } = {},
+    options: { archiveReads?: boolean; archiveWrites?: boolean } = {},
   ) {
     this.channel = new BoatControlChannel(state, api, timeoutSeconds);
     if (
@@ -38,9 +45,67 @@ export class BoatTransport implements HostTransport {
       typeof options.archiveReads !== "boolean"
     )
       throw Error("Invalid binary archive read policy");
+    if (
+      options.archiveWrites !== undefined &&
+      typeof options.archiveWrites !== "boolean"
+    )
+      throw Error("Invalid binary archive write policy");
+    if (options.archiveWrites)
+      this.checkpointImport = (host, lease, image) =>
+        this.openImport(host, lease, image);
     if (options.archiveReads)
       this.checkpointSource = (host, lease, archive, image) =>
         this.openCheckpoint(host, lease, archive, image);
+  }
+  private async openImport(
+    host: string,
+    lease: HostLease,
+    image: string,
+  ): Promise<CheckpointImportSink> {
+    identifier(lease.assignmentId);
+    const request = async (
+      action: string,
+      payload: Record<string, Json> = {},
+    ) =>
+      (
+        await this.request(host, {
+          version: HOST_PROTOCOL_VERSION,
+          id: crypto.randomUUID(),
+          action,
+          payload: { ...payload, lease, image },
+        })
+      ).result;
+    const value = await request("import-file-begin");
+    const path = `/tmp/jetski-checkpoint-imports/${lease.assignmentId}/chunk.bin`;
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      value.path !== path ||
+      value.chunkBytes !== HOST_IMPORT_FILE_BYTES
+    )
+      throw Error("Invalid binary import negotiation");
+    return {
+      chunkBytes: HOST_IMPORT_FILE_BYTES,
+      write: async (offset, bytes, sha256) => {
+        await this.api.uploadCheckpointPart(host, path, bytes);
+        return request("import-file-chunk", {
+          offset,
+          bytes: bytes.length,
+          sha256,
+        });
+      },
+      close: async () => {
+        const done = await request("import-file-close");
+        if (
+          !done ||
+          typeof done !== "object" ||
+          Array.isArray(done) ||
+          done.closed !== true
+        )
+          throw Error("Binary import cleanup unconfirmed");
+      },
+    };
   }
   private async openCheckpoint(
     host: string,

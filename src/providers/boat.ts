@@ -7,6 +7,7 @@ import {
   type StateStore,
 } from "../core/contracts.js";
 import {
+  HOST_IMPORT_FILE_BYTES,
   HOST_PROTOCOL_VERSION,
   type HostTransport,
 } from "../core/transport.js";
@@ -43,6 +44,23 @@ export class BoatApi {
     data: Uint8Array,
     signal?: AbortSignal,
   ): Promise<void> {
+    return this.uploadBoundedFile(host, path, data, 6 * 1024 * 1024, signal);
+  }
+  /** Bounded raw checkpoint parts use a separate limit from control envelopes. */
+  async uploadCheckpointPart(host: string, path: string, data: Uint8Array) {
+    if (
+      !/^\/tmp\/jetski-checkpoint-imports\/[a-f0-9-]{36}\/chunk.bin$/.test(path)
+    )
+      throw Error("Invalid checkpoint upload path");
+    return this.uploadBoundedFile(host, path, data, HOST_IMPORT_FILE_BYTES);
+  }
+  private async uploadBoundedFile(
+    host: string,
+    path: string,
+    data: Uint8Array,
+    limit: number,
+    signal?: AbortSignal,
+  ) {
     identifier(host);
     if (
       !/^bx_[a-zA-Z0-9_-]+$/.test(host) ||
@@ -51,7 +69,7 @@ export class BoatApi {
       path.split("/").includes("..") ||
       path.length > 4096 ||
       data.length < 1 ||
-      data.length > 6 * 1024 * 1024
+      data.length > limit
     )
       throw Error("Invalid Boat file upload");
     signal?.throwIfAborted();

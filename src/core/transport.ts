@@ -3,8 +3,18 @@ import type { ArchiveSource } from "./archive-source.js";
 import type { Json } from "./contracts.js";
 import type { HostLease } from "./pool.js";
 export const HOST_PROTOCOL_VERSION = 1;
-/** The larger envelope is reserved for negotiated checkpoint chunks. Ordinary
- * control requests retain their existing bound. */
+/** Raw parts are bounded independently of the control protocol envelope. */
+export const HOST_IMPORT_FILE_BYTES = 16 * 1024 * 1024;
+export type CheckpointImportSink = {
+  chunkBytes: number;
+  write(
+    offset: number,
+    bytes: Uint8Array<ArrayBuffer>,
+    sha256: string,
+  ): Promise<Json>;
+  close(): Promise<void>;
+};
+/** Negotiated control chunks; ordinary control requests keep their smaller bound. */
 export const HOST_IMPORT_CHUNK_BYTES = 4 * 1024 * 1024;
 export function hostRequestByteLimit(action: string): number {
   return action === "import-chunk" ? 6 * 1024 * 1024 : 1024 * 1024;
@@ -25,6 +35,13 @@ export type HostResponse = {
   result: Json;
 };
 export interface HostTransport {
+  /** Optional bounded binary import; durable offsets remain host-authoritative. */
+  checkpointImport?(
+    host: string,
+    lease: HostLease,
+    image: string,
+  ): Promise<CheckpointImportSink>;
+
   /** Optional immutable binary binding. It cannot authorize checkpoint publication. */
   checkpointSource?(
     host: string,

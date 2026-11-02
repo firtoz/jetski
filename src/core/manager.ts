@@ -638,6 +638,14 @@ export class SandboxManager {
                 lease,
                 image: sandbox.image,
               }),
+            this.transport.checkpointImport
+              ? () =>
+                  this.transport.checkpointImport!(
+                    lease.machineId,
+                    lease,
+                    sandbox.image,
+                  )
+              : undefined,
           );
         await this.request(lease, "create", {
           lease,
@@ -873,6 +881,14 @@ export class SandboxManager {
                 lease,
                 image: sandbox.image,
               }),
+            this.transport.checkpointImport
+              ? () =>
+                  this.transport.checkpointImport!(
+                    lease.machineId,
+                    lease,
+                    sandbox.image,
+                  )
+              : undefined,
           );
         await this.request(lease, "create", {
           lease,

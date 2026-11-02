@@ -667,6 +667,25 @@ Linux hosts can configure `archiveTransferUser` in their trusted host config;
 workload requests cannot select the account. Enable binary reads only on a
 qualified host/transport pair; unsupported or inconsistent ranges fail closed.
 
+### Binary checkpoint import binding
+
+Trusted Boat compositions can opt into `archiveWrites: true` alongside
+`archiveReads`. New hosts advertise bounded 16 MiB raw imports when an approved
+outer-host transfer account is configured. Older hosts and other transports keep
+the existing control protocol; verified local-cache hits open no upload binding.
+The optional `HostTransport.checkpointImport` interface is independent of storage
+and provider SDKs. This path is implemented and locally checked; live performance
+and downstream qualification remain pending.
+
+Parts upload through short-lived capabilities without forwarding the API bearer.
+Only fixed supervisor-owned staging directories are used. Each part is checked
+for type, extent and SHA before entering the existing fenced, synchronized archive
+writer. Durable offsets survive interrupted receipts and allow mixed raw/control
+resumption. Temporary upload files must be removed before workload admission;
+unknown files, stale leases and unsafe paths fail closed. Whole-archive verification
+and retained-root reader coordination remain mandatory. No archive-sized buffer
+is introduced, and enabling this option does not widen control request limits.
+
 ### Verified local checkpoint reuse
 
 A host retains one owner-scoped archive only after verified durable publication.

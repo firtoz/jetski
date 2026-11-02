@@ -118,7 +118,22 @@ def dispatch(
         return streams.status(lease, payload.get("streamId"))
     if action == "stream-cancel":
         return streams.cancel(lease, payload.get("streamId"))
-    importer = CheckpointImport(fence, ARCHIVE_ROOT, DATA_ROOT, persistent)
+    transfer_name = config.get("archiveTransferUser")
+    importer = CheckpointImport(
+        fence,
+        ARCHIVE_ROOT,
+        DATA_ROOT,
+        persistent,
+        pwd.getpwnam(transfer_name) if transfer_name is not None else None,
+    )
+    if action == "import-file-begin":
+        return importer.file_begin(lease)
+    if action == "import-file-chunk":
+        return importer.file_chunk(
+            lease, payload.get("offset"), payload.get("bytes"), payload.get("sha256")
+        )
+    if action == "import-file-close":
+        return importer.file_close(lease)
     if action == "import-begin":
         return importer.begin(
             lease, payload.get("checkpointId"), payload.get("sha256"), payload.get("bytes")

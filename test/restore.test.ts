@@ -14,7 +14,13 @@ import { LocalCheckpointStore } from "../src/storage/local.js";
 
 const sha = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
-for (const chunkBytes of [undefined, 512 * 1024, 4 * 1024 * 1024]) {
+for (const chunkBytes of [
+  undefined,
+  512 * 1024,
+  4 * 1024 * 1024,
+  16 * 1024 * 1024,
+]) {
+  const binary = chunkBytes === 16 * 1024 * 1024;
   test(`restore coalesces frames and resumes across boundaries with chunk bound ${chunkBytes ?? "legacy"}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "jetski-restore-"));
     const state = new SqliteState(join(directory, "state.sqlite"));
@@ -26,11 +32,15 @@ for (const chunkBytes of [undefined, 512 * 1024, 4 * 1024 * 1024]) {
     const registry = new CheckpointRegistry(state, objects),
       fence = { owner: "alice", sandbox: "box", generation: 1 };
     await registry.initialize(fence);
-    const frameBytes = chunkBytes === 4 * 1024 * 1024 ? 2_000_000 : 300000;
-    const raw = randomBytes(frameBytes * 3);
-    const compressed = [0, frameBytes, frameBytes * 2].map((offset) =>
-      gzipSync(raw.subarray(offset, offset + frameBytes)),
-    );
+    let frameBytes = 300_000;
+    if (binary) frameBytes = 3_000_000;
+    else if (chunkBytes === 4 * 1024 * 1024) frameBytes = 2_000_000;
+    const frameCount = binary ? 6 : 3;
+    const raw = randomBytes(frameBytes * frameCount);
+    const compressed = Array.from(
+      { length: frameCount },
+      (_, i) => i * frameBytes,
+    ).map((offset) => gzipSync(raw.subarray(offset, offset + frameBytes)));
     const archive = Buffer.concat(compressed),
       id = randomUUID();
     let frameOffset = 0;
@@ -63,7 +73,10 @@ for (const chunkBytes of [undefined, 512 * 1024, 4 * 1024 * 1024]) {
       bytes: archive.length,
       offset: 0,
       phase: "receiving",
-      ...(chunkBytes ? { chunkBytes } : {}),
+      ...(chunkBytes
+        ? { chunkBytes: binary ? 4 * 1024 * 1024 : chunkBytes }
+        : {}),
+      ...(binary ? { fileChunkBytes: chunkBytes } : {}),
     };
     const offsets: number[] = [],
       received: Buffer[] = [];
@@ -95,13 +108,42 @@ for (const chunkBytes of [undefined, 512 * 1024, 4 * 1024 * 1024]) {
       receipt.phase = "ready";
       return { ...receipt };
     };
+    let opened = 0,
+      closed = 0;
+    const openImport = binary
+      ? async () => {
+          opened++;
+          return {
+            chunkBytes: 16 * 1024 * 1024,
+            write: async (
+              offset: number,
+              bytes: Uint8Array<ArrayBuffer>,
+              digest: string,
+            ) => {
+              assert.equal(offset, receipt.offset);
+              assert.equal(sha(bytes), digest);
+              received.push(Buffer.from(bytes));
+              offsets.push(offset);
+              receipt.offset += bytes.length;
+              if (loseAck) {
+                loseAck = false;
+                throw Error("lost acknowledgement");
+              }
+              return { ...receipt };
+            },
+            close: async () => {
+              closed++;
+            },
+          };
+        }
+      : undefined;
     await assert.rejects(
-      restoreCheckpoint(objects, registry, fence, id, request),
+      restoreCheckpoint(objects, registry, fence, id, request, openImport),
       /lost acknowledgement/,
     );
     const bound = chunkBytes ?? 256 * 1024;
     assert.equal(receipt.offset, bound);
-    await restoreCheckpoint(objects, registry, fence, id, request);
+    await restoreCheckpoint(objects, registry, fence, id, request, openImport);
     assert.deepEqual(
       offsets,
       Array.from(
@@ -110,11 +152,13 @@ for (const chunkBytes of [undefined, 512 * 1024, 4 * 1024 * 1024]) {
       ),
     );
     assert.deepEqual(Buffer.concat(received), archive);
-    await restoreCheckpoint(objects, registry, fence, id, request);
+    await restoreCheckpoint(objects, registry, fence, id, request, openImport);
     assert.equal(finishes, 1);
     receipt.phase = "extracting";
-    await restoreCheckpoint(objects, registry, fence, id, request);
+    await restoreCheckpoint(objects, registry, fence, id, request, openImport);
     assert.equal(finishes, 2);
+    assert.equal(opened, binary ? 2 : 0);
+    assert.equal(closed, opened);
     await assert.rejects(
       restoreCheckpoint(objects, registry, fence, id, async () => ({
         ...receipt,

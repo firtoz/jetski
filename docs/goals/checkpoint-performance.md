@@ -49,16 +49,16 @@ as a substitute for a contemporaneous comparison.
 
 ## Finite implementation and acceptance checklist
 
-| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                         |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                           |
-| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.                             |
-| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; frozen comparison completed; per-host ranking reverses, so reliable parity stays open. |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Signed uploads qualify durable4 MiB chunks; old256/512 KiB receipts and large source-deleted/lost-ACK recovery pass.           |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 236 TypeScript/124 Python tests, all seven host CI jobs and large source-deleted/lost-ACK recovery pass.                       |
-| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Frozen ten-per-arm comparison completed with all20 exact; opposite host rankings leave performance parity open.                |
-| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Uninterrupted source-deleted large recovery and repeated saves pass; save/cold speed parity remains open.                      |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | New artifact pin and persisted admission profiles implemented; final deployment, scoped workflow and replacement pending.      |
+| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                       |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                         |
+| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.                           |
+| Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline implemented; latest warm medians beat reference on both pairs; large save gap and tails remain.             |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Optional16 MiB raw import implemented with durable offsets and cleanup; affected local checks pass; live comparison pending. |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 236 TypeScript/124 Python tests, all seven host CI jobs and large source-deleted/lost-ACK recovery pass.                     |
+| Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Frozen ten-per-arm comparison completed with all20 exact and lower warm medians on both pairs; tails remain worse.           |
+| Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Uninterrupted source-deleted large recovery and repeated saves pass; save/cold speed parity remains open.                    |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | New artifact pin and persisted admission profiles implemented; final deployment, scoped workflow and replacement pending.    |
 
 ## Current candidate and evidence
 
@@ -99,8 +99,10 @@ filesystem oracles exact. Resume/cycle tails remain worse. The later ordered
 multi-pack pipeline's separate full-save sample is25.574 versus16.619 s; the large
 speed gap remains open. See [consolidated measurements](../benchmarks.md). Reuse
 unaffected warm and fault evidence instead of rerunning the entire matrix for each
-changed large-transfer path. Next, implement bounded binary import to reduce cold
-control-envelope overhead, then qualify its affected recovery path and complete
+changed large-transfer path. Bounded16 MiB binary import is now implemented behind an optional transport
+binding, preserving the fenced writer and old control fallback. Targeted import,
+transport and old-root checks pass; live raw-import timing remains unmeasured.
+Next, qualify only its affected recovery path and complete
 pinned downstream read/edit/publication/save/resume/replacement. No production
 cutover is authorized. Routine receipts remain private.
 

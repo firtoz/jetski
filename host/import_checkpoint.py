@@ -14,17 +14,126 @@ from local_checkpoint import LocalCheckpoint
 
 
 IMPORT_CHUNK_BYTES = 4 * 1024**2
+IMPORT_FILE_BYTES = 16 * 1024**2
 IMPORT_REQUEST_BYTES = 6 * 1024**2
 
 
 class CheckpointImport:
-    def __init__(self, fence, archives, data, account):
+    def __init__(self, fence, archives, data, account, transfer=None, transfer_root=None):
         self.fence, self.archives, self.data, self.account = (
             fence,
             pathlib.Path(archives),
             pathlib.Path(data),
             account,
         )
+
+        self.transfer = transfer
+        self.transfer_root = pathlib.Path(transfer_root or "/tmp/jetski-checkpoint-imports")
+        if transfer is not None and (
+            type(transfer.pw_uid) is not int
+            or type(transfer.pw_gid) is not int
+            or min(transfer.pw_uid, transfer.pw_gid) <= 0
+        ):
+            raise ValueError("invalid_import_transfer_account")
+
+    def advertised(self, receipt):
+        if self.transfer is not None:
+            return {**receipt, "fileChunkBytes": IMPORT_FILE_BYTES}
+        return receipt
+
+    def directory(self, path, mode):
+        if not os.path.lexists(path):
+            path.mkdir(mode=0o700)
+        meta = path.lstat()
+        if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != os.geteuid():
+            raise ValueError("unsafe_import_transfer_directory")
+        if stat.S_IMODE(meta.st_mode) == 0o700 and not os.listdir(path):
+            os.chown(path, os.geteuid(), self.transfer.pw_gid)
+            os.chmod(path, mode)
+            meta = path.lstat()
+            sync_dir(path)
+            sync_dir(path.parent)
+        if stat.S_IMODE(meta.st_mode) != mode or meta.st_gid != self.transfer.pw_gid:
+            raise ValueError("unsafe_import_transfer_directory")
+
+    def file_directory(self, lease):
+        if self.transfer is None:
+            raise ValueError("binary_import_not_configured")
+        self.directory(self.transfer_root, 0o750)
+        directory = self.transfer_root / lease["assignmentId"]
+        self.directory(directory, 0o730)
+        return directory
+
+    def file_begin(self, raw):
+        lease = identity(raw)
+        with self.fence.locked():
+            state = self.state(lease)
+            receipt = state.get("import")
+            if not receipt or receipt["phase"] != "receiving":
+                raise ValueError("import_not_receiving")
+            directory = self.file_directory(lease)
+            if any(name != "chunk.bin" for name in os.listdir(directory)):
+                raise ValueError("unexpected_import_transfer_file")
+            return dict(path=str(directory / "chunk.bin"), chunkBytes=IMPORT_FILE_BYTES)
+
+    def file_chunk(self, raw, offset, length, sha256):
+        lease = identity(raw)
+        if type(length) is not int or not 1 <= length <= IMPORT_FILE_BYTES:
+            raise ValueError("invalid_import_file_extent")
+        with self.fence.locked():
+            self.state(lease)
+            path = self.file_directory(lease) / "chunk.bin"
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, "rb") as source:
+                meta = os.fstat(source.fileno())
+                if (
+                    not stat.S_ISREG(meta.st_mode)
+                    or meta.st_size != length
+                    or meta.st_uid not in (os.geteuid(), self.transfer.pw_uid)
+                ):
+                    raise ValueError("unsafe_import_transfer_file")
+                data = source.read(length + 1)
+                after = os.fstat(source.fileno())
+                if (
+                    len(data) != length
+                    or meta.st_size != after.st_size
+                    or meta.st_mtime_ns != after.st_mtime_ns
+                    or hashlib.sha256(data).hexdigest() != sha256
+                ):
+                    raise ValueError("import_file_integrity")
+        return self.commit(lease, offset, data, IMPORT_FILE_BYTES)
+
+    def file_close(self, raw):
+        lease = identity(raw)
+        with self.fence.locked():
+            self.state(lease)
+            return self.file_close_locked(lease)
+
+    def file_close_locked(self, lease):
+        if self.transfer is None:
+            raise ValueError("binary_import_not_configured")
+        if not os.path.lexists(self.transfer_root):
+            return dict(closed=True)
+        self.directory(self.transfer_root, 0o750)
+        directory = self.transfer_root / lease["assignmentId"]
+        if not os.path.lexists(directory):
+            return dict(closed=True)
+        self.directory(directory, 0o730)
+        if any(name != "chunk.bin" for name in os.listdir(directory)):
+            raise ValueError("unexpected_import_transfer_file")
+        path = directory / "chunk.bin"
+        if os.path.lexists(path):
+            meta = path.lstat()
+            if not stat.S_ISREG(meta.st_mode) or meta.st_uid not in (
+                os.geteuid(),
+                self.transfer.pw_uid,
+            ):
+                raise ValueError("unsafe_import_transfer_file")
+            path.unlink()
+            sync_dir(directory)
+        directory.rmdir()
+        sync_dir(self.transfer_root)
+        return dict(closed=True)
 
     def state(self, lease):
         state = self.fence.read()
@@ -55,8 +164,8 @@ class CheckpointImport:
                 if any(previous[key] != value for key, value in expected.items()):
                     raise ValueError("import_identity_conflict")
                 if previous["phase"] == "receiving" and previous["offset"] == 0:
-                    return self.cached(lease, state, previous)
-                return previous
+                    return self.advertised(self.cached(lease, state, previous))
+                return self.advertised(previous)
             if os.path.lexists(self.data / lease["assignmentId"]) or os.path.lexists(
                 self.path(lease)
             ):
@@ -69,7 +178,7 @@ class CheckpointImport:
             }
             state = {**state, "import": receipt}
             self.fence.write(state)
-            return self.cached(lease, state, receipt)
+            return self.advertised(self.cached(lease, state, receipt))
 
     def cached(self, lease, state, receipt):
         expected = {key: receipt[key] for key in ("id", "sha256", "bytes")}
@@ -103,12 +212,18 @@ class CheckpointImport:
             raise ValueError("invalid_import_encoding") from None
         if not 1 <= len(data) <= IMPORT_CHUNK_BYTES or hashlib.sha256(data).hexdigest() != sha256:
             raise ValueError("import_chunk_integrity")
+        return self.commit(lease, offset, data)
+
+    def commit(self, lease, offset, data, file_limit=None):
+        if type(offset) is not int or offset < 0:
+            raise ValueError("invalid_import_offset")
         with self.fence.locked():
             state = self.state(lease)
             receipt = state.get("import")
+            limit = file_limit or (receipt or {}).get("chunkBytes", 256 * 1024)
             if (
                 not receipt
-                or len(data) > receipt.get("chunkBytes", 256 * 1024)
+                or len(data) > limit
                 or receipt["phase"] != "receiving"
                 or offset > receipt["offset"]
                 or offset + len(data) > receipt["bytes"]
@@ -146,6 +261,10 @@ class CheckpointImport:
             receipt = state.get("import")
             if not receipt or receipt["offset"] != receipt["bytes"]:
                 raise ValueError("import_incomplete")
+            # Even a controller using the fallback protocol must not admit a
+            # workload while a prior binary attempt still owns staging files.
+            if self.transfer is not None:
+                self.file_close_locked(lease)
             if receipt["phase"] == "ready":
                 return receipt
             source = self.path(lease)

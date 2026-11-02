@@ -4,7 +4,11 @@ import { encodeBase64 } from "./command-output.js";
 import type { CheckpointStore, Fence, Json } from "./contracts.js";
 import { sameObject } from "./inventory.js";
 import { validateRootPayload } from "./root-payload.js";
-import { HOST_IMPORT_CHUNK_BYTES } from "./transport.js";
+import {
+  type CheckpointImportSink,
+  HOST_IMPORT_CHUNK_BYTES,
+  HOST_IMPORT_FILE_BYTES,
+} from "./transport.js";
 
 const sha = async (bytes: Uint8Array<ArrayBuffer>) =>
   Array.from(
@@ -19,9 +23,11 @@ export async function restoreCheckpoint(
   fence: Fence,
   id: string,
   request: (action: string, payload: Json) => Promise<Json>,
+  openImport?: () => Promise<CheckpointImportSink>,
 ) {
   const reader = crypto.randomUUID();
   await registry.admit(fence, reader, "reader", id);
+  let sink: CheckpointImportSink | undefined;
   try {
     const root = await registry.root(fence, id);
     if (!root) throw Error("Checkpoint missing");
@@ -62,7 +68,7 @@ export async function restoreCheckpoint(
     // Older immutable hosts omit the advertised bound and retain 256 KiB.
     // Larger durable chunks amortize host-control and fsync costs. Their larger
     // envelope is restricted to checkpoint import; durability/replay is unchanged.
-    const chunkBytes = receipt.chunkBytes ?? 256 * 1024;
+    let chunkBytes = receipt.chunkBytes ?? 256 * 1024;
     if (
       ![256 * 1024, 512 * 1024, HOST_IMPORT_CHUNK_BYTES].includes(
         Number(chunkBytes),
@@ -90,6 +96,12 @@ export async function restoreCheckpoint(
       await finish();
       return;
     }
+    if (openImport && receipt.fileChunkBytes === HOST_IMPORT_FILE_BYTES) {
+      sink = await openImport();
+      if (sink.chunkBytes !== HOST_IMPORT_FILE_BYTES)
+        throw Error("Invalid binary import bound");
+      chunkBytes = sink.chunkBytes;
+    }
     let frameOffset = 0,
       offset = resumeOffset,
       buffered = 0;
@@ -97,11 +109,14 @@ export async function restoreCheckpoint(
     const flush = async () => {
       if (!buffered) return;
       const part = buffer.subarray(0, buffered);
-      const acknowledged = await request("import-chunk", {
-        offset,
-        base64: encodeBase64(part),
-        sha256: await sha(part),
-      });
+      const digest = await sha(part);
+      const acknowledged = sink
+        ? await sink.write(offset, part, digest)
+        : await request("import-chunk", {
+            offset,
+            base64: encodeBase64(part),
+            sha256: digest,
+          });
       offset += part.length;
       if (
         !acknowledged ||
@@ -179,8 +194,14 @@ export async function restoreCheckpoint(
     }
     await flush();
     if (offset !== archive.bytes) throw Error("Restore extent mismatch");
+    await sink?.close();
+    sink = undefined;
     await finish();
   } finally {
-    await registry.close(fence, reader);
+    try {
+      await sink?.close();
+    } finally {
+      await registry.close(fence, reader);
+    }
   }
 }

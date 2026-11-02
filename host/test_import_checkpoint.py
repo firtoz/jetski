@@ -49,6 +49,83 @@ class ImportTests(unittest.TestCase):
         )
         self.importer.begin(self.lease, str(uuid.uuid4()), self.receipt["sha256"], len(self.raw))
 
+    def binary(self):
+        return CheckpointImport(
+            self.fence,
+            self.archives,
+            self.data,
+            self.importer.account,
+            self.importer.account,
+            self.base / "transfers",
+        )
+
+    def test_binary_exact_restore_mixed_chunks_and_cleanup(self):
+        importer = self.binary()
+        checkpoint = self.fence.read()["import"]["id"]
+        receipt = importer.begin(self.lease, checkpoint, self.receipt["sha256"], len(self.raw))
+        self.assertEqual(receipt["fileChunkBytes"], 16 * 1024**2)
+        split = len(self.raw) // 2
+        self.send(0, self.raw[:split])
+        path = pathlib.Path(importer.file_begin(self.lease)["path"])
+        part = self.raw[split:]
+        path.write_bytes(part)
+        digest = hashlib.sha256(part).hexdigest()
+        saved = importer.file_chunk(self.lease, split, len(part), digest)
+        self.assertEqual(saved["offset"], len(self.raw))
+        # Lost ACK is observed through durable begin, with no replay of a command.
+        self.assertEqual(
+            importer.begin(self.lease, checkpoint, self.receipt["sha256"], len(self.raw))["offset"],
+            len(self.raw),
+        )
+        self.assertEqual(importer.file_chunk(self.lease, split, len(part), digest), saved)
+        self.assertEqual(importer.file_close(self.lease), {"closed": True})
+        self.assertEqual(importer.file_close(self.lease), {"closed": True})
+        self.assertFalse(path.parent.exists())
+        # A fallback controller can finish after an interrupted binary cleanup.
+        path = pathlib.Path(importer.file_begin(self.lease)["path"])
+        path.write_bytes(part)
+        importer.finish(self.lease)
+        self.assertFalse(path.parent.exists())
+        self.assertEqual(
+            oracle(self.base / "source"), oracle(self.data / self.lease["assignmentId"])
+        )
+
+    def test_binary_rejects_bad_hash_extent_symlink_and_stale_lease(self):
+        importer = self.binary()
+        path = pathlib.Path(importer.file_begin(self.lease)["path"])
+        path.write_bytes(self.raw)
+        with self.assertRaisesRegex(ValueError, "integrity"):
+            importer.file_chunk(self.lease, 0, len(self.raw), "0" * 64)
+        with self.assertRaisesRegex(ValueError, "unsafe"):
+            importer.file_chunk(self.lease, 0, len(self.raw) + 1, self.receipt["sha256"])
+        self.assertEqual(self.fence.read()["import"]["offset"], 0)
+        path.unlink()
+        path.symlink_to(self.base / "archive.tgz")
+        with self.assertRaises(OSError):
+            importer.file_chunk(self.lease, 0, len(self.raw), self.receipt["sha256"])
+        with self.assertRaises(ValueError):
+            importer.file_close({**self.lease, "generation": 2})
+        path.unlink()
+        importer.file_close(self.lease)
+
+    def test_binary_large_part_survives_interrupted_receipt_and_control_resume(self):
+        importer = self.binary()
+        raw = os.urandom(5 * 1024**2)
+        with self.fence.locked():
+            state = self.fence.read()
+            self.fence.write({**state, "import": {**state["import"], "bytes": len(raw) + 1}})
+        path = pathlib.Path(importer.file_begin(self.lease)["path"])
+        path.write_bytes(raw)
+        digest = hashlib.sha256(raw).hexdigest()
+        with patch.object(self.fence, "write", side_effect=OSError("journal interrupted")):
+            with self.assertRaises(OSError):
+                importer.file_chunk(self.lease, 0, len(raw), digest)
+        self.assertEqual(self.fence.read()["import"]["offset"], 0)
+        self.assertEqual(importer.path(self.lease).read_bytes(), raw)
+        self.assertEqual(importer.file_chunk(self.lease, 0, len(raw), digest)["offset"], len(raw))
+        importer.file_close(self.lease)
+        self.assertEqual(self.send(len(raw), b"!")["offset"], len(raw) + 1)
+
     def send(self, offset, raw):
         return self.importer.chunk(
             self.lease, offset, base64.b64encode(raw).decode(), hashlib.sha256(raw).hexdigest()

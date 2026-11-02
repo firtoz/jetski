@@ -319,3 +319,89 @@ test("oversize import control uses an authenticated capability without leaking i
     );
   }
 });
+
+test("binary import is opt-in, bounded and carries lease/image through verified upload and cleanup", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const assignmentId = "a780fdde-0c04-4430-afee-7a80cf638c59";
+  const path = `/tmp/jetski-checkpoint-imports/${assignmentId}/chunk.bin`;
+  const raw = new Uint8Array(7 * 1024 * 1024).fill(37);
+  let uploads = 0;
+  const api = new BoatApi("private-bearer", async (url, init) => {
+    assert.equal(init?.redirect, "manual");
+    if (String(url).startsWith("https://upload.invalid/")) {
+      assert.equal(new Headers(init?.headers).has("authorization"), false);
+      assert.equal(init?.method, "PUT");
+      assert.deepEqual(init?.body, raw);
+      uploads++;
+      return new Response(null, { status: 200 });
+    }
+    assert.equal(
+      new Headers(init?.headers).get("authorization"),
+      "Bearer private-bearer",
+    );
+    assert.equal(JSON.parse(init?.body as string).path, path);
+    return Response.json({
+      method: "PUT",
+      url: "https://upload.invalid/part",
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    });
+  });
+  assert.equal(new BoatTransport(state, api).checkpointImport, undefined);
+  const transport = new BoatTransport(state, api, undefined, {
+    archiveWrites: true,
+  });
+  const lease = {
+    owner: "owner",
+    poolId: "pool",
+    machineId: "bx_owned",
+    slotId: "slot",
+    sandboxId: "box",
+    assignmentId,
+    generation: 1,
+  };
+  const image = `image@sha256:${"a".repeat(64)}`;
+  const actions: string[] = [];
+  transport.request = async (host, request) => {
+    assert.equal(host, "bx_owned");
+    const payload = request.payload as Record<string, unknown>;
+    assert.deepEqual(payload.lease, lease);
+    assert.equal(payload.image, image);
+    actions.push(request.action);
+    let result: import("../src/core/contracts.js").Json = { closed: true };
+    if (request.action === "import-file-begin")
+      result = { path, chunkBytes: 16 * 1024 * 1024 };
+    if (request.action === "import-file-chunk") {
+      assert.equal(uploads, 1);
+      assert.equal(payload.bytes, raw.length);
+      assert.equal(payload.offset, 0);
+      assert.equal(payload.sha256, "verified-digest");
+      result = { offset: raw.length };
+    }
+    return { version: 1, id: request.id, result };
+  };
+  const sink = await transport.checkpointImport!("bx_owned", lease, image);
+  assert.equal(sink.chunkBytes, 16 * 1024 * 1024);
+  assert.deepEqual(await sink.write(0, raw, "verified-digest"), {
+    offset: raw.length,
+  });
+  await sink.close();
+  assert.deepEqual(actions, [
+    "import-file-begin",
+    "import-file-chunk",
+    "import-file-close",
+  ]);
+  await assert.rejects(
+    api.uploadFile("bx_owned", path, raw),
+    /Invalid Boat file upload/,
+  );
+  await assert.rejects(
+    api.uploadCheckpointPart(
+      "bx_owned",
+      path,
+      new Uint8Array(16 * 1024 * 1024 + 1),
+    ),
+    /Invalid Boat file upload/,
+  );
+  assert.equal(uploads, 1);
+});
