@@ -55,7 +55,7 @@ as a substitute for a contemporaneous comparison.
 | Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 1 MiB members and verified packs qualified; legacy 4 MiB reads preserved; adaptive gzip candidate.              |
 | Save pipeline             | Carry bounded batching/concurrency and remove redundant round trips without weakening publication proof or uncertain-outcome handling          | Bounded pipeline and idle fix measured; latest embedded save 4.052 s vs3.007 s reference; parity open.          |
 | Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Negotiated durable 4 MiB chunks; old256/512 KiB receipts and replay pass; hosted large restore open.            |
-| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 231 TypeScript/115 Python tests and live R2 recovery pass; new hosted replacement open.                         |
+| Fault qualification       | Corruption, short transfer, lost ACK, restart, cancellation, stale generations, old-format restore and GC/publication races on local/S3 paths  | 231 TypeScript/116 Python tests and live R2 recovery pass; new hosted replacement open.                         |
 | Matched hosted comparison | Freeze candidate; ten trials per arm across replicated hosts with identical resources/image/workload and independent filesystem checks         | Seven separate five-per-arm screens; setup failures preserved, all owned hosts retired; final replication open. |
 | Large restore/replacement | Compare a larger generic fixture, real source-deleted replacement and interrupted-transfer recovery                                            | Pending.                                                                                                        |
 | Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved existing checkpoints, owned cleanup and exact-SHA CI                        | Artifact20 pinned; client unit/workerd checks pass; new staging workflow and replacement pending.               |
@@ -75,7 +75,7 @@ inline output disabled. Geometry is persisted per shutdown; large captures grow
 toward4 MiB. Old4 MiB archives and output format1 remain readable. Format2 inline
 bytes require a supporting reader when rolling back controller binaries.
 
-Local quality passes231 TypeScript and114 Python tests, build, types, lint and
+Local quality passes231 TypeScript and116 Python tests, build, types, lint and
 Ruff. Fault checks cover lost acknowledgements, restart/settings changes, missing
 sources, exact bytes/modes/links, corrupt proofs blocking publication/read/GC and
 drained parallel failures. Mixed inline/object output also recovers exactly with
@@ -111,13 +111,16 @@ Workloads remain UID/GID1000 with the same capability, privilege and namespace
 controls. Root-owned identity metadata is immutable, fsynced and integrity-checked;
 foreign, ambiguous, corrupt or changed mappings fail before admission. Direct
 runtime embeddings retain their existing default and can supply an explicit
-namespace and filesystem identity. All115 Python and231 TypeScript tests pass,
+namespace and filesystem identity. All116 Python and231 TypeScript tests pass,
 including lost-ACK metadata publication and distinct engine/storage ownership.
-The first integration CI caught a post-create startup failure. The engine's
-traversal parent is now separate from workload-owned contents: the host CLI keeps
-that parent root-owned and traversable, while file access checks distinguish its
-owner from every workload entry. Narrow OCI diagnostics are retained on CI failure.
-Local checks pass; actual host CI and a fresh pilot still gate comparison.
+Integration CI caught two startup defects before paid qualification. The engine's
+traversal parent is now root-owned and separate from workload-owned contents.
+OCI diagnostics then showed that the zero-valued keep-id option produced a
+rejected GID map. Explicit identity ranges now preserve the observed parent-map
+boundaries in a private namespace, without combining incompatible userns options.
+Both maps are validated and included in immutable identity/configuration receipts;
+missing, overlapping, gapped or changed ranges fail closed. Local checks pass;
+actual host CI and a fresh pilot still gate comparison.
 
 The next step is one frozen replicated comparison of the combined candidate,
 followed by the large cold/replacement and pinned-client staging gates. Whole

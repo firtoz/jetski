@@ -195,7 +195,9 @@ def bootstrap(config):
         result = run(["pull", image])
         if result["exitCode"]:
             raise RuntimeError("approved_image_pull_failed")
-        DEFAULT_BACKEND.prepare_image(run, image, PREPARED_USER_NAMESPACE)
+        DEFAULT_BACKEND.prepare_image(
+            run, image, PREPARED_USER_NAMESPACE, proof["uidMappings"], proof["gidMappings"]
+        )
     source = pathlib.Path(__file__).resolve().parent
     for name in ("command-supervisor", "tcp-relay"):
         native = source / "native" / f"{name}.c"

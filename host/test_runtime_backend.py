@@ -12,6 +12,7 @@ from runtime_backend import (
     WORKLOAD_USER_NAMESPACE,
     PREPARED_USER_NAMESPACE,
     mapped_identity,
+    namespace_arguments,
     write_workload_identity,
     read_workload_identity,
 )
@@ -49,6 +50,8 @@ class BackendProbeTests(unittest.TestCase):
                 runtimeGid=1001,
                 workloadUid=100999,
                 workloadGid=100999,
+                uidMappings=[[0, 0, 1], [1, 1, 65536]],
+                gidMappings=[[0, 0, 1], [1, 1, 65536]],
             ),
         )
         self.assertEqual(calls, [["info", "--format", "json"]])
@@ -76,7 +79,9 @@ class BackendProbeTests(unittest.TestCase):
 
     def test_image_mapping_preparation_never_starts_a_workload(self):
         image = "example/linux@sha256:" + "a" * 64
-        label = hashlib.sha256((image + "\0" + WORKLOAD_USER_NAMESPACE).encode()).hexdigest()
+        label = hashlib.sha256(
+            json.dumps([image, WORKLOAD_USER_NAMESPACE, None, None], separators=(",", ":")).encode()
+        ).hexdigest()
         name = "jetski-bootstrap-" + label[:32]
         image_id = "b" * 64
         container = dict(
@@ -173,7 +178,14 @@ class BackendProbeTests(unittest.TestCase):
         )
         self.assertEqual(
             mapped_identity(info),
-            dict(runtimeUid=1001, runtimeGid=1001, workloadUid=100999, workloadGid=100999),
+            dict(
+                runtimeUid=1001,
+                runtimeGid=1001,
+                workloadUid=100999,
+                workloadGid=100999,
+                uidMappings=[[0, 0, 1], [1, 1, 65536]],
+                gidMappings=[[0, 0, 1], [1, 1, 65536]],
+            ),
         )
         for value in [
             None,
@@ -199,9 +211,40 @@ class BackendProbeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "overlapping"):
             mapped_identity(invalid)
 
+    def test_private_maps_preserve_parent_boundaries_and_reject_ambiguous_ranges(self):
+        maps = [[0, 0, 1], [1, 1, 65536]]
+        args = namespace_arguments(PREPARED_USER_NAMESPACE, maps, maps)
+        self.assertEqual(
+            args, ["--uidmap=0:0:1", "--uidmap=1:1:65536", "--gidmap=0:0:1", "--gidmap=1:1:65536"]
+        )
+        self.assertFalse(any(arg.startswith("--userns") for arg in args))
+        for invalid in [
+            None,
+            [],
+            [[0, 0, 0]],
+            [[0, 0, 1000]],
+            [[0, 1, 65536]],
+            [[0, 0, 1], [2, 2, 65535]],
+            [[0, 0, 10], [9, 9, 65536]],
+            [[0, 0, True]],
+            [[0, 0, 2**32]],
+        ]:
+            for uid, gid in [(invalid, maps), (maps, invalid)]:
+                with self.assertRaises(ValueError):
+                    namespace_arguments(PREPARED_USER_NAMESPACE, uid, gid)
+        with self.assertRaisesRegex(ValueError, "unexpected_namespace"):
+            namespace_arguments(WORKLOAD_USER_NAMESPACE, maps, maps)
+
     def test_storage_identity_is_atomic_immutable_and_bound_to_engine_account(self):
         account = types.SimpleNamespace(pw_uid=1001, pw_gid=1001)
-        proof = dict(runtimeUid=1001, runtimeGid=1001, workloadUid=100999, workloadGid=100999)
+        proof = dict(
+            runtimeUid=1001,
+            runtimeGid=1001,
+            workloadUid=100999,
+            workloadGid=100999,
+            uidMappings=[[0, 0, 1], [1, 1, 65536]],
+            gidMappings=[[0, 0, 1], [1, 1, 65536]],
+        )
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "identity.json"
             write_workload_identity(account, proof, path, os.getuid())
@@ -239,7 +282,14 @@ class BackendProbeTests(unittest.TestCase):
 
     def test_identity_recovers_lost_directory_sync_without_replacing_acknowledged_bytes(self):
         account = types.SimpleNamespace(pw_uid=1001, pw_gid=1001)
-        proof = dict(runtimeUid=1001, runtimeGid=1001, workloadUid=100999, workloadGid=100999)
+        proof = dict(
+            runtimeUid=1001,
+            runtimeGid=1001,
+            workloadUid=100999,
+            workloadGid=100999,
+            uidMappings=[[0, 0, 1], [1, 1, 65536]],
+            gidMappings=[[0, 0, 1], [1, 1, 65536]],
+        )
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "identity.json"
             with patch("archive.sync_dir", side_effect=OSError("sync interrupted")):

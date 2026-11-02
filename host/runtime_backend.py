@@ -18,14 +18,17 @@ from typing import Protocol
 WORKLOAD_USER = "1000:1000"
 WORKLOAD_USER_NAMESPACE = "keep-id:uid=1000,gid=1000"
 
-PREPARED_USER_NAMESPACE = "keep-id:uid=0,gid=0"
+PREPARED_USER_NAMESPACE = "rootless-map"
 WORKLOAD_IDENTITY_PATH = pathlib.Path("/etc/jetski/workload.json")
 IDENTITY_FIELDS = ("runtimeUid", "runtimeGid", "workloadUid", "workloadGid")
+MAPPING_FIELDS = ("uidMappings", "gidMappings")
 
 
 def mapped_identity(info):
     """Resolve the workload's non-root IDs from the observed rootless maps."""
     mappings = info.get("host", {}).get("idMappings", {})
+
+    observed = {}
 
     def resolve(kind, identifier):
         ranges = mappings.get(kind)
@@ -46,6 +49,7 @@ def mapped_identity(info):
                 ):
                     raise ValueError("overlapping_workload_mapping")
             checked.append((start, host, size))
+        observed[kind] = [[start, start, size] for start, _host, size in sorted(checked)]
         result = [
             host + identifier - start
             for start, host, size in checked
@@ -63,6 +67,7 @@ def mapped_identity(info):
     )
     if min(result["workloadUid"], result["workloadGid"]) < 65536:
         raise ValueError("subordinate_workload_identity_required")
+    result.update(uidMappings=observed["uidmap"], gidMappings=observed["gidmap"])
     return result
 
 
@@ -90,6 +95,7 @@ def validate_workload_identity(account, record):
         "namespace",
         "sha256",
         *IDENTITY_FIELDS,
+        *MAPPING_FIELDS,
     }:
         raise ValueError("invalid_workload_identity")
     payload = {key: value for key, value in record.items() if key != "sha256"}
@@ -100,7 +106,7 @@ def validate_workload_identity(account, record):
         raise ValueError("workload_identity_integrity")
     if (
         type(record["version"]) is not int
-        or record["version"] != 1
+        or record["version"] != 2
         or record["namespace"] != PREPARED_USER_NAMESPACE
         or any(
             type(record[key]) is not int or not 0 < record[key] < 2**32 - 1
@@ -118,6 +124,7 @@ def validate_workload_identity(account, record):
         )
     ):
         raise ValueError("workload_identity_conflict")
+    namespace_arguments(record["namespace"], record["uidMappings"], record["gidMappings"])
     return record
 
 
@@ -129,7 +136,9 @@ def write_workload_identity(account, proof, path=WORKLOAD_IDENTITY_PATH, owner_u
     if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != owner_uid or parent.st_mode & 0o022:
         raise ValueError("unsafe_workload_identity_parent")
     record = dict(
-        version=1, namespace=PREPARED_USER_NAMESPACE, **{key: proof[key] for key in IDENTITY_FIELDS}
+        version=2,
+        namespace=PREPARED_USER_NAMESPACE,
+        **{key: proof[key] for key in (*IDENTITY_FIELDS, *MAPPING_FIELDS)},
     )
     record["sha256"] = hashlib.sha256(
         json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
@@ -153,6 +162,38 @@ def write_workload_identity(account, proof, path=WORKLOAD_IDENTITY_PATH, owner_u
     sync_dir(path.parent)
     if read_workload_identity(account, path, owner_uid) != record:
         raise ValueError("workload_identity_conflict")
+
+
+def namespace_arguments(mode, uid_mappings=None, gid_mappings=None):
+    if mode == WORKLOAD_USER_NAMESPACE:
+        if uid_mappings is not None or gid_mappings is not None:
+            raise ValueError("unexpected_namespace_mappings")
+        return ["--userns=" + mode]
+    if mode != PREPARED_USER_NAMESPACE:
+        raise ValueError("unsupported_workload_namespace")
+    args = []
+    for flag, mappings in (("--uidmap", uid_mappings), ("--gidmap", gid_mappings)):
+        if not isinstance(mappings, list) or not 1 <= len(mappings) <= 16:
+            raise ValueError("invalid_namespace_mappings")
+        previous_end = 0
+        for entry in mappings:
+            if (
+                not isinstance(entry, list)
+                or len(entry) != 3
+                or any(type(n) is not int for n in entry)
+            ):
+                raise ValueError("invalid_namespace_mappings")
+            inside, parent, size = entry
+            if inside != parent or inside != previous_end or size < 1 or inside + size > 2**32 - 1:
+                raise ValueError("invalid_namespace_mappings")
+            args.append(flag + "=" + ":".join(str(n) for n in entry))
+            previous_end = inside + size
+        if previous_end <= 1000:
+            raise ValueError("unmapped_workload_identity")
+    # Explicit mappings create a private namespace. Do not combine them with
+    # --userns; preserve parent range boundaries rather than spanning holes in
+    # the parent namespace's host mapping or emitting a zero-length segment.
+    return args
 
 
 class SandboxRuntime(Protocol):
@@ -181,7 +222,14 @@ class ExecutionRuntime(Protocol):
 
 class RuntimeBackend(Protocol):
     def probe(self, run) -> dict: ...
-    def prepare_image(self, run, image, user_namespace=WORKLOAD_USER_NAMESPACE) -> None: ...
+    def prepare_image(
+        self,
+        run,
+        image,
+        user_namespace=WORKLOAD_USER_NAMESPACE,
+        uid_mappings=None,
+        gid_mappings=None,
+    ) -> None: ...
     def lifecycle(self, *args, **kwargs) -> SandboxRuntime: ...
     def execution(self, uid: int) -> ExecutionRuntime: ...
 
@@ -210,7 +258,14 @@ class PodmanBackend:
         details.update(mapped_identity(info))
         return details
 
-    def prepare_image(self, run, image, user_namespace=WORKLOAD_USER_NAMESPACE):
+    def prepare_image(
+        self,
+        run,
+        image,
+        user_namespace=WORKLOAD_USER_NAMESPACE,
+        uid_mappings=None,
+        gid_mappings=None,
+    ):
         """Prepare the exact workload mapping before publishing host readiness.
 
         Native overlay can copy/chown a large image on its first mapped create.
@@ -221,9 +276,12 @@ class PodmanBackend:
             r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image
         ):
             raise ValueError("digest_pinned_image_required")
-        if user_namespace not in (WORKLOAD_USER_NAMESPACE, PREPARED_USER_NAMESPACE):
-            raise ValueError("unsupported_workload_namespace")
-        label = hashlib.sha256((image + "\0" + user_namespace).encode()).hexdigest()
+        mapping_args = namespace_arguments(user_namespace, uid_mappings, gid_mappings)
+        label = hashlib.sha256(
+            json.dumps(
+                [image, user_namespace, uid_mappings, gid_mappings], separators=(",", ":")
+            ).encode()
+        ).hexdigest()
         name = "jetski-bootstrap-" + label[:32]
 
         def checked(args):
@@ -252,7 +310,7 @@ class PodmanBackend:
                     "--security-opt=no-new-privileges",
                     "--user",
                     WORKLOAD_USER,
-                    "--userns=" + user_namespace,
+                    *mapping_args,
                     "--network=none",
                     "--image-volume=ignore",
                     "--pull=never",

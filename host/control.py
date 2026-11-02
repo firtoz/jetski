@@ -50,6 +50,8 @@ def dispatch(
     storage_owner=None,
     user_namespace=WORKLOAD_USER_NAMESPACE,
     parent_uid=None,
+    uid_mappings=None,
+    gid_mappings=None,
 ):
     if (
         not isinstance(request, dict)
@@ -67,6 +69,8 @@ def dispatch(
             or proof.get("workloadGid") != storage_owner.pw_gid
             or proof.get("runtimeUid") != account.pw_uid
             or proof.get("runtimeGid") != account.pw_gid
+            or proof.get("uidMappings") != uid_mappings
+            or proof.get("gidMappings") != gid_mappings
         ):
             raise ValueError("runtime_ownership_changed")
         return proof
@@ -102,6 +106,8 @@ def dispatch(
         "/opt/jetski/tcp-relay",
         network_mode=config.get("networkMode", "none"),
         user_namespace=user_namespace,
+        uid_mappings=uid_mappings,
+        gid_mappings=gid_mappings,
     )
     streams = Streams(fence)
     if action == "stream-reserve":
@@ -275,6 +281,8 @@ def dispatch(
                 storage_owner=storage_owner,
                 user_namespace=user_namespace,
                 parent_uid=parent_uid,
+                uid_mappings=uid_mappings,
+                gid_mappings=gid_mappings,
             )
         return dict(finalized=True, checkpointId=publication["checkpointId"])
     if action == "remove":
@@ -462,6 +470,8 @@ def main():
         storage_owner=persistent,
         user_namespace=ownership["namespace"],
         parent_uid=0,
+        uid_mappings=ownership["uidMappings"],
+        gid_mappings=ownership["gidMappings"],
     )
     output = json.dumps(dict(version=1, id=request["id"], result=result), separators=(",", ":"))
     if len(output.encode("utf8")) > 2 * 1024 * 1024:

@@ -185,7 +185,14 @@ def install(data):
         )
         if any(
             proof.get(key) != ownership[key]
-            for key in ("runtimeUid", "runtimeGid", "workloadUid", "workloadGid")
+            for key in (
+                "runtimeUid",
+                "runtimeGid",
+                "workloadUid",
+                "workloadGid",
+                "uidMappings",
+                "gidMappings",
+            )
         ):
             raise ValueError("runtime_ownership_changed")
         return {

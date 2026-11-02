@@ -69,9 +69,14 @@ class ControlTests(unittest.TestCase):
             self.run_command,
             storage_owner=self.account,
             user_namespace=PREPARED_USER_NAMESPACE,
+            uid_mappings=[[0, 0, 1], [1, 1, 65536]],
+            gid_mappings=[[0, 0, 1], [1, 1, 65536]],
         )
         self.assertEqual(result["configuration"]["userNamespace"], PREPARED_USER_NAMESPACE)
-        self.assertIn("--userns=" + PREPARED_USER_NAMESPACE, self.calls[0])
+        self.assertIn("--uidmap=0:0:1", self.calls[0])
+        self.assertIn("--gidmap=1:1:65536", self.calls[0])
+        self.assertFalse(any(arg.startswith("--userns") for arg in self.calls[0]))
+        self.assertEqual(result["configuration"]["uidMappings"], [[0, 0, 1], [1, 1, 65536]])
         self.assertIn("1000:1000", self.calls[0])
         self.assertEqual(
             (self.data / self.lease["assignmentId"] / "workspace").stat().st_uid,
@@ -91,6 +96,8 @@ class ControlTests(unittest.TestCase):
                 self.run_command,
                 storage_owner=self.account,
                 user_namespace=PREPARED_USER_NAMESPACE,
+                uid_mappings=[[0, 0, 1], [1, 1, 65536]],
+                gid_mappings=[[0, 0, 1], [1, 1, 65536]],
             )
 
         files(

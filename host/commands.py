@@ -299,11 +299,24 @@ def worker(command, expected_lease):
     with worker_guard(fence, expected_lease, command, create=True) as acquired:
         if not acquired:
             return
-        run_worker(command, expected_lease, fence, user_namespace=ownership["namespace"])
+        run_worker(
+            command,
+            expected_lease,
+            fence,
+            user_namespace=ownership["namespace"],
+            uid_mappings=ownership["uidMappings"],
+            gid_mappings=ownership["gidMappings"],
+        )
 
 
 def run_worker(
-    command, expected_lease, fence, backend=None, user_namespace=WORKLOAD_USER_NAMESPACE
+    command,
+    expected_lease,
+    fence,
+    backend=None,
+    user_namespace=WORKLOAD_USER_NAMESPACE,
+    uid_mappings=None,
+    gid_mappings=None,
 ):
     import secrets
     import threading
@@ -351,6 +364,8 @@ def run_worker(
         config["images"],
         network_mode=config.get("networkMode", "none"),
         user_namespace=user_namespace,
+        uid_mappings=uid_mappings,
+        gid_mappings=gid_mappings,
     )
     root = CONTROL_ROOT / "commands" / lease["assignmentId"] / command
     spec = receipt["spec"]

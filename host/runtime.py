@@ -9,7 +9,12 @@ import pathlib
 import re
 from fence import identity
 from streams import stopped_streams
-from runtime_backend import WORKLOAD_USER, WORKLOAD_USER_NAMESPACE, PREPARED_USER_NAMESPACE
+from runtime_backend import (
+    WORKLOAD_USER,
+    WORKLOAD_USER_NAMESPACE,
+    PREPARED_USER_NAMESPACE,
+    namespace_arguments,
+)
 
 
 class PodmanRuntime:
@@ -24,6 +29,8 @@ class PodmanRuntime:
         relay=None,
         network_mode="none",
         user_namespace=WORKLOAD_USER_NAMESPACE,
+        uid_mappings=None,
+        gid_mappings=None,
     ):
         if not isinstance(image, str) or not re.fullmatch(
             r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image
@@ -33,8 +40,13 @@ class PodmanRuntime:
             raise ValueError("image_not_approved")
         if network_mode not in ("none", "egress"):
             raise ValueError("invalid_network_policy")
-        if user_namespace not in (WORKLOAD_USER_NAMESPACE, PREPARED_USER_NAMESPACE):
+        if user_namespace not in (
+            WORKLOAD_USER_NAMESPACE,
+            PREPARED_USER_NAMESPACE,
+        ):
             raise ValueError("unsupported_workload_namespace")
+        self.mapping_args = namespace_arguments(user_namespace, uid_mappings, gid_mappings)
+        self.uid_mappings, self.gid_mappings = uid_mappings, gid_mappings
         self.user_namespace = user_namespace
         self.network_mode = network_mode
         self.relay = relay
@@ -69,6 +81,10 @@ class PodmanRuntime:
             )
             if self.user_namespace != WORKLOAD_USER_NAMESPACE:
                 requested["userNamespace"] = self.user_namespace
+                requested["uidMappings"], requested["gidMappings"] = (
+                    self.uid_mappings,
+                    self.gid_mappings,
+                )
             if self.network_mode != "none":
                 requested["networkMode"] = self.network_mode
             if existing:
@@ -106,7 +122,7 @@ class PodmanRuntime:
                     "--security-opt=no-new-privileges",
                     "--user",
                     WORKLOAD_USER,
-                    "--userns=" + self.user_namespace,
+                    *self.mapping_args,
                     "--pids-limit",
                     "256",
                     "--memory",
