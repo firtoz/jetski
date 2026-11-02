@@ -38,8 +38,12 @@ A subsequent change pipelines ordered source preparation with bounded storage
 uploads. Its separate large-fixture sample measured25.574 versus16.619 s initial
 save for the same436,207,724 logical-byte fixture. All source fixture comparisons
 matched and both hosts were retired. The warm matrix above was not repeated for
-this multi-pack change. The larger first-save speed gap remains open. See the
-[performance goal](goals/checkpoint-performance.md).
+this multi-pack change. A later bounded rolling window, which removes group
+barriers while retaining the same upload/memory bound, measured27.246 versus
+22.817 s in its separate first-save pair. Both fixture comparisons matched and
+both sources/controllers were retired. This single pair does not establish a
+speedup over the preceding implementation; the larger first-save parity target
+remains unmet. See the [performance goal](goals/checkpoint-performance.md).
 
 ## November 2, 2026: bounded binary cold import
 
@@ -69,6 +73,16 @@ an import-only speed advantage. The preceding control-envelope candidate measure
 193.631 s whole readiness in its earlier sample. The new result supports the raw
 path's functionality and improves that observed whole time, while larger first-save
 performance and the final downstream workflow remain open.
+
+## Local storage-path screen
+
+Five fresh processes per arm alternated buffered and streaming verification of
+25 eight-MiB packs with32 logical ranges each (200 MiB total). Median local
+assembly/hash time fell from455.779 to349.040 ms; median whole-process maximum
+RSS fell from203,372 to187,860 KiB. All proofs matched. These measurements exclude
+network/storage requests and do not establish hosted save parity. The follow-on
+also hashes encoded archive bytes during writing, avoiding a complete temporary-file
+reread while retaining source-member and stored-object verification.
 
 ## Historical comparisons
 
