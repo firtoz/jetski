@@ -334,3 +334,42 @@ test("contiguous small members share bounded reads without losing individual has
   );
   assert.deepEqual(await f.read("coalesced"), data.bytes);
 });
+
+test("ordered source preparation overlaps bounded storage uploads", {
+  timeout: 2000,
+}, async (t) => {
+  const f = await fixture(t),
+    archive = capture(Array.from({ length: 4 }, () => randomBytes(700_000)));
+  let cursor = 0,
+    active = 0,
+    peak = 0,
+    release!: () => void;
+  const overlap = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const put = f.store.put.bind(f.store);
+  f.store.put = async (...args) => {
+    active++;
+    peak = Math.max(peak, active);
+    if (active >= 2) release();
+    try {
+      await overlap;
+      return await put(...args);
+    } finally {
+      active--;
+    }
+  };
+  const source = {
+    readConcurrency: 1,
+    read: async (offset: number, bytes: number) => {
+      assert.equal(offset, cursor);
+      cursor += bytes;
+      return archive.bytes.subarray(offset, offset + bytes);
+    },
+  };
+  await f.transfer.save(f.fence, "ordered", archive.manifest, source);
+  assert.ok(peak >= 2 && peak <= 4);
+  assert.equal(active, 0);
+  assert.equal(cursor, archive.bytes.length);
+  assert.deepEqual(await f.read("ordered"), archive.bytes);
+});

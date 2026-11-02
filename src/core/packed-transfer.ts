@@ -192,44 +192,64 @@ export class PackedCheckpointTransfer {
         reusedBytes += layout.bytes[index]!;
       } else pending.push(index);
     }
-    const concurrency = Math.min(writeLimit, readLimit);
+    // Source preparation has its own budget. Ordered streams can fill the next
+    // pack while a prior verified pack uploads; the store still bounds retained
+    // buffers and every started sibling settles before publication or failure.
+    const concurrency = writeLimit;
+    const preparing = Array.from({ length: readLimit }, () =>
+      Promise.resolve(),
+    );
     for (let offset = 0; offset < pending.length; offset += concurrency) {
       const batch = pending.slice(offset, offset + concurrency),
-        ranges = Math.floor(readLimit / batch.length);
+        ranges = Math.floor(readLimit / Math.min(readLimit, batch.length));
       const settled = await Promise.allSettled(
-        batch.map(async (index) => {
+        batch.map(async (index, batchIndex) => {
           const group = plan[index]!;
           if (group.kind !== "upload") throw Error("Packed upload not planned");
-          const buffer = new Uint8Array(layout.bytes[index]!);
-          const runs: Array<{ offset: number; bytes: number }> = [];
-          for (const frameIndex of group.frames) {
-            const frame = archive.frames[frameIndex]!,
-              last = runs.at(-1);
-            if (last && last.offset + last.bytes === frame.offset)
-              last.bytes += frame.bytes;
-            else runs.push({ offset: frame.offset, bytes: frame.bytes });
-          }
-          let cursor = 0;
-          for (const run of runs) {
-            for await (const part of archiveChunks(
-              source,
-              run.offset,
-              run.bytes,
-              ranges,
-            )) {
-              buffer.set(part, cursor);
-              cursor += part.length;
+          const prepare = async () => {
+            const buffer = new Uint8Array(layout.bytes[index]!);
+            const runs: Array<{ offset: number; bytes: number }> = [];
+            for (const frameIndex of group.frames) {
+              const frame = archive.frames[frameIndex]!,
+                last = runs.at(-1);
+              if (last && last.offset + last.bytes === frame.offset)
+                last.bytes += frame.bytes;
+              else runs.push({ offset: frame.offset, bytes: frame.bytes });
             }
-          }
-          if (cursor !== buffer.length)
-            throw Error("Packed source extent mismatch");
-          let verified = 0;
-          for (const frameIndex of group.frames) {
-            const frame = archive.frames[frameIndex]!,
-              end = verified + frame.bytes;
-            if ((await sha(buffer.subarray(verified, end))) !== frame.sha256)
-              throw Error("Packed source frame integrity failure");
-            verified = end;
+            let cursor = 0;
+            for (const run of runs) {
+              for await (const part of archiveChunks(
+                source,
+                run.offset,
+                run.bytes,
+                ranges,
+              )) {
+                buffer.set(part, cursor);
+                cursor += part.length;
+              }
+            }
+            if (cursor !== buffer.length)
+              throw Error("Packed source extent mismatch");
+            let verified = 0;
+            for (const frameIndex of group.frames) {
+              const frame = archive.frames[frameIndex]!,
+                end = verified + frame.bytes;
+              if ((await sha(buffer.subarray(verified, end))) !== frame.sha256)
+                throw Error("Packed source frame integrity failure");
+              verified = end;
+            }
+            return buffer;
+          };
+          let buffer: Awaited<ReturnType<typeof prepare>>;
+          if (batch.length <= readLimit) buffer = await prepare();
+          else {
+            const lane = batchIndex % readLimit;
+            const prepared = preparing[lane]!.then(prepare);
+            preparing[lane] = prepared.then(() => undefined);
+            // Preserve a rejected lane for queued siblings, while observing the
+            // tail even when no later task occupies this lane.
+            void preparing[lane]!.catch(() => undefined);
+            buffer = await prepared;
           }
           const object = {
             owner: fence.owner,
