@@ -45,8 +45,9 @@ def version(meta):
 
 
 class Files:
-    def __init__(self, fence, data_root, uid):
+    def __init__(self, fence, data_root, uid, parent_uid=None):
         self.fence, self.data_root, self.uid = fence, data_root, uid
+        self.parent_uid = uid if parent_uid is None else parent_uid
 
     @contextlib.contextmanager
     def opened(self, lease, path, directory=False, locked=True):
@@ -67,7 +68,8 @@ class Files:
                     fd = os.open(part, flags, dir_fd=fds[-1])
                     fds.append(fd)
                     meta = os.fstat(fd)
-                    if meta.st_uid != self.uid:
+                    expected_uid = self.parent_uid if index == 0 else self.uid
+                    if meta.st_uid != expected_uid:
                         raise ValueError("file_owner_mismatch")
                 meta = os.fstat(fds[-1])
                 if not directory and not stat.S_ISREG(meta.st_mode):

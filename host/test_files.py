@@ -32,6 +32,34 @@ class FileTests(unittest.TestCase):
         (self.workspace.parent / "home").mkdir()
         self.files = Files(self.fence, data, os.getuid())
 
+    def test_trusted_assignment_parent_is_distinct_from_workload_entries(self):
+        import types
+
+        path = self.workspace / "data"
+        path.write_bytes(b"exact")
+        parent_inode = self.workspace.parent.stat().st_ino
+        actual = os.fstat
+        parent_uid = os.getuid() + 17
+
+        def inspect(fd):
+            result = actual(fd)
+            if result.st_ino == parent_inode:
+                return types.SimpleNamespace(st_uid=parent_uid, st_mode=result.st_mode)
+            return result
+
+        with patch("files.os.fstat", side_effect=inspect):
+            with self.assertRaisesRegex(ValueError, "file_owner_mismatch"):
+                self.files.read(self.lease, "/workspace/data", 0, 5)
+            distinct = Files(self.fence, self.files.data_root, os.getuid(), parent_uid)
+            self.assertEqual(
+                base64.b64decode(distinct.read(self.lease, "/workspace/data", 0, 5)["base64"]),
+                b"exact",
+            )
+            with self.assertRaisesRegex(ValueError, "file_owner_mismatch"):
+                Files(self.fence, self.files.data_root, parent_uid, parent_uid).read(
+                    self.lease, "/workspace/data", 0, 5
+                )
+
     def test_binary_chunks_empty_files_and_change_detection(self):
         data = bytes(range(256)) * 1025
         path = self.workspace / "雪.bin"

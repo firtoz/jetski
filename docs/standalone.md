@@ -212,7 +212,9 @@ commands use the rootless remote client through the validated Unix socket;
 bootstrap alone uses local image preparation. The socket stays outside workloads.
 Bootstrap derives filesystem ownership from the rootless engine's observed UID/GID
 maps. Workloads remain UID/GID1000 inside their private namespace; persistent files
-use subordinate host IDs, distinct from the engine account. Aligning that private
+use subordinate host IDs, distinct from the engine account. The assignment
+parent stays root-owned and traversable for bind-source resolution; workspace and
+home contents retain their workload ownership and modes. Aligning that private
 mapping with the image layers avoids requesting a different ownership layout.
 The immutable root-owned `/etc/jetski/workload.json` record is integrity-checked
 and bound to the engine account. Missing, corrupt, ambiguous or changed identities

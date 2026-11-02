@@ -49,6 +49,7 @@ def dispatch(
     backend=DEFAULT_BACKEND,
     storage_owner=None,
     user_namespace=WORKLOAD_USER_NAMESPACE,
+    parent_uid=None,
 ):
     if (
         not isinstance(request, dict)
@@ -70,6 +71,7 @@ def dispatch(
             raise ValueError("runtime_ownership_changed")
         return proof
     persistent = storage_owner if storage_owner is not None else account
+    assignment_uid = persistent.pw_uid if parent_uid is None else parent_uid
     payload = request["payload"]
     if not isinstance(payload, dict) or "lease" not in payload:
         raise ValueError("missing_lease")
@@ -119,7 +121,7 @@ def dispatch(
         )
     if action == "import-finish":
         return importer.finish(lease)
-    upload = FileUpload(fence, DATA_ROOT, persistent)
+    upload = FileUpload(fence, DATA_ROOT, persistent, assignment_uid)
     if action == "file-write-begin":
         return upload.begin(
             lease,
@@ -141,7 +143,7 @@ def dispatch(
         return upload.finish(lease, payload.get("uploadId"))
     if action == "file-write-status":
         return upload.status(lease, payload.get("uploadId"))
-    files = Files(fence, DATA_ROOT, persistent.pw_uid)
+    files = Files(fence, DATA_ROOT, persistent.pw_uid, assignment_uid)
     if action == "file-read":
         return files.read(
             lease,
@@ -222,9 +224,21 @@ def dispatch(
             for path in [assignment, assignment / "workspace", assignment / "home"]:
                 path.mkdir(mode=0o700, exist_ok=True)
                 meta = path.lstat()
-                if not stat.S_ISDIR(meta.st_mode) or meta.st_uid not in (0, persistent.pw_uid):
+                if not stat.S_ISDIR(meta.st_mode) or meta.st_uid not in (
+                    0,
+                    persistent.pw_uid,
+                    assignment_uid,
+                ):
                     raise ValueError("unsafe_persistent_root")
-                os.chown(path, persistent.pw_uid, persistent.pw_gid, follow_symlinks=False)
+                if path == assignment:
+                    gid = 0 if assignment_uid == 0 else persistent.pw_gid
+                    os.chown(path, assignment_uid, gid, follow_symlinks=False)
+                    # A root-owned traversal parent lets the rootless engine
+                    # resolve bind sources without granting it workload contents.
+                    os.chmod(path, 0o711 if assignment_uid == 0 else 0o700)
+                    sync_dir(path)
+                else:
+                    os.chown(path, persistent.pw_uid, persistent.pw_gid, follow_symlinks=False)
         return runtime.create(lease, payload.get("memoryMb", 512), payload.get("cpus", 1))
     if action == "quiesce":
         commands.prepare_quiesce(lease)
@@ -260,6 +274,7 @@ def dispatch(
                 backend,
                 storage_owner=storage_owner,
                 user_namespace=user_namespace,
+                parent_uid=parent_uid,
             )
         return dict(finalized=True, checkpointId=publication["checkpointId"])
     if action == "remove":
@@ -446,6 +461,7 @@ def main():
         launch,
         storage_owner=persistent,
         user_namespace=ownership["namespace"],
+        parent_uid=0,
     )
     output = json.dumps(dict(version=1, id=request["id"], result=result), separators=(",", ":"))
     if len(output.encode("utf8")) > 2 * 1024 * 1024:

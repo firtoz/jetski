@@ -198,6 +198,7 @@ jobs:
           if id jetski-runtime >/dev/null 2>&1; then
             runtime_uid=$(id -u jetski-runtime)
             sudo journalctl --no-pager -n 60 "_UID=$runtime_uid" _SYSTEMD_USER_UNIT=podman.service
+            sudo python3 host/diagnose_runtime.py
           fi
       - name: Retire disposable listener
         if: always()

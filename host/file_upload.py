@@ -15,9 +15,9 @@ MAX_UPLOADS = 64
 
 
 class FileUpload:
-    def __init__(self, fence, data, account):
+    def __init__(self, fence, data, account, parent_uid=None):
         self.fence, self.data, self.account = fence, pathlib.Path(data), account
-        self.files = Files(fence, data, account.pw_uid)
+        self.files = Files(fence, data, account.pw_uid, parent_uid)
 
     def state(self, lease, writable=True):
         state = self.fence.read()
