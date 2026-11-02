@@ -35,7 +35,11 @@ import {
   type MissingPlacementRecovery,
   recoverMissingPlacement,
 } from "./placement-recovery.js";
-import { type HostLease, PoolJournal } from "./pool.js";
+import {
+  type HostLease,
+  InsufficientHostLifetimeError,
+  PoolJournal,
+} from "./pool.js";
 import { PortRegistry } from "./ports.js";
 import { PreviewSessions } from "./preview-sessions.js";
 import {
@@ -100,6 +104,11 @@ type CommandRecord = {
   lease: HostLease;
   image: string;
   spec: { argv: string[]; cwd: string; timeout: number };
+};
+
+const EMPTY_COMMAND_OUTPUT: InlineOutput = {
+  base64: "",
+  sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 };
 
 export type ManagerOptions = {
@@ -1217,17 +1226,43 @@ export class SandboxManager {
       const sandbox = tx.get<Sandbox>(this.key(scope));
       if (!sandbox?.lease || sandbox.phase !== "running")
         throw new Error("Sandbox not running");
-      this.pool.admitExecutionIn(tx, sandbox.lease, timeout);
+      let denial: string | undefined;
+      try {
+        this.pool.admitExecutionIn(tx, sandbox.lease, timeout);
+      } catch (error) {
+        if (!(error instanceof InsufficientHostLifetimeError)) throw error;
+        denial = error.message;
+      }
       const record: CommandRecord = {
         terminal,
         id,
         lease: sandbox.lease,
         image: sandbox.image,
         spec,
+        ...(denial
+          ? {
+              outcome: {
+                id,
+                phase: "failed",
+                exitCode: null,
+                neverStarted: true,
+                reason: "insufficient_host_lifetime",
+                failureStage: "admission",
+              },
+              outputSnapshot: {
+                stdout: EMPTY_COMMAND_OUTPUT,
+                stderr: EMPTY_COMMAND_OUTPUT,
+              },
+            }
+          : {}),
       };
       tx.put(key, record);
-      return { record, fresh: true };
+      return { record, fresh: true, denial };
     });
+    // Persist an explicit pre-dispatch rejection before returning the error.
+    // A launcher that already saved its intent can observe this exact identity
+    // after a lost reply, rather than confuse denied work with an unknown launch.
+    if (admission.denial) throw new InsufficientHostLifetimeError();
     // Persist before crossing the host boundary. Even a controller crash before
     // dispatch is uncertain: reconnect observes this ID and never reexecutes it.
     if (!admission.fresh) return this.commandStatus(scope, id);

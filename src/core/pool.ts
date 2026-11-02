@@ -49,6 +49,12 @@ type Machine = {
   slot: string | null;
 };
 
+export class InsufficientHostLifetimeError extends Error {
+  constructor() {
+    super("Insufficient host lifetime for command and checkpoint drain");
+  }
+}
+
 /** Durable placement ledger. External effects never run inside transactions.
  * Lifecycle coordination must verify checkpoint publication and host cleanup
  * before calling release; this module does not itself perform either effect. */
@@ -110,9 +116,7 @@ export class PoolJournal {
       slot.expiresAt <=
       this.now() + timeoutSeconds * 1000 + DEFAULTS.hostDrainMs
     )
-      throw new Error(
-        "Insufficient host lifetime for command and checkpoint drain",
-      );
+      throw new InsufficientHostLifetimeError();
   }
   async enqueue(
     owner: string,

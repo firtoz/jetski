@@ -292,11 +292,37 @@ test("command cancellation survives controller restart before dispatch and after
     /Invalid command timeout/,
   );
   assert.equal(starts, 1, "denied work never crosses the host boundary");
-  assert.equal(
-    await state.transaction((tx) =>
-      tx.get(`command/${scope.owner}/${scope.sandbox}/${denied}`),
-    ),
-    undefined,
+  const rejected = {
+    id: denied,
+    phase: "failed",
+    exitCode: null,
+    neverStarted: true,
+    reason: "insufficient_host_lifetime",
+    failureStage: "admission",
+  };
+  state.close();
+  state = new SqliteState(path);
+  manager = new SandboxManager(state, provider, transport, objects, options);
+  statusFails = true;
+  assert.deepEqual(await manager.commandStatus(scope, denied), rejected);
+  assert.deepEqual(
+    await manager.startCommand(scope, denied, ["sleep", "120"]),
+    rejected,
+    "a lost admission-error reply reconnects to a durable never-started outcome",
+  );
+  for (const channel of ["stdout", "stderr"] as const)
+    assert.deepEqual(
+      await manager.commandOutput(scope, denied, channel, 0, 1024),
+      { base64: "", nextOffset: 0, terminal: true },
+      "rejected commands have authenticated empty output without host I/O",
+    );
+  await assert.rejects(
+    manager.startCommand(scope, denied, ["different"]),
+    /Command identity conflict/,
+  );
+  await assert.rejects(
+    manager.commandStatus({ ...scope, owner: "foreign" }, denied),
+    /Command unavailable/,
   );
   assert.deepEqual(
     await manager.startCommand(scope, command, ["sleep", "120"]),
