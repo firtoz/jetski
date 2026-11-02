@@ -70,10 +70,11 @@ rereading the temporary archive. Exact encoded bytes and checkpoint formats stay
 unchanged. Capture host assets change, so new assignments need the new immutable
 bundle. Seven focused storage checks and15 capture/frame checks pass, along with
 build/types/lint. The local storage screen improves copying/hash time and RSS;
-hosted performance and the next pinned artifact remain pending.
+the pinned artifact28 is published and the client update is on main.
+Its larger-source comparison and final staging workflow remain separate gates.
 
-All seven exact-SHA runtime CI jobs pass through the admission-rejection fix
-`bd9ae4b`; follow-on runtime CI remains pending. The affected pack, transport/import and
+All seven exact-SHA runtime CI jobs pass at `5b024d2`, including the
+changed capture bundle. The affected pack, transport/import and
 state checks pass; valid earlier corruption, lost-ACK, restart, cancellation,
 stale-generation, old-format and GC-race evidence is reused. Every started sibling
 must drain before cleanup, failure or publication. Hashes, immutable identities,
@@ -95,10 +96,25 @@ variation is substantial; candidate import-only timing was not separately measur
 Both machines and temporary controllers are retired. Earlier failed attempts,
 independent oracles and retained archives remain available in private evidence.
 
-**The larger first-save target remains unmet.** The rolling-window sample measures
-27.246 versus22.817 s; the preceding pipeline sample measures25.574 versus16.619 s.
-These are separate host pairs/configurations, not a pooled median or proof that the
-rolling change improved latency. Preserve the gap while completing client utility.
+**The larger first-save target remains unmet.** The latest source-only pair at
+`5b024d2` measures43.869 versus40.173 s, with exact source fixtures and both
+machines/controllers retired. The previous rolling-window pair measured27.246
+versus22.817 s. These separate configurations/hosts are not a pooled median.
+The local storage-path speedup does not establish hosted end-to-end parity.
+
+The reference checks object metadata after writes; the candidate additionally
+reads and hashes complete objects and their logical ranges. Preserve the stronger
+proof. Next, qualify [native SHA-256 write verification](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#r2putoptions)
+as a storage capability, with fresh publication observations and full readback
+fallback. An S3-shaped interface or custom metadata alone is insufficient.
+The optional [native adapter](../storage-r2.md) at `fc196b2` passes both live R2 storage contracts:
+verified-write reuse uses no readback body and still performs a fresh version/
+checksum observation at publication. Bad native checksums are rejected; independent
+bytes match. This used no execution host, and its Worker/test prefix are cleaned.
+Seven focused checks, build, types and lint pass. Artifact release, client
+integration and hosted performance qualification remain open. Provisional transfer
+may overlap work, but completion and execution remain behind the verified root;
+publication itself is a metadata update rather than another payload copy.
 
 Downstream artifact pinning and guarded idle-profile adoption are implemented.
 Historical uncertain outcomes must remain uncertain; only current fences, settled
@@ -110,7 +126,8 @@ changed only that file. Publication timed out before review/push; server-owned
 cleanup durably saved generation4 before host expiry, and provider absence is
 confirmed. A lifetime-admission failure now persists an explicit never-started
 outcome for reconnects; the client uses stage-sized publication budgets and reads
-that failure without inventing a process receipt. Client deployment, publication,
+that failure without inventing a process receipt. Artifact28 and the client integration changes are published; root build, types,
+lint and12 focused client checks pass. Exact client deployment, publication,
 warm resume and physical replacement remain open. No production cutover is authorized.
 Routine receipts, diagnostics and process handles stay in private QA notes.
 

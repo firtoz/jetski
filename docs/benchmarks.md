@@ -74,6 +74,14 @@ an import-only speed advantage. The preceding control-envelope candidate measure
 path's functionality and improves that observed whole time, while larger first-save
 performance and the final downstream workflow remain open.
 
+The streaming-integrity/capture-hash follow-on (`5b024d2`) measured43.869 versus
+40.173 s in a new source-only pair. Source oracles matched and both hosts and
+controllers were retired. Candidate counters included201.573 MB uploaded,
+213.550 MB downloaded and125 storage requests. Capture requests took8.550 s;
+source reads5.024 s; pack-write calls summed40.787 s and publication range checks
+3.976 s. Call durations overlap and must not be added as wall-clock stages.
+First-save parity remains unmet; this pair is not pooled with earlier candidates.
+
 ## Local storage-path screen
 
 Five fresh processes per arm alternated buffered and streaming verification of
