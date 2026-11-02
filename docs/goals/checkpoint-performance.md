@@ -136,8 +136,10 @@ existing control path to avoid extra setup requests. Supervisor-owned read-only
 links are lease-fenced, and cleanup runs after all reads settle. The core retains
 full frame/object verification, durable publication and failure barriers. Focused
 checks cover incorrect/truncated ranges, credential separation, cleanup, corrupted
-source rejection and interrupted export setup. Live Boat range qualification is
-still required; this implementation is not a measured performance result.
+source rejection and interrupted export setup. The hosted first-save attempt exposed missing image context in the optional binding,
+which the host dispatcher validates before archive access. The binding now carries
+the admitted image on export, range and cleanup requests. The original stopped
+source is retained for reconciliation; comparative performance remains unqualified.
 
 Finish the combined build and CI, then run the consolidated matched warm/large
 comparison and pinned-client staging qualification. Reuse valid evidence and repeat

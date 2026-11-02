@@ -111,6 +111,7 @@ type Dependencies = {
   checkpointSource?: (
     lease: HostLease,
     archive: CapturedArchive,
+    image: string,
   ) => Promise<ArchiveSource | undefined>;
   state: StateStore;
   operations: OperationJournal;
@@ -405,6 +406,7 @@ export class ShutdownCoordinator {
         const boundSource = await this.deps.checkpointSource?.(
           record.lease,
           record.archive,
+          record.image,
         );
         let failure: { reason: unknown } | undefined;
         try {

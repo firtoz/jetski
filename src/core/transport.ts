@@ -30,6 +30,7 @@ export interface HostTransport {
     host: string,
     lease: HostLease,
     archive: CapturedArchive,
+    image: string,
   ): Promise<ArchiveSource | undefined>;
 
   request(

@@ -24,6 +24,7 @@ export class BoatTransport implements HostTransport {
     host: string,
     lease: HostLease,
     archive: CapturedArchive,
+    image: string,
   ) => Promise<ArchiveSource | undefined>;
   constructor(
     state: StateStore,
@@ -38,13 +39,14 @@ export class BoatTransport implements HostTransport {
     )
       throw Error("Invalid binary archive read policy");
     if (options.archiveReads)
-      this.checkpointSource = (host, lease, archive) =>
-        this.openCheckpoint(host, lease, archive);
+      this.checkpointSource = (host, lease, archive, image) =>
+        this.openCheckpoint(host, lease, archive, image);
   }
   private async openCheckpoint(
     host: string,
     lease: HostLease,
     archive: CapturedArchive,
+    image: string,
   ): Promise<ArchiveSource> {
     identifier(lease.assignmentId);
     let prepared = false;
@@ -57,7 +59,12 @@ export class BoatTransport implements HostTransport {
           version: HOST_PROTOCOL_VERSION,
           id: crypto.randomUUID(),
           action: "checkpoint-source",
-          payload: { lease, sha256: archive.sha256, bytes: archive.bytes },
+          payload: {
+            lease,
+            image,
+            sha256: archive.sha256,
+            bytes: archive.bytes,
+          },
         })
       ).result;
       if (
@@ -96,7 +103,7 @@ export class BoatTransport implements HostTransport {
             version: HOST_PROTOCOL_VERSION,
             id: crypto.randomUUID(),
             action: "read-checkpoint",
-            payload: { lease, offset, bytes },
+            payload: { lease, image, offset, bytes },
           })
         ).result;
         if (
@@ -118,7 +125,7 @@ export class BoatTransport implements HostTransport {
             version: HOST_PROTOCOL_VERSION,
             id: crypto.randomUUID(),
             action: "checkpoint-source-close",
-            payload: { lease },
+            payload: { lease, image },
           })
         ).result;
         if (

@@ -261,8 +261,17 @@ export class SandboxManager {
     this.shutdown = new ShutdownCoordinator({
       ...(transport.checkpointSource
         ? {
-            checkpointSource: (lease: HostLease, archive: CapturedArchive) =>
-              transport.checkpointSource!(lease.machineId, lease, archive),
+            checkpointSource: (
+              lease: HostLease,
+              archive: CapturedArchive,
+              image: string,
+            ) =>
+              transport.checkpointSource!(
+                lease.machineId,
+                lease,
+                archive,
+                image,
+              ),
           }
         : {}),
       captureFrameBytes: frameBytes,

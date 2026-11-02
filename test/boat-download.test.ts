@@ -114,6 +114,10 @@ test("checkpoint binding keeps small deltas on control and shares a single binar
     }
     const encoded = /printf '%s' '([A-Za-z0-9+/=]+)'/.exec(body.command)![1]!;
     const request = JSON.parse(Buffer.from(encoded, "base64").toString());
+    assert.equal(
+      request.payload.image,
+      "example/linux@sha256:" + "a".repeat(64),
+    );
     let result;
     if (request.action === "checkpoint-source") {
       exports++;
@@ -145,7 +149,12 @@ test("checkpoint binding keeps small deltas on control and shares a single binar
   });
   const transport = new BoatTransport(state, api, 300, { archiveReads: true });
   assert.ok(transport.checkpointSource);
-  const source = await transport.checkpointSource("bx_owned", lease, archive);
+  const source = await transport.checkpointSource(
+    "bx_owned",
+    lease,
+    archive,
+    "example/linux@sha256:" + "a".repeat(64),
+  );
   assert.ok(source);
   assert.equal(exports, 0);
   assert.deepEqual(
