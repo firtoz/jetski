@@ -30,6 +30,14 @@ class CgroupPolicyTests(unittest.TestCase):
     def test_only_launch_and_execution_enter_their_exact_workload_cgroup(self):
         environment = object.__new__(RootlessEnvironment)
         environment.account = types.SimpleNamespace(pw_uid=1234)
+        environment.namespace_argv = [
+            "unshare",
+            "--user",
+            "--map-user=0",
+            "--map-group=0",
+            "--map-users=1:100000:65536",
+            "--map-groups=1:100000:65536",
+        ]
         environment.commands = RunscCommands("/opt/runsc", "/runtime/state")
         name = "jetski-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-g2"
         prefix = environment.commands.prefix()
@@ -41,13 +49,5 @@ class CgroupPolicyTests(unittest.TestCase):
                 self.assertEqual(argv[-len(prefix + [action, name]) :], prefix + [action, name])
             self.assertEqual(
                 environment.argv(prefix + ["list", "--format=json"]),
-                [
-                    "runuser",
-                    "podman",
-                    "--cgroup-manager=cgroupfs",
-                    "unshare",
-                    *prefix,
-                    "list",
-                    "--format=json",
-                ],
+                ["runuser", *environment.namespace_argv, *prefix, "list", "--format=json"],
             )

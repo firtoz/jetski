@@ -83,6 +83,34 @@ def read_json(path, owner_uid):
         return json.loads(source.read(MAX_POLICY_BYTES + 1))
 
 
+def native_namespace_arguments(account, ownership):
+    """Reproduce the approved subordinate maps without an engine moving cgroups."""
+    args = ["unshare", "--user", "--map-user=0", "--map-group=0"]
+    for filename, key, workload, flag in (
+        ("/etc/subuid", "uidMappings", "workloadUid", "--map-users"),
+        ("/etc/subgid", "gidMappings", "workloadGid", "--map-groups"),
+    ):
+        ranges = []
+        with open(filename) as source:
+            text = source.read(1024 * 1024 + 1)
+        if len(text) > 1024 * 1024:
+            raise ValueError("subordinate_mapping_bound")
+        for line in text.splitlines():
+            parts = line.split(":")
+            if len(parts) == 3 and parts[0] in (account.pw_name, str(account.pw_uid)):
+                start, count = int(parts[1]), int(parts[2])
+                if start < 65536 or count <= 1000 or start + count >= 2**32:
+                    raise ValueError("invalid_subordinate_mapping")
+                ranges.append((start, count))
+        if len(ranges) != 1:
+            raise ValueError("native_runtime_requires_single_subordinate_range")
+        start, count = ranges[0]
+        if ownership[key] != [[0, 0, 1], [1, 1, count]] or ownership[workload] != start + 999:
+            raise ValueError("native_namespace_mapping_conflict")
+        args.append(f"{flag}=1:{start}:{count}")
+    return args
+
+
 def cgroup_parent(account):
     return pathlib.Path(
         f"/sys/fs/cgroup/user.slice/user-{account.pw_uid}.slice/user@{account.pw_uid}.service/jetski-gvisor"
@@ -125,6 +153,7 @@ class RootlessEnvironment:
         self.account, self.images = account, tuple(images)
         self.init_argv = workload_init({"workloadInit": init_argv})
         self.ownership = read_workload_identity(account)
+        self.namespace_argv = native_namespace_arguments(account, self.ownership)
         self.root = private_directory(pathlib.Path(account.pw_dir) / "gvisor", account)
         self.commands = RunscCommands(
             str(INSTALL_ROOT / RELEASE / "runsc"), str(self.root / "state")
@@ -143,9 +172,9 @@ class RootlessEnvironment:
     def argv(self, arguments):
         if arguments[: len(self.commands.prefix())] != self.commands.prefix():
             raise ValueError("invalid_gvisor_native_command")
-        # This utility only supplies the user namespace. Its default systemd
-        # manager moves itself (and Sentry) out of our enforced workload group.
-        prefix = runtime_argv(self.account) + ["--cgroup-manager=cgroupfs"]
+        # Only image preparation uses the container engine. Native execution uses
+        # util-linux user namespaces so an engine cannot silently move cgroups.
+        prefix = runtime_argv(self.account)[:-1] + self.namespace_argv
         action = arguments[len(self.commands.prefix())]
         if action in ("run", "restore", "exec"):
             name = arguments[-1]
@@ -160,10 +189,9 @@ class RootlessEnvironment:
                 "/opt/jetski/gvisor_cgroup.py",
                 str(cgroup_parent(self.account) / name),
                 *prefix,
-                "unshare",
                 *arguments,
             ]
-        return prefix + ["unshare", *arguments]
+        return prefix + arguments
 
     def run(self, arguments):
         return bounded_command(self.argv(arguments), CONTROL_ROOT, timeout=120)
