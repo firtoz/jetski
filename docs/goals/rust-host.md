@@ -60,7 +60,8 @@ reference `8bb303f46c78c41d9a68f814953a96fa12467adc`; previous full CI passed se
 jobs. Host Python/native assets unchanged since the qualified baseline. Existing
 Rust 1.97.1/Cargo 1.97.1 are available; no toolchain installation is needed.
 Private plans, budget, IDs, receipts and failures live under the operator QA state
-`rust-host-20261103`; no hosts or remote operations admitted yet.
+`rust-host-20261103`; the separate hosted comparison is now running.
+Its private budget journal is authoritative for admitted/observed/retired hosts.
 
 Current work: native protocol/fence/frames, trusted supervisor/account/map checks,
 Podman lifecycle, command worker/output/cancellation and terminal input are implemented.
@@ -79,7 +80,7 @@ change a host's backend/hash; the installer rejects existing Python installs.
 Default Python host module bytes/config remain unchanged. Package checks include
 the optional adapter/loader/installer and exclude native build output.
 
-No host has been allocated. Local GNU-static compilation proves the source builds;
+The first reference host has published a verified seed checkpoint. Local GNU-static compilation proves the source builds;
 the distributable/hosted candidate uses a separate **static musl CI artifact** with
 source/SHA manifest and dependency/compiler notices. No musl target or runtime is
 installed on the operator's desktop. Native `status` must attest the selected hash.
@@ -88,13 +89,15 @@ or physical-host replacement. Map: [contract](../../host-rust/contract.md).
 
 ## Next actions
 
-1. Initial milestone `0a000be` passes all eight CI jobs. The native large-request
-   wrapper fix is implemented and passes its focused checks: provider transfer
-   directories, verified immutable JSON decoding and cleanup run natively. Publish
-   this affected fix and use its exact-SHA musl artifact for the hosted freeze.
-2. Freeze the finite two-pair plan and new owned resource ledger before allocating.
-   Reuse the existing comparison driver/oracle; do not copy prior failed operation
-   IDs or protected fixtures. Use the separately approved $3/eight-host cap only.
+1. Candidate `9c29eff` passes all eight exact-SHA CI jobs. The first live native
+   host exposed an installer omission: its fixed slot directory was not prepared
+   before readiness. No assignment/data was admitted; read-only proof and failed
+   setup evidence are preserved. The installer now prepares the private slot;
+   publish that affected fix and replace the unassigned test host within reserves.
+2. Observe the existing four-arm run rather than duplicating it. Ten timed cycles
+   per backend, native live interactive checks outside timed samples, and one
+   source-deleted replacement per backend remain the finite hosted gates. Preserve
+   actual failures and source bytes on uncertainty; fix/rerun only affected work.
 3. Execute the matched comparison, live native interactive/failure checks and
    source-deleted replacements, then clean owned resources and publish the honest
    consolidated report/recommendation. Do not chase a predetermined speed result.

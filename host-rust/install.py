@@ -137,6 +137,13 @@ class Installer:
                 or len(bootstrap["digest"]) != 64
             ):
                 raise ValueError("native_base_bootstrap_mismatch")
+            # Fence::open deliberately never creates incoming request paths.
+            # Prepare its one fixed host slot before publishing native readiness.
+            slot = self.directory("/var/lib/jetski/control/slot")
+            if stat.S_IMODE(slot.lstat().st_mode) != 0o700:
+                raise ValueError("unsafe_native_slot_directory")
+            self.sync(slot)
+            self.sync(slot.parent)
             installed = self.directory("/opt/jetski/native") / "jetski-host"
             receipt = {**identity, "bootstrapDigest": bootstrap["digest"]}
             marker = self.path("/etc/jetski/native-host.json")
