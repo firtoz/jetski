@@ -1,8 +1,8 @@
 # Hosted performance qualification
 
-## Current candidate: qualification33
+## Current candidate: qualification34
 
-Frozen runtime `62eab00` completed ten trials per arm across two fresh Boat host
+Frozen warm runtime `62eab00` completed ten trials per arm across two fresh Boat host
 pairs, reversing order on the second pair. Both arms use the same approved image,
 two CPUs,2 GiB, native overlay and64 MiB fixture, ending at verified publication/
 readiness and independent filesystem comparison. All20 comparisons match. Four
@@ -33,13 +33,23 @@ Host I/O and control-plane placement still vary; this comparison does not isolat
 the new composition's contribution to the save-time difference. Storage requests
 remain higher despite fewer bytes and provider requests.
 
-The current-build larger cold pair restores436,207,724 logical bytes exactly after
-source deletion, including modes, links, saved output and repeated saves. Cold
-readiness remains slower:188.574 versus47.045 s. Roughly151 s precede the
-candidate's first host-status call;13 binary writes take20.840 s and import finish
-7.852 s. Bootstrap is the next implementation target; the warm result does not
-close cold parity. Both cold hosts/controllers are retired. See the
-[active goal](goals/checkpoint-performance.md).
+Qualification34 (`c6864d4`) changes only Boat prerequisite installation: it installs
+missing packages and checks the existing compiler instead of requesting the full
+runtime/compiler package list whenever any tool is absent. Artifact comparison
+confirms unchanged host assets, warm runtime and checkpoint code, so the completed
+warm matrix above is reused without another twenty trials.
+
+Its changed cold pair restores436,207,724 logical bytes after source deletion in
+36.774 s candidate versus51.309 s reference. Whole-filesystem bytes, modes, links,
+saved command output and repeated durable saves match. Prerequisites take8.787 s,
+installer/image preparation11.226 s,13 binary import writes10.090 s, final import
+0.858 s and create0.261 s. Both owned hosts and temporary controllers are retired.
+This single pair meets the observed cold target; it does not establish a population
+median or isolate the package change from host/network variance. The preceding
+unchanged-format candidate measured188.574/47.045 s, including150.893 s before
+its first status call. That earlier bootstrap was not split into package/installer
+phases, so its entire difference cannot be attributed to package installation.
+See the [active goal](goals/checkpoint-performance.md) for final client adoption.
 
 ## Previous candidate: qualification32
 
