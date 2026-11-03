@@ -79,7 +79,7 @@ class OciPolicyTests(unittest.TestCase):
             "restore", self.lease, bundle="/runtime/bundle", image="/runtime/memory"
         )
         self.assertIn("--platform=systrap", restore)
-        self.assertIn("--network=sandbox", restore)
+        self.assertIn("--network=none", restore)
         self.assertIn("--rootless=false", restore)
         self.assertIn("--background=false", restore)
         self.assertEqual(restore[-1], container_name(self.lease))
