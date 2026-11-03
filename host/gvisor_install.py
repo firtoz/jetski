@@ -111,7 +111,9 @@ def _secure_directory(path):
     for parent in [*reversed(path.parents), path]:
         meta = parent.lstat()
         if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
-            raise ValueError("unsafe_gvisor_install_path")
+            raise ValueError(
+                f"unsafe_gvisor_install_path:{parent}:{meta.st_uid}:{stat.S_IMODE(meta.st_mode):o}"
+            )
 
 
 def verify_installation(directory):
