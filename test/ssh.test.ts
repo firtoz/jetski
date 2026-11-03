@@ -30,7 +30,7 @@ test("SSH uses explicit pinned hosts and credentials without inherited agents or
     assert.ok(args.includes(option));
   assert.equal(
     args.at(-1),
-    "env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py",
+    "'env' '-i' 'PATH=/usr/bin:/bin' 'sh' '-c' 'test ! -e /var/lib/jetski-native/intent.json && exec python3 -I /opt/jetski/host/control.py'",
   );
   assert.throws(
     () => sshArguments({ ...host, hostname: "example.test; echo injected" }),

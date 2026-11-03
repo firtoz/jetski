@@ -17,6 +17,12 @@ import {
   HostTransportError,
   hostRequestByteLimit,
 } from "../core/transport.js";
+import {
+  type HostBackend,
+  hostControlCommand,
+  validateHostBackend,
+  verifyBackendStatus,
+} from "./host-backend.js";
 import { attachHostStream } from "./host-stream.js";
 
 export type SshHost = {
@@ -26,9 +32,11 @@ export type SshHost = {
   user: string;
   privateKeyPath: string;
   knownHostsPath: string;
+  backend?: HostBackend;
 };
 export function sshArguments(host: SshHost): string[] {
   identifier(host.id);
+  if (host.backend) validateHostBackend(host.backend);
   if (
     !/^[a-zA-Z0-9][a-zA-Z0-9.:-]*$/.test(host.hostname) ||
     !/^[a-z_][a-z0-9_-]*$/.test(host.user)
@@ -71,7 +79,7 @@ export function sshArguments(host: SshHost): string[] {
     "-p",
     String(host.port),
     `${host.user}@${host.hostname}`,
-    "env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py",
+    hostControlCommand(host.backend),
   ];
 }
 export class SshTransport implements HostTransport, HostStreamTransport {
@@ -210,6 +218,8 @@ export class SshTransport implements HostTransport, HostStreamTransport {
         }
         try {
           const response = JSON.parse(output.toString("utf8")) as HostResponse;
+          if (request.action === "status" && host.backend)
+            verifyBackendStatus(host.backend, response.result);
           if (
             !response ||
             response.version !== HOST_PROTOCOL_VERSION ||

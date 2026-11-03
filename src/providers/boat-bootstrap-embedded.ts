@@ -8,6 +8,12 @@ import {
   type RuntimeStorageMode,
 } from "../core/contracts.js";
 import { BoatControlChannel } from "../transport/boat-channel.js";
+import {
+  bindHostBackend,
+  type HostBackend,
+  PYTHON_HOST_BACKEND,
+  validateHostBackend,
+} from "../transport/host-backend.js";
 import type { BoatApi } from "./boat.js";
 import { BOAT_PREREQUISITES } from "./boat-prerequisites.js";
 
@@ -52,7 +58,10 @@ export class EmbeddedBoatBootstrap {
     private readonly loadAssets: () => Promise<BoatBootstrapAssets>,
     private readonly networkMode: RuntimeNetworkMode = "none",
     private readonly storageMode: RuntimeStorageMode = "default",
+    private readonly backend: HostBackend = PYTHON_HOST_BACKEND,
   ) {
+    validateHostBackend(backend);
+    this.backend = structuredClone(backend);
     identifier(poolId);
     if (!RUNTIME_STORAGE_MODES.includes(storageMode))
       throw Error("Unsupported runtime storage policy");
@@ -73,6 +82,7 @@ export class EmbeddedBoatBootstrap {
   }
   async ensure(host: string): Promise<void> {
     identifier(host);
+    await bindHostBackend(this.state, host, this.backend);
     const assets = await this.loadAssets();
     if (
       Object.keys(assets.files).length !== BOAT_BOOTSTRAP_MODULES.length ||
@@ -154,7 +164,12 @@ export class EmbeddedBoatBootstrap {
     // install parent only before our first installation on this owned machine.
     // Adopted SSH hosts still require operator preparation; never repair assigned
     // or already-installed hosts by changing their filesystem permissions.
+    const backendGuard =
+      this.backend.kind === "python"
+        ? 'assert not os.path.lexists("/var/lib/jetski-native/intent.json"), "native_host_requires_native_backend"'
+        : `import json; assert json.load(open("/var/lib/jetski-native/intent.json"))["sha256"]=="${this.backend.sha256}", "native_backend_intent_mismatch"`;
     const secureParent = `import os,stat
+${backendGuard}
 root=os.stat("/",follow_symlinks=False)
 assert stat.S_ISDIR(root.st_mode) and root.st_uid==0 and not root.st_mode & 0o022
 fd=os.open("/opt",os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)

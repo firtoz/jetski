@@ -15,6 +15,13 @@ import {
   HostTransportError,
 } from "../core/transport.js";
 import type { BoatAllocation, BoatApi } from "../providers/boat.js";
+import {
+  bindHostBackend,
+  type HostBackend,
+  hostControlCommand,
+  PYTHON_HOST_BACKEND,
+  validateHostBackend,
+} from "./host-backend.js";
 import { attachHostStream, type StreamWire } from "./host-stream.js";
 import { sshKeyPair } from "./ssh-key.js";
 
@@ -26,15 +33,21 @@ export const BOAT_STREAM_CRYPTO_SUITES = [
   "aes256-ctr-sha256-etm",
 ] as const;
 export type BoatStreamCryptoSuite = (typeof BOAT_STREAM_CRYPTO_SUITES)[number];
-export type BoatStreamOptions = { cryptoSuite?: BoatStreamCryptoSuite };
+export type BoatStreamOptions = {
+  cryptoSuite?: BoatStreamCryptoSuite;
+  backend?: HostBackend;
+};
 
 export class BoatStreamTransport implements HostStreamTransport {
   private readonly cryptoSuite: BoatStreamCryptoSuite;
+  private readonly backend: HostBackend;
   constructor(
     private readonly state: StateStore,
     private readonly api: BoatApi,
     options: BoatStreamOptions = {},
   ) {
+    this.backend = structuredClone(options.backend ?? PYTHON_HOST_BACKEND);
+    validateHostBackend(this.backend);
     if (
       options.cryptoSuite !== undefined &&
       !BOAT_STREAM_CRYPTO_SUITES.includes(options.cryptoSuite)
@@ -48,6 +61,7 @@ export class BoatStreamTransport implements HostStreamTransport {
     request: HostStreamRequest,
     signal?: AbortSignal,
   ): Promise<HostConnection> {
+    await bindHostBackend(this.state, host, this.backend);
     identifier(host);
     if (request.lease.machineId !== host) throw Error("Stream host mismatch");
     if (
@@ -170,7 +184,7 @@ export class BoatStreamTransport implements HostStreamTransport {
       });
       client.once("ready", () => {
         client.exec(
-          "sudo -n env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py",
+          `sudo -n ${hostControlCommand(this.backend)}`,
           (err, channel) => {
             if (err) {
               error();

@@ -6,3 +6,5 @@ coverage/
 .jetski/
 __pycache__/
 *.pyc
+
+/host-rust/target/

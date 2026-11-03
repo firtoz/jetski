@@ -2,9 +2,22 @@
   "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!dist", "!node_modules"]
+    "includes": ["**", "!dist", "!node_modules", "!host-rust/target"]
   },
-  "formatter": { "indentStyle": "space" },
-  "linter": { "enabled": true, "rules": { "preset": "none" } },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } }
+  "formatter": {
+    "indentStyle": "space"
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none"
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
 }

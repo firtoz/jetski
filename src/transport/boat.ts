@@ -19,6 +19,14 @@ import {
 } from "../core/transport.js";
 import type { BoatApi } from "../providers/boat.js";
 import { BoatControlChannel } from "./boat-channel.js";
+import {
+  bindHostBackend,
+  type HostBackend,
+  hostControlArguments,
+  PYTHON_HOST_BACKEND,
+  validateHostBackend,
+  verifyBackendStatus,
+} from "./host-backend.js";
 
 /** Fixed privileged control program; workload bytes enter only through stdin. */
 export class BoatTransport implements HostTransport {
@@ -41,6 +49,7 @@ export class BoatTransport implements HostTransport {
     ).result;
   }
   private readonly channel: BoatControlChannel;
+  private readonly backend: HostBackend;
   readonly checkpointImport?: (
     host: string,
     lease: HostLease,
@@ -56,8 +65,14 @@ export class BoatTransport implements HostTransport {
     private readonly state: StateStore,
     private readonly api: BoatApi,
     timeoutSeconds = HOST_CONTROL_TIMEOUT_MS / 1000,
-    options: { archiveReads?: boolean; archiveWrites?: boolean } = {},
+    options: {
+      archiveReads?: boolean;
+      archiveWrites?: boolean;
+      backend?: HostBackend;
+    } = {},
   ) {
+    this.backend = structuredClone(options.backend ?? PYTHON_HOST_BACKEND);
+    validateHostBackend(this.backend);
     this.channel = new BoatControlChannel(state, api, timeoutSeconds);
     if (
       options.archiveReads !== undefined &&
@@ -235,19 +250,11 @@ export class BoatTransport implements HostTransport {
     identifier(request.action);
     if (request.version !== HOST_PROTOCOL_VERSION)
       throw Error("Unsupported host protocol");
+    await bindHostBackend(this.state, host, this.backend);
     const stdout = await this.channel.run(
       host,
       Buffer.from(JSON.stringify(request)),
-      [
-        "sudo",
-        "-n",
-        "env",
-        "-i",
-        "PATH=/usr/bin:/bin",
-        "python3",
-        "-I",
-        "/opt/jetski/host/control.py",
-      ],
+      ["sudo", "-n", ...hostControlArguments(this.backend)],
       signal,
       hostRequestByteLimit(request.action),
     );
@@ -261,6 +268,7 @@ export class BoatTransport implements HostTransport {
       )
         throw Error("Invalid host response");
       if (request.action === "status") {
+        verifyBackendStatus(this.backend, response.result);
         const proof = response.result;
         const supported =
           proof &&

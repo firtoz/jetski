@@ -153,7 +153,7 @@ test("explicit stream crypto suite transfers binary data and rejects other ciphe
             accept().on("exec", (accept, reject, info) => {
               if (
                 info.command !==
-                "sudo -n env -i PATH=/usr/bin:/bin python3 -I /opt/jetski/host/control.py"
+                "sudo -n 'env' '-i' 'PATH=/usr/bin:/bin' 'sh' '-c' 'test ! -e /var/lib/jetski-native/intent.json && exec python3 -I /opt/jetski/host/control.py'"
               )
                 return reject();
               executions++;

@@ -33,6 +33,9 @@
     "./server/preview": "./dist/server/preview.js",
     "./transport/duplex": "./dist/transport/duplex.js",
     "./providers/boat-bootstrap-embedded": "./dist/providers/boat-bootstrap-embedded.js",
+    "./providers/boat-bootstrap-rust": "./dist/providers/boat-bootstrap-rust.js",
+    "./transport/host-backend": "./dist/transport/host-backend.js",
+    "./host-rust-assets": "./dist/host-rust-assets.js",
     "./host-assets": "./dist/host-assets.js",
     "./transport/http": "./dist/transport/http-forward.js",
     "./transport/websocket": "./dist/transport/websocket.js",
@@ -41,6 +44,7 @@
   "files": [
     "dist",
     "host",
+    "host-rust/install.py",
     "LICENSE",
     "NOTICE"
   ],

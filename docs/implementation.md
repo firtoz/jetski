@@ -107,6 +107,10 @@ staging beyond-hour use and source-deleted recovery passed with owned cleanup.
 The [lifecycle goal](goals/adaptive-host-lifecycle.md) records the completed scope;
 existing checkpoint and real-grace fixtures remain preserved.
 
+The opt-in [Rust host goal](goals/rust-host.md) compares a native implementation
+with the frozen Python reference. Python stays the default; its finite matrix and
+separate approved allowance govern this experiment.
+
 ## Keeping this plan useful
 
 Keep this file short (roughly 100 lines). Replace current status; do not prepend

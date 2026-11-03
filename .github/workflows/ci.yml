@@ -3,6 +3,43 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  native-host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned compiler on disposable CI runner
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup target add x86_64-unknown-linux-musl
+      - run: cargo fmt --manifest-path host-rust/Cargo.toml --check
+      - run: cargo test --locked --manifest-path host-rust/Cargo.toml
+      - run: cargo clippy --locked --manifest-path host-rust/Cargo.toml --all-targets -- -D warnings
+      - run: python3 host-rust/test_install.py
+      - run: pipx run --spec ruff==0.17.3 ruff check host-rust/*.py
+      - run: pipx run --spec ruff==0.17.3 ruff format --check host-rust/*.py
+      - name: Build opt-in static Linux artifact
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl --manifest-path host-rust/Cargo.toml
+      - name: Record artifact integrity and source
+        run: |
+          mkdir -p "$RUNNER_TEMP/jetski-native"
+          cp host-rust/target/x86_64-unknown-linux-musl/release/jetski-host "$RUNNER_TEMP/jetski-native/jetski-host"
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'jetski-native'
+          binary=(root/'jetski-host').read_bytes()
+          (root/'manifest.json').write_text(json.dumps(dict(version=1,source=os.environ['GITHUB_SHA'],target='x86_64-unknown-linux-musl',sha256=hashlib.sha256(binary).hexdigest(),bytes=len(binary)),indent=2)+'\n')
+          PY
+          python3 host-rust/notices.py "$RUNNER_TEMP/jetski-native"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jetski-native-linux-x86_64
+          path: ${{ runner.temp }}/jetski-native/*
+          if-no-files-found: error
   test:
     runs-on: ubuntu-latest
     steps:

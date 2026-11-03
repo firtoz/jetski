@@ -45,10 +45,13 @@ test("Boat control uses only owned hosts, encoded fixed dispatch and matching re
         stream: false,
       },
     );
-    const match =
-      /^printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d \| 'sudo' '-n' 'env' '-i' 'PATH=\/usr\/bin:\/bin' 'python3' '-I' '\/opt\/jetski\/host\/control.py'$/.exec(
-        body.command,
-      );
+    const match = /^printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d \| (.*)$/.exec(
+      body.command,
+    );
+    assert.equal(
+      match?.[2],
+      "'sudo' '-n' 'env' '-i' 'PATH=/usr/bin:/bin' 'sh' '-c' 'test ! -e /var/lib/jetski-native/intent.json && exec python3 -I /opt/jetski/host/control.py'",
+    );
     assert.ok(match);
     assert.deepEqual(
       JSON.parse(Buffer.from(match[1]!, "base64").toString("utf8")),
