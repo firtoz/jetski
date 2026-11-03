@@ -36,7 +36,7 @@ main milestones; final exact-SHA CI and concise reporting are required.
 | Gate                       | Required evidence                                                                                                                      | State       |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
 | Contract/design            | Explicit runtime/bootstrap capabilities; suspend/stop distinction; memory/filesystem consistency and fallback contract                 | In progress |
-| Native runtime integration | Pinned runsc installation on owned execution hosts; lifecycle/exec/files/PTY/forwarding through trusted adapter                        | Open        |
+| Native runtime integration | Pinned runsc installation on owned execution hosts; lifecycle/exec/files/PTY/forwarding through trusted adapter                        | Partial     |
 | Memory integration         | Real process-memory continuity with exact files; verified R2 root before acknowledgement/release; fenced compatible resume             | Open        |
 | Targeted failure coverage  | Restart/lost ACK, stale/mismatched/missing/corrupt memory, output identity, uncertain source retention and cleanup                     | Open        |
 | Matched benchmark          | Podman filesystem / gVisor filesystem / gVisor memory; two reversed groups, five timed cycles per mode per group: thirty valid samples | Open        |
@@ -84,13 +84,13 @@ the optional path; per-sandbox runtime capability discovery is implemented.
 Local build/typecheck/lint and Ruff pass; 297 TypeScript and 180 Python tests pass,
 including lost seal/resume ACK, restart, uncertain-source retention, known memory
 failure and absent-source fallback. These are composition checks, not native proof.
-CI `85a5d52` passed all eight existing jobs. The new native job first found a real
-bootstrap bug under permissive umask: a newly created trusted parent inherited777.
-Explicit creation fixes it. Native bootstrap passes. Bounded native diagnostics identified two launch
-constraints: default overlay conflicts with shared files, and runsc configures
-cgroup controllers above the delegated subtree. Explicit overlay disable and
-trusted host-managed cgroup limits/entry address these without allowing workloads
-to change limits. Actual launch and new cleanup paths still need native proof.
+CI `85a5d52` passed all eight existing jobs. The new disposable native job caught
+and drove concrete bootstrap/namespace/cgroup fixes. Direct native namespaces now
+use the prepared exact subordinate maps; a scoped launcher AppArmor profile is
+loaded on restricted hosts without changing sysctls. Actual native binary I/O,
+PTY and Sentry cgroup/limits pass. TCP relay exits before complete framing; bounded
+relay diagnostics are in the next native run. Stop now observes asynchronous
+termination before reporting success. Memory/restore has not yet run natively.
 No Boat allocations, controller, native desktop execution or wallet spend.
 
 ## Next actions

@@ -138,12 +138,21 @@ int main(int argc, char **argv) {
                 if (sent == wanted) { input_complete = 0; have = 0; wanted = 5; }
             } else if (count < 0 && !transient()) return relay_error(__LINE__);
         }
-        if (!read_fin && output_size == 0 && (poll_fds[2].revents & (POLLIN | POLLHUP))) {
+        if (poll_fds[2].revents & POLLNVAL) return relay_error(__LINE__);
+        if (poll_fds[2].revents & POLLERR) {
+            int error = 0;
+            socklen_t length = sizeof(error);
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length)) return relay_error(__LINE__);
+            if (error) { errno = error; return relay_error(__LINE__); }
+        }
+        /* Readiness is a hint, not an error receipt. Some netstacks signal
+         * POLLERR at orderly half-close with SO_ERROR=0. Only recv EOF may
+         * emit protocol FIN; a real reset/error above remains unsuccessful. */
+        if (!read_fin && output_size == 0 && (poll_fds[2].revents & (POLLIN | POLLHUP | POLLERR))) {
             ssize_t count = recv(fd, output + 5, FRAME_BYTES, 0);
             if (count == 0) read_fin = 1;
             else if (count > 0) { header(output, 'D', (size_t)count); output_size = (size_t)count + 5; }
             else if (!transient()) return relay_error(__LINE__);
         }
-        if (poll_fds[2].revents & (POLLERR | POLLNVAL)) return relay_error(__LINE__);
     }
 }

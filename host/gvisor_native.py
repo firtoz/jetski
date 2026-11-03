@@ -98,6 +98,9 @@ class RunscDriver:
     def stop(self, lease):
         if not self.stopped(lease):
             self._checked(self.env.commands.command("kill", lease))
+        self.wait_stopped(lease)
+
+    def wait_stopped(self, lease):
         deadline = time.monotonic() + 5
         while self.stopped(lease) is not True:
             if time.monotonic() >= deadline:
@@ -124,8 +127,7 @@ class RunscDriver:
                 "checkpoint", lease, image=self.memory_path(lease, identifier)
             )
         )
-        if not self.stopped(lease):
-            raise ValueError("gvisor_checkpoint_not_stopped")
+        self.wait_stopped(lease)
         # The sealed private image is still unacknowledged until both its full
         # integrity proof and the ordinary durable filesystem publication pass.
         self.env.seal_permissions(lease, identifier)

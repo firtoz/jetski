@@ -1,6 +1,7 @@
 """Lifecycle journal checks; the driver is deliberately not a native runtime."""
 
 import unittest
+from unittest.mock import Mock, patch
 import test_gvisor_lifecycle as fixture
 from gvisor_native import GvisorRuntime, RunscDriver
 from gvisor_oci import RunscCommands
@@ -32,6 +33,15 @@ class NativeJournalTests(unittest.TestCase):
             runtime.create(self.lease)
         self.assertEqual(driver.creates, 1)
         self.assertEqual(self.fence.read()["phase"], "quarantined")
+
+    def test_stop_observes_asynchronous_termination_without_replaying_kill(self):
+        driver = RunscDriver(Mock())
+        driver.stopped = Mock(side_effect=[False, False, True])
+        driver._checked = Mock(return_value="")
+        with patch("gvisor_native.time.sleep") as sleep:
+            driver.stop(self.lease)
+        self.assertEqual(driver._checked.call_count, 1)
+        sleep.assert_called_once_with(0.05)
 
     def test_runtime_absence_requires_a_valid_inventory(self):
         class Environment:

@@ -87,6 +87,16 @@ is an optional approved-image argv for the application init, identical on either
 runtime. Unsupported egress and Rust-host combinations fail before installation.
 The standalone service uses the same adapters and fencing as embedded clients.
 
+Initial hosts require cgroup v2 delegation, util-linux `unshare` with explicit
+subordinate-ID maps, and one prepared contiguous subordinate range per runtime
+account. Unsupported mapping layouts fail closed. On hosts with AppArmor user
+namespace restrictions, bootstrap loads a profile attached only to the root-owned
+Jetski launcher. It permits namespace creation without disabling AppArmor or
+changing kernel restrictions. It is not an additional AppArmor confinement claim;
+gVisor, unprivileged mapped identities, namespaces and enforced resource limits
+remain the isolation boundary. Missing policy-loader support refuses bootstrap.
+
+
 Observe `sdk.runtimeCapabilities(sandboxId)` on an assigned sandbox. Memory
 suspension requires `memorySuspendVersion: 1`. Call `sdk.suspend(sandboxId, id)`
 and observe the stable operation until it completes. This publishes and verifies
