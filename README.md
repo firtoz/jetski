@@ -182,6 +182,14 @@ See [illustrative costs and provider tradeoffs](docs/costs.md). One assignment p
 host and permanent owner scoping mean these examples do not assume dense concurrent
 packing or shared machines across customers.
 
+## Optional native host backend
+
+Python remains the default. An explicitly selected Rust backend preserves the same
+provider/storage contracts. In a twenty-cycle matched Boat/R2 comparison, median
+whole cycles were 13.45 s Python and 13.62 s Rust; both source-deleted recoveries
+matched exactly. There was no consistent speed win. See the [measurements and
+limits](docs/rust-host-benchmarks.md) and [native setup](host-rust/README.md).
+
 ## Development and further reading
 
 ```sh

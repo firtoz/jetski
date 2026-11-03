@@ -26,25 +26,24 @@ Public source/docs/commits stay generic. Existing experiments, protected fixture
 client dirty files and their funds remain untouched. Do not rewrite the controller
 or introduce a mandatory daemon merely to manufacture a language speed comparison.
 
-## Finite implementation and acceptance matrix
+## Completed finite acceptance matrix
 
-| Gate                      | Required result                                                                                                                                                                                      | Status                                                                                           |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Contract audit            | Map existing actions, limits, durable records and integration points; mark unsupported experimental paths explicitly                                                                                 | Initial action/state/bundle map complete                                                         |
-| Native implementation     | Buildable Rust binary; bounded parsing/I/O, fencing, filesystem/archive/import/cache, execution/output/cancel and interactive paths; no Python fallback for measured operations                      | Native actions and provider file transport implemented; installed proof pending                  |
-| Modular selection         | Explicit backend/binary identity, immutable bootstrap receipts, Boat/SSH transport integration and packaged executable; Python default unchanged                                                     | Opt-in Boat/SSH identity, installer and optional package exports implemented; live proof pending |
-| Targeted conformance      | Differential protocol/outcome tests, cross-language archive restore, bytes/modes/symlink/hardlink oracle; restart/ack loss/stale fence/partial transfer/corruption/cleanup checks for changed paths  | Local primitive and Python interoperability evidence only; full runtime gate open                |
-| Matched benchmark         | Two fresh host pairs, reversed order, five timed cycles per backend per pair (ten per backend overall), plus one replacement per backend; frozen equal image/resources/storage/durability boundaries | Open                                                                                             |
-| Honest report and cleanup | Latency, startup, save/readiness/whole cycle, CPU/RSS, bytes/requests, failures and owned absence; report mixed or negative results without further matrix expansion                                 | Open                                                                                             |
-| Publication               | Coherent main milestone and exact-SHA CI after authorized publication; concise implementation/benchmark documentation                                                                                | Open                                                                                             |
+| Gate                  | Evidence                                                                                                    | Status                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Contract audit        | [Action and boundary map](../../host-rust/contract.md), scoped limits retained                              | Complete                                 |
+| Native implementation | Native control/files/archive/cache/exec/terminal/TCP; no measured Python fallback                           | Complete                                 |
+| Modular selection     | Immutable hash/intent, Boat and adopted-SSH transport integration, optional binary artifact                 | Complete                                 |
+| Targeted conformance  | 59 Rust, 282 TypeScript and three installer tests; cross-language and failure checks                        | Complete                                 |
+| Matched benchmark     | Two reversed host pairs, ten cycles per backend, one exact source-deleted replacement each                  | Complete                                 |
+| Native live paths     | Binary file transfer, PTY input/resize/signals, cancellation, SSH HTTP/binary TCP; final exact save         | Complete                                 |
+| Report and cleanup    | [Consolidated measurements](../rust-host-benchmarks.md); all eight owned hosts provider404, no active hosts | Complete                                 |
+| Publication           | Runtime `6d6b688` all eight CI jobs green; final documentation SHA tracked in private handoff               | Final publication receipt kept privately |
 
-Implement coherently before broad hosted qualification. Run affected local checks,
-freeze artifacts, then run the single planned hosted matrix. Preserve failed
-attempts and rerun only an affected failure after a concrete fix. Do not repeatedly
-retest unchanged storage/GC/core behavior or chase a predetermined speed target.
-If a concrete missing contract is discovered, record it within this matrix rather
-than quietly reducing the advertised backend. Unsupported paths cannot silently
-fall back to Python and still be called Rust parity.
+Python remains the default. Median whole cycles were 13.45 s Python and 13.62 s
+Rust; opposite pair results do not show a consistent speed win. Exact fixture
+comparisons and retained publication passed, without an absolute zero-loss claim.
+Two native pre-admission setup bugs were fixed before successful samples; failures
+and harness repairs remain recorded in the report and private receipts.
 
 ## Budget and recovery context
 
@@ -63,43 +62,28 @@ Private plans, budget, IDs, receipts and failures live under the operator QA sta
 `rust-host-20261103`; the separate hosted comparison is now running.
 Its private budget journal is authoritative for admitted/observed/retired hosts.
 
-Current work: native protocol/fence/frames, trusted supervisor/account/map checks,
-Podman lifecycle, command worker/output/cancellation and terminal input are implemented.
-Checkpoint capture/import/cache and binary transfer/export now preserve staged
-publication, lost-ACK replay, corruption rejection and release-gated cache reuse.
-Capture encoding/frame geometry is journaled before encoding. Native stream broker
-and deadline-bounded JSON/binary control entrypoints now join the components.
-Combined cached-resume, quiesce/finalize/release/purge actions are implemented;
-release reads its already-locked state rather than reacquiring the fence.
+## Final state and recovery context
 
-The local candidate passes **59 Rust tests, 282 TypeScript tests and three
-native-installer tests**, plus build/typecheck/lint/clippy. New source provides
-explicit Boat/SSH backend selection, pre-bootstrap native intent, a pinned binary
-installer and protected native installation checks. Controller restart cannot
-change a host's backend/hash; the installer rejects existing Python installs.
-Default Python host module bytes/config remain unchanged. Package checks include
-the optional adapter/loader/installer and exclude native build output.
+Implementation and the finite hosted matrix are complete. Runtime `6d6b688` has
+all eight CI jobs green. The separate musl executable is 1,676,000 bytes, SHA-256
+`5ba5edd2f469eecdda3388908a73a61c31bed1e4c3d24d9b722fdde7b39a540c`.
+Core and default Python host behavior remain at the frozen reference boundary.
 
-The first reference host has published a verified seed checkpoint. Local GNU-static compilation proves the source builds;
-the distributable/hosted candidate uses a separate **static musl CI artifact** with
-source/SHA manifest and dependency/compiler notices. No musl target or runtime is
-installed on the operator's desktop. Native `status` must attest the selected hash.
-Local fixture evidence does not prove installed Podman, live interactive behavior
-or physical-host replacement. Map: [contract](../../host-rust/contract.md).
+All eight starts were used, including both failure reserves; no further allocation
+is allowed under this plan. All eight hosts have positive provider404 confirmation;
+final active inventory is empty and both controller/observer exited. Durable
+checkpoint history remains retained. Observed wallet debit was $0; conservative
+compute value is at most $0.0319. Per-host provider usage was unavailable because
+the observer used a locally rejected route; this limitation is explicit in the report.
 
-## Next actions
+Private evidence: `/home/frtn/.local/state/jetski-qa/rust-host-20261103/benchmark/`:
+`completed.json`, `report.json`, `final-audit.json`, four arm receipts and failed
+attempts. The private `current.json` tracks final publication/CI. Do not restart
+controllers, allocate another host or rerun unchanged matrices for documentation.
 
-1. Live startup exposed two compatibility gaps before any native assignment:
-   installation omitted the fixed fence directory (fixed in `e56ffe9`, all CI
-   green), and the existing providers send null status payloads. Native status
-   now accepts that existing no-argument form; mutations still require objects.
-   Publish/test this affected fix and use the remaining explicit failure reserve.
-   Failed hosts had no workload data and were positively retired; original scopes,
-   IDs, diagnosis and attempts remain preserved outside the successful samples.
-2. Observe the existing four-arm run rather than duplicating it. Ten timed cycles
-   per backend, native live interactive checks outside timed samples, and one
-   source-deleted replacement per backend remain the finite hosted gates. Preserve
-   actual failures and source bytes on uncertainty; fix/rerun only affected work.
-3. Execute the matched comparison, live native interactive/failure checks and
-   source-deleted replacements, then clean owned resources and publish the honest
-   consolidated report/recommendation. Do not chase a predetermined speed result.
+## Closure
+
+Implementation, hosted measurements and owned cleanup are complete. Final
+documentation publication and exact-SHA CI are recorded in the private handoff
+and GitHub checks for this document’s commit. Goal completion requires those
+checks to pass; no new hosted matrix is needed. No client/default switch accompanies it.

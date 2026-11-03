@@ -1,13 +1,14 @@
 # Experimental native host
 
-This opt-in backend is under qualification. Python remains the default. It has
-not yet passed the live matched comparison. Follow the [finite goal](../docs/goals/rust-host.md).
+This opt-in backend completed its finite hosted qualification. Python remains
+the default: the [matched report](../docs/rust-host-benchmarks.md) found no consistent
+end-to-end speed win. The [completed goal](../docs/goals/rust-host.md) records scope.
 
 Use the existing Rust toolchain to run `cargo test --manifest-path host-rust/Cargo.toml`.
 No host installation, runtime changes or cloud allocation are performed by this
 crate's tests. `Cargo.lock` pins dependencies; the final release must use a pinned
-build artifact and immutable host identity. Bootstrap/runtime integration and full
-conformance are required before any performance claim.
+build artifact and immutable host identity. Hosted Boat installation, exact replacement recovery and native interactive
+paths passed within the boundaries documented in the report.
 
 Build on Linux x86-64 with the pinned Rust 1.97.1 toolchain:
 

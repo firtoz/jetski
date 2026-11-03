@@ -1,23 +1,23 @@
 # Native host contract audit
 
 Reference: Python host assets at `8bb303f`. Rust is experimental and selected only by explicit native transport/bootstrap
-configuration; Python remains the default. This is the implementation map, not evidence
-of full parity. Ordinary JSON control and binary interactive framing share the
+configuration; Python remains the default. This is the implementation map; see the [hosted report](../docs/rust-host-benchmarks.md)
+for the qualified paths and limits. Ordinary JSON control and binary interactive framing share the
 same authenticated host entrypoint; their timeouts must not be conflated.
 
-| Contract group         | Python source / actions                                                                                                                       | Native status                                                                                                                          |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Control envelope       | `control.py`: protocol1, request ID, strict action payloads, 1 MiB ordinary / 6 MiB import request and 2 MiB response bounds; header deadline | Native bounded JSON/binary header dispatch, 10s header and 120s JSON-body deadlines implemented                                        |
-| Identity and fences    | `fence.py`: claim, close-before-claim, generation succession, permanent slot/owner binding, locked journal and verified release receipt       | Native primitives and release verifier wired to matching checkpoint/removed runtime plus observed container absence                    |
-| Status/inspection      | `status`, `inspect`; `supervisor.py` configuration/account/root ownership and runtime preflight                                               | Native config/account/probe and entrypoint status wiring implemented; observed maps must match installed identity                      |
-| Runtime lifecycle      | `runtime.py`, `runtime_backend.py`, `runtime_service.py`: claim/create/quiesce/finalize/remove/release/purge-source                           | Native lifecycle, cached-resume/finalize, safe source purge and unknown-outcome journals implemented                                   |
-| Command supervision    | `commands.py`, `podman_exec.py`, native supervisor: command-start/status/output/cancel; process death and watchdog                            | Native Unix HTTP exec adapter, worker, durable output/cancel and nonce completion proof implemented; live Podman qualification pending |
-| Files and upload       | `files.py`, `file_upload.py`: file-read/list; file-write-begin/chunk/finish/status                                                            | Native bounded file/list and durable upload primitives implemented; Python chunks/version tokens/upload journals interoperate          |
-| Capture and restore    | `archive.py`, `frames.py`: deterministic traversal/links, bounded tar/gzip proof, fsync, ownership and atomic staging publication             | Native capture/private-staged restore implemented; bidirectional Python tree oracle and corruption rejection pass                      |
-| Import/cache           | `import_checkpoint.py`, `local_checkpoint.py`: import-begin/chunk/finish, raw import-file-begin/chunk/close, resume-cached                    | Native resumable imports and release-gated verified cache implemented; combined cached resume wired                                    |
-| Source export          | `checkpoint_export.py`: checkpoint-source/close and read-checkpoint                                                                           | Native read-only scoped export links, close and bounded archive reads implemented                                                      |
-| Interactive            | stream-reserve/status/cancel; terminal-start/input/input-status; `stream_protocol.py` and broker, binary framing, SSH/PTY/TCP                 | Native terminal-input journal, stream admission/framing and bidirectional broker implemented; live qualification pending               |
-| Installation/selection | `install_bundle.py`, `bootstrap.py`; TS bootstrap assets/hash receipts, host control argv, existing host immutability                         | Opt-in Boat/SSH selection, pinned installer/identity and optional assets loader implemented; installed qualification pending           |
+| Contract group         | Python source / actions                                                                                                                       | Native status                                                                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Control envelope       | `control.py`: protocol1, request ID, strict action payloads, 1 MiB ordinary / 6 MiB import request and 2 MiB response bounds; header deadline | Native bounded JSON/binary header dispatch, 10s header and 120s JSON-body deadlines implemented                                               |
+| Identity and fences    | `fence.py`: claim, close-before-claim, generation succession, permanent slot/owner binding, locked journal and verified release receipt       | Native primitives and release verifier wired to matching checkpoint/removed runtime plus observed container absence                           |
+| Status/inspection      | `status`, `inspect`; `supervisor.py` configuration/account/root ownership and runtime preflight                                               | Native config/account/probe and entrypoint status wiring implemented; observed maps must match installed identity                             |
+| Runtime lifecycle      | `runtime.py`, `runtime_backend.py`, `runtime_service.py`: claim/create/quiesce/finalize/remove/release/purge-source                           | Native lifecycle, cached-resume/finalize, safe source purge and unknown-outcome journals implemented                                          |
+| Command supervision    | `commands.py`, `podman_exec.py`, native supervisor: command-start/status/output/cancel; process death and watchdog                            | Native Unix HTTP exec adapter, worker, durable output/cancel and nonce completion proof implemented; live Boat execution/output/cancel passed |
+| Files and upload       | `files.py`, `file_upload.py`: file-read/list; file-write-begin/chunk/finish/status                                                            | Native bounded file/list and durable upload primitives implemented; Python chunks/version tokens/upload journals interoperate                 |
+| Capture and restore    | `archive.py`, `frames.py`: deterministic traversal/links, bounded tar/gzip proof, fsync, ownership and atomic staging publication             | Native capture/private-staged restore implemented; bidirectional Python tree oracle and corruption rejection pass                             |
+| Import/cache           | `import_checkpoint.py`, `local_checkpoint.py`: import-begin/chunk/finish, raw import-file-begin/chunk/close, resume-cached                    | Native resumable imports and release-gated verified cache implemented; combined cached resume wired                                           |
+| Source export          | `checkpoint_export.py`: checkpoint-source/close and read-checkpoint                                                                           | Native read-only scoped export links, close and bounded archive reads implemented                                                             |
+| Interactive            | stream-reserve/status/cancel; terminal-start/input/input-status; `stream_protocol.py` and broker, binary framing, SSH/PTY/TCP                 | Native terminal-input journal, stream admission/framing and bidirectional broker implemented; live PTY/SSH/binary TCP qualification passed    |
+| Installation/selection | `install_bundle.py`, `bootstrap.py`; TS bootstrap assets/hash receipts, host control argv, existing host immutability                         | Opt-in Boat/SSH selection, pinned installer/identity and optional assets loader implemented; installed Boat identity/readiness passed         |
 
 The native journal primitive preserves arbitrary subsystem sections, refuses
 symlink/nonregular or nonprivate state/lock files, uses a pinned directory FD,
@@ -39,8 +39,8 @@ be persisted so restarting an interrupted save cannot change its byte geometry.
 Cross-language tests exercise gzip frames, lease journals, archive trees and
 file/upload receipts, including local source-deleted restoration. The independent
 Python oracle checks bytes, modes, Unicode/long paths, symlinks and hardlink groups.
-These do not yet establish container, physical-host replacement or interactive
-parity. Keep failures and targeted tests; do not expand the hosted matrix to
+The subsequent hosted matrix establishes the reported container, source-deleted
+replacement and interactive paths within its stated scope. Keep failures and targeted tests; do not expand the hosted matrix to
 compensate for implementation gaps.
 
 Native restore reads bounded tar headers/PAX/GNU extensions explicitly, rather than
@@ -66,8 +66,9 @@ The native supervisor command runner clears inherited environment, redirects bou
 output to private temporary files, and launches its own small setsid/exec child
 mode followed by GNU timeout. The watchdog runs independently of the control session; this
 turn checks the real native helper's exit/output limits and timeout path, while
-full control-death/container cleanup qualification remains pending. No daemon or
-Python trampoline is introduced. Private `__control` dispatch is implemented; default invocation still refuses operation and no existing transport selects Rust.
+control-death uncertainty is covered by targeted local checks rather than a new hosted fault matrix. No daemon or
+Python trampoline is introduced. Private `__control` dispatch is selected explicitly
+by Boat/SSH transport configuration; default invocation refuses operation.
 
 Native Podman lifecycle arguments and running/stopped/removed receipts match the
 recording Python reference. Create intent precedes dispatch and failed/unknown
@@ -122,4 +123,4 @@ hashed and decoded from immutable memory before dispatch. Cleanup removes only
 the expected file and refuses unknown entries or replaced directory identities.
 Default Python/bootstrap file transport remains unchanged. Local helper and
 provider-recording tests cover corruption, aliases and lost-response cleanup;
-installed file API behavior remains part of hosted qualification.
+installed large-file upload/read passed in the hosted qualification.
