@@ -117,6 +117,10 @@ cycles, both exact candidate replacements and safe recovery from one R2 HTTP502.
 All ten owned hosts are absent. It found no repeatable end-to-end candidate win;
 Python and separate capture remain defaults. [Completed scope](goals/host-stage-performance.md).
 
+The [optional gVisor runtime goal](goals/gvisor-runtime.md) adds a separately
+selected runtime and coordinated memory resume, retaining R2 filesystem recovery
+and Podman defaults. Its finite matrix and separate allowance govern hosted work.
+
 ## Keeping this plan useful
 
 Keep this file short (roughly 100 lines). Replace current status; do not prepend
