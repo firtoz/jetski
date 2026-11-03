@@ -114,3 +114,12 @@ artifact before installation and on replay. Readiness attests native identity.
 Node asset loading is optional and bounded; ordinary SDK/core imports and npm
 installation neither require a compiler nor download native code. CI builds a
 separate static musl artifact with source/hash and compiler/dependency notices.
+
+Boat large requests use native directory/file helpers when Rust is selected.
+An exclusive transfer directory belongs to the explicitly configured provider
+account. JSON files are opened through pinned no-follow descriptors, bounded,
+hashed and decoded from immutable memory before dispatch. Cleanup removes only
+the expected file and refuses unknown entries or replaced directory identities.
+Default Python/bootstrap file transport remains unchanged. Local helper and
+provider-recording tests cover corruption, aliases and lost-response cleanup;
+installed file API behavior remains part of hosted qualification.

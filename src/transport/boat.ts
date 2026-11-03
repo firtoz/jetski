@@ -73,7 +73,12 @@ export class BoatTransport implements HostTransport {
   ) {
     this.backend = structuredClone(options.backend ?? PYTHON_HOST_BACKEND);
     validateHostBackend(this.backend);
-    this.channel = new BoatControlChannel(state, api, timeoutSeconds);
+    this.channel = new BoatControlChannel(
+      state,
+      api,
+      timeoutSeconds,
+      this.backend.kind === "rust" ? this.backend.sha256 : undefined,
+    );
     if (
       options.archiveReads !== undefined &&
       typeof options.archiveReads !== "boolean"

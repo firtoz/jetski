@@ -1,9 +1,81 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { type HostRequest, HostTransportError } from "../src/core/transport.js";
 import { BoatApi } from "../src/providers/boat.js";
 import { SqliteState } from "../src/state/sqlite.js";
 import { BoatTransport } from "../src/transport/boat.js";
+
+test("native large requests use verified native files and native cleanup without an interpreter", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  await state.transaction((tx) => {
+    tx.put("boat-host/bx_native", "allocation");
+    tx.put("allocation", { id: "bx_native", retired: false });
+  });
+  const input: HostRequest = {
+    version: 1,
+    id: "large-native",
+    action: "file-write-chunk",
+    payload: { base64: Buffer.alloc(96 * 1024, 17).toString("base64") },
+  };
+  const commands: string[] = [];
+  let uploaded: Buffer | undefined;
+  let fail = false;
+  const api = new BoatApi("fixture", async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    if (init?.method === "PUT") {
+      uploaded = Buffer.from(body.content, "base64");
+      assert.deepEqual(JSON.parse(uploaded.toString()), input);
+      return Response.json({
+        success: true,
+        path: body.path,
+        size: uploaded.length,
+      });
+    }
+    commands.push(body.command);
+    assert.ok(!body.command.includes("python"));
+    assert.ok(body.command.includes("/opt/jetski/native/jetski-host"));
+    const read = body.command.includes("__control-file");
+    if (read) {
+      assert.ok(uploaded);
+      assert.ok(
+        body.command.includes(
+          createHash("sha256").update(uploaded).digest("hex"),
+        ),
+      );
+      if (fail) throw Error("lost response");
+    }
+    return Response.json({
+      success: true,
+      exitCode: 0,
+      timedOut: false,
+      stdout: read
+        ? JSON.stringify({
+            version: 1,
+            id: input.id,
+            result: { accepted: true },
+          })
+        : "",
+      stderr: "",
+    });
+  });
+  const transport = new BoatTransport(state, api, undefined, {
+    backend: { kind: "rust", sha256: "a".repeat(64) },
+  });
+  assert.deepEqual((await transport.request("bx_native", input)).result, {
+    accepted: true,
+  });
+  assert.equal(commands.length, 3);
+  assert.match(commands[0]!, /__control-directory.*create/);
+  assert.match(commands[2]!, /__control-directory.*close/);
+  fail = true;
+  await assert.rejects(
+    transport.request("bx_native", input),
+    HostTransportError,
+  );
+  assert.match(commands.at(-1)!, /__control-directory.*close/);
+});
 
 test("Boat control uses only owned hosts, encoded fixed dispatch and matching receipts", async (t) => {
   const state = new SqliteState(":memory:");

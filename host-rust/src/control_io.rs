@@ -82,7 +82,7 @@ pub fn header(source: &impl AsFd) -> io::Result<Header> {
     }
     Ok(Header::Control(Request::decode(&raw)?))
 }
-fn transfer_account(name: &str) -> io::Result<(u32, u32)> {
+pub(crate) fn transfer_account(name: &str) -> io::Result<(u32, u32)> {
     let mut raw = String::new();
     File::open("/etc/passwd")?
         .take(4 * 1024 * 1024 + 1)
@@ -116,6 +116,14 @@ pub fn entry(expected_sha256: &str) -> io::Result<()> {
     let input = File::from(rustix::io::fcntl_dupfd_cloexec(io::stdin(), 3)?);
     let output = File::from(rustix::io::fcntl_dupfd_cloexec(io::stdout(), 3)?);
     let request = header(&input)?;
+    dispatch_header(expected_sha256, request, input, output)
+}
+pub(crate) fn dispatch_header(
+    expected_sha256: &str,
+    request: Header,
+    input: File,
+    output: File,
+) -> io::Result<()> {
     let config = HostConfig::load()?;
     crate::installation::verify(&config, Some(expected_sha256))?;
     let account = RuntimeAccount::lookup()?;

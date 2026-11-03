@@ -3,6 +3,7 @@ import { posix } from "node:path";
 import { identifier, type StateStore } from "../core/contracts.js";
 import { HostTransportError } from "../core/transport.js";
 import type { BoatAllocation, BoatApi } from "../providers/boat.js";
+import { validateHostBackend } from "./host-backend.js";
 
 const quote = (value: string) => `'${value}'`;
 /** Internal owned-host channel. Programs come only from trusted controller code. */
@@ -11,7 +12,10 @@ export class BoatControlChannel {
     private readonly state: StateStore,
     private readonly api: BoatApi,
     private readonly timeoutSeconds = 60,
+    private readonly nativeSha256?: string,
   ) {
+    if (nativeSha256 !== undefined)
+      validateHostBackend({ kind: "rust", sha256: nativeSha256 });
     if (
       !Number.isInteger(timeoutSeconds) ||
       timeoutSeconds < 1 ||
@@ -81,6 +85,20 @@ export class BoatControlChannel {
       return value.stdout;
     };
     let directory: string | undefined;
+    const native = (action: string, ...args: string[]) =>
+      [
+        "sudo",
+        "-n",
+        "env",
+        "-i",
+        "PATH=/usr/bin:/bin",
+        "/opt/jetski/native/jetski-host",
+        action,
+        this.nativeSha256!,
+        ...args,
+      ]
+        .map(quote)
+        .join(" ");
     try {
       signal?.throwIfAborted();
       let stdout: string;
@@ -95,7 +113,9 @@ export class BoatControlChannel {
         directory = `/tmp/jetski-control-${crypto.randomUUID()}`;
         const path = `${directory}/request.json`;
         await execute(
-          `env -i PATH=/usr/bin:/bin python3 -I -c 'import os; os.mkdir("${directory}", 0o700)'`,
+          this.nativeSha256
+            ? native("__control-directory", "create", directory)
+            : `env -i PATH=/usr/bin:/bin python3 -I -c 'import os; os.mkdir("${directory}", 0o700)'`,
           signal,
         );
         // Direct write_file rejects decoded files above 5 MiB. A four-MiB
@@ -126,7 +146,9 @@ export class BoatControlChannel {
         }
         const digest = createHash("sha256").update(input).digest("hex");
         stdout = await execute(
-          `env -i PATH=/usr/bin:/bin python3 -I -c 'import hashlib,os,subprocess,sys; f=os.open("${path}",os.O_RDONLY|os.O_NOFOLLOW); data=os.fdopen(f,"rb").read(${inputLimit + 1}); assert len(data)==${input.length} and hashlib.sha256(data).hexdigest()=="${digest}"; sys.exit(subprocess.run(${JSON.stringify(program)},input=data,env={"PATH":"/usr/bin:/bin"}).returncode)'`,
+          this.nativeSha256
+            ? native("__control-file", directory, String(input.length), digest)
+            : `env -i PATH=/usr/bin:/bin python3 -I -c 'import hashlib,os,subprocess,sys; f=os.open("${path}",os.O_RDONLY|os.O_NOFOLLOW); data=os.fdopen(f,"rb").read(${inputLimit + 1}); assert len(data)==${input.length} and hashlib.sha256(data).hexdigest()=="${digest}"; sys.exit(subprocess.run(${JSON.stringify(program)},input=data,env={"PATH":"/usr/bin:/bin"}).returncode)'`,
           signal,
         );
       }
@@ -142,7 +164,9 @@ export class BoatControlChannel {
           // A fresh unguessable directory belongs only to this invocation. Never
           // recursively delete it; unexpected contents must make cleanup fail.
           await execute(
-            `env -i PATH=/usr/bin:/bin python3 -I -c 'import os,stat; f=os.open("${directory}",os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW); s=os.fstat(f); assert s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==0o700; names=os.listdir(f); assert all(n=="request.json" for n in names); os.unlink("request.json",dir_fd=f) if names else None; os.close(f); os.rmdir("${directory}")'`,
+            this.nativeSha256
+              ? native("__control-directory", "close", directory)
+              : `env -i PATH=/usr/bin:/bin python3 -I -c 'import os,stat; f=os.open("${directory}",os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW); s=os.fstat(f); assert s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==0o700; names=os.listdir(f); assert all(n=="request.json" for n in names); os.unlink("request.json",dir_fd=f) if names else None; os.close(f); os.rmdir("${directory}")'`,
           );
         } catch {
           throw new HostTransportError(

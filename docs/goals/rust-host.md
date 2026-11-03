@@ -31,7 +31,7 @@ or introduce a mandatory daemon merely to manufacture a language speed compariso
 | Gate                      | Required result                                                                                                                                                                                      | Status                                                                                           |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Contract audit            | Map existing actions, limits, durable records and integration points; mark unsupported experimental paths explicitly                                                                                 | Initial action/state/bundle map complete                                                         |
-| Native implementation     | Buildable Rust binary; bounded parsing/I/O, fencing, filesystem/archive/import/cache, execution/output/cancel and interactive paths; no Python fallback for measured operations                      | Native control/data/interactive actions implemented; installed qualification pending             |
+| Native implementation     | Buildable Rust binary; bounded parsing/I/O, fencing, filesystem/archive/import/cache, execution/output/cancel and interactive paths; no Python fallback for measured operations                      | Native actions and provider file transport implemented; installed proof pending                  |
 | Modular selection         | Explicit backend/binary identity, immutable bootstrap receipts, Boat/SSH transport integration and packaged executable; Python default unchanged                                                     | Opt-in Boat/SSH identity, installer and optional package exports implemented; live proof pending |
 | Targeted conformance      | Differential protocol/outcome tests, cross-language archive restore, bytes/modes/symlink/hardlink oracle; restart/ack loss/stale fence/partial transfer/corruption/cleanup checks for changed paths  | Local primitive and Python interoperability evidence only; full runtime gate open                |
 | Matched benchmark         | Two fresh host pairs, reversed order, five timed cycles per backend per pair (ten per backend overall), plus one replacement per backend; frozen equal image/resources/storage/durability boundaries | Open                                                                                             |
@@ -71,7 +71,7 @@ and deadline-bounded JSON/binary control entrypoints now join the components.
 Combined cached-resume, quiesce/finalize/release/purge actions are implemented;
 release reads its already-locked state rather than reacquiring the fence.
 
-The local candidate passes **56 Rust tests, 281 TypeScript tests and three
+The local candidate passes **58 Rust tests, 282 TypeScript tests and three
 native-installer tests**, plus build/typecheck/lint/clippy. New source provides
 explicit Boat/SSH backend selection, pre-bootstrap native intent, a pinned binary
 installer and protected native installation checks. Controller restart cannot
@@ -88,8 +88,10 @@ or physical-host replacement. Map: [contract](../../host-rust/contract.md).
 
 ## Next actions
 
-1. Publish the coherent opt-in milestone, observe exact-SHA CI and obtain its
-   pinned musl artifact. Preserve failed attempts; change only an affected defect.
+1. Initial milestone `0a000be` passes all eight CI jobs. The native large-request
+   wrapper fix is implemented and passes its focused checks: provider transfer
+   directories, verified immutable JSON decoding and cleanup run natively. Publish
+   this affected fix and use its exact-SHA musl artifact for the hosted freeze.
 2. Freeze the finite two-pair plan and new owned resource ledger before allocating.
    Reuse the existing comparison driver/oracle; do not copy prior failed operation
    IDs or protected fixtures. Use the separately approved $3/eight-host cap only.

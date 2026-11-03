@@ -8,6 +8,7 @@ pub mod checkpoints;
 pub mod command_spec;
 pub mod commands;
 pub mod control;
+pub mod control_files;
 pub mod control_io;
 pub mod exec_api;
 pub mod fence;
