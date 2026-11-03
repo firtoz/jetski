@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { identifier, type StateStore } from "../core/contracts.js";
+import { observeHostTimings, type StageTimingSink } from "../core/timing.js";
 import { HostTransportError } from "../core/transport.js";
 import type { BoatAllocation, BoatApi } from "../providers/boat.js";
 import { validateHostBackend } from "./host-backend.js";
@@ -13,6 +14,7 @@ export class BoatControlChannel {
     private readonly api: BoatApi,
     private readonly timeoutSeconds = 60,
     private readonly nativeSha256?: string,
+    private readonly timings?: StageTimingSink,
   ) {
     if (nativeSha256 !== undefined)
       validateHostBackend({ kind: "rust", sha256: nativeSha256 });
@@ -68,6 +70,8 @@ export class BoatControlChannel {
         },
       );
       const value = reply.value;
+      if (this.timings && typeof value.stderr === "string")
+        observeHostTimings(value.stderr, this.timings);
       if (
         reply.status !== 200 ||
         value.ok === false ||

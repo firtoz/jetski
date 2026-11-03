@@ -5,6 +5,8 @@ configuration. Commands passed to run() must execute as the dedicated rootless
 runtime account, with a clean environment and bounded output/time.
 """
 
+from timing import stage
+
 import pathlib
 import re
 from fence import identity
@@ -64,6 +66,7 @@ class PodmanRuntime:
     def absent(self, lease):
         return self.run(["container", "exists", self.container(lease)])["exitCode"] == 1
 
+    @stage("runtime.create")
     def create(self, raw, memory_mb=512, cpus=1):
         lease = identity(raw)
         if type(memory_mb) is not int or not 128 <= memory_mb <= 65536:

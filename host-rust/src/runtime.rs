@@ -83,6 +83,7 @@ impl<'a, R: HostRunner> PodmanRuntime<'a, R> {
             == 1)
     }
     pub fn create(&self, lease: &Lease, memory_mb: u32, cpus: u32) -> io::Result<Value> {
+        let _timing = crate::timing::Stage::new("runtime.create");
         lease.validate()?;
         if !(128..=65536).contains(&memory_mb) || !(1..=64).contains(&cpus) {
             return Err(reject("invalid_workload_resources"));

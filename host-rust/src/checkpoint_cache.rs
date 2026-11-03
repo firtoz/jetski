@@ -126,6 +126,7 @@ impl CheckpointCache<'_> {
         lease: &Lease,
         publication: &serde_json::Value,
     ) -> io::Result<CachedCheckpoint> {
+        let _timing = crate::timing::Stage::new("cache.publish");
         lease.validate()?;
         let guard = self.fence.locked()?;
         let mut state = guard.read()?.ok_or_else(|| reject("stale_lease"))?;

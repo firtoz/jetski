@@ -16,6 +16,7 @@ import zlib
 import tarfile
 import tempfile
 from frames import FrameWriter, FRAME_BYTES
+from timing import stage
 
 FORMAT = 1
 DEFAULT_LIMITS = {"entries": 100000, "bytes": 16 * 1024**3, "pathBytes": 4096}
@@ -80,6 +81,7 @@ def canonical_name(value, limits):
     return path
 
 
+@stage("archive.capture")
 def capture(roots, target, limits=None, frame_bytes=FRAME_BYTES):
     roots = roots_checked(roots)
     limits = limits_checked(limits)
@@ -244,6 +246,7 @@ class _RestoreReader:
         return data
 
 
+@stage("archive.restore")
 def restore(source, destination, expected_sha256, limits=None, *, owner=None):
     """Verify and extract once into private staging; publish only verified roots.
 
@@ -282,96 +285,100 @@ def restore(source, destination, expected_sha256, limits=None, *, owner=None):
         published = False
         members = []
         try:
-            try:
-                # tarfile's r|gz stream does not cover every concatenated-gzip
-                # case. GzipFile owns framing/CRC; tarfile consumes plain bytes.
-                with gzip.GzipFile(fileobj=compressed, mode="rb") as inflated:
-                    decoded = _RestoreReader(inflated, expanded_bound)
-                    with tarfile.open(fileobj=decoded, mode="r|") as archive:
-                        for member in validated_members(archive, limits):
-                            members.append(member)
-                            target = staging / member.name
-                            if member.isdir():
-                                target.mkdir(mode=0o700)
-                            elif member.isfile():
-                                stream = archive.extractfile(member)
-                                if stream is None:
-                                    raise ValueError("missing_file_stream")
-                                with stream, open(target, "xb") as output:
-                                    # Restrictive final modes/ownership are applied
-                                    # only after all links and archive checks finish.
-                                    os.fchmod(output.fileno(), 0o600)
-                                    shutil.copyfileobj(stream, output, length=1024 * 1024)
-                                    output.flush()
-                                    if output.tell() != member.size:
-                                        raise ValueError("short_archive_file")
-                            elif member.islnk():
-                                os.link(staging / member.linkname, target, follow_symlinks=False)
-                            else:
-                                os.symlink(member.linkname, target)
-                    # Force every gzip trailer and compressed suffix through the
-                    # verifier, even when the tar terminator appears earlier.
-                    while decoded.read(1024 * 1024):
-                        pass
-            except (gzip.BadGzipFile, EOFError, zlib.error, tarfile.TarError) as error:
-                raise ValueError("archive_digest_mismatch") from error
-            after = os.fstat(raw.fileno())
-            if (
-                compressed.bytes != before.st_size
-                or compressed.digest.hexdigest() != expected_sha256
-                or (
-                    before.st_dev,
-                    before.st_ino,
-                    before.st_size,
-                    before.st_mode,
-                    before.st_mtime_ns,
-                    before.st_ctime_ns,
-                )
-                != (
-                    after.st_dev,
-                    after.st_ino,
-                    after.st_size,
-                    after.st_mode,
-                    after.st_mtime_ns,
-                    after.st_ctime_ns,
-                )
-            ):
-                raise ValueError("archive_digest_mismatch")
-            # All hardlinks now exist. Flush each primary inode once, including
-            # final ownership/mode/link metadata, before publishing either root.
-            for member in members:
-                target = staging / member.name
-                if member.isfile():
-                    fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-                    try:
-                        if owner is not None:
-                            os.fchown(fd, *owner)
-                        os.fchmod(fd, member.mode)
-                        os.fsync(fd)
-                    finally:
-                        os.close(fd)
-                elif member.issym() and owner is not None:
-                    os.chown(target, *owner, follow_symlinks=False)
-            for member in reversed(members):
-                if member.isdir():
-                    directory = staging / member.name
-                    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-                    try:
-                        if owner is not None:
-                            os.fchown(fd, *owner)
-                        os.fchmod(fd, member.mode)
-                        os.fsync(fd)
-                    finally:
-                        os.close(fd)
-            if owner is not None:
-                os.chown(staging, *owner, follow_symlinks=False)
-            sync_dir(staging)
-            if os.path.lexists(destination):
-                raise ValueError("restore_destination_exists")
-            os.rename(staging, destination)
-            published = True
-            sync_dir(destination.parent)
-            return dict(version=FORMAT, sha256=expected_sha256, entries=len(members))
+            with stage("archive.extract"):
+                try:
+                    # tarfile's r|gz stream does not cover every concatenated-gzip
+                    # case. GzipFile owns framing/CRC; tarfile consumes plain bytes.
+                    with gzip.GzipFile(fileobj=compressed, mode="rb") as inflated:
+                        decoded = _RestoreReader(inflated, expanded_bound)
+                        with tarfile.open(fileobj=decoded, mode="r|") as archive:
+                            for member in validated_members(archive, limits):
+                                members.append(member)
+                                target = staging / member.name
+                                if member.isdir():
+                                    target.mkdir(mode=0o700)
+                                elif member.isfile():
+                                    stream = archive.extractfile(member)
+                                    if stream is None:
+                                        raise ValueError("missing_file_stream")
+                                    with stream, open(target, "xb") as output:
+                                        # Restrictive final modes/ownership are applied
+                                        # only after all links and archive checks finish.
+                                        os.fchmod(output.fileno(), 0o600)
+                                        shutil.copyfileobj(stream, output, length=1024 * 1024)
+                                        output.flush()
+                                        if output.tell() != member.size:
+                                            raise ValueError("short_archive_file")
+                                elif member.islnk():
+                                    os.link(
+                                        staging / member.linkname, target, follow_symlinks=False
+                                    )
+                                else:
+                                    os.symlink(member.linkname, target)
+                        # Force every gzip trailer and compressed suffix through the
+                        # verifier, even when the tar terminator appears earlier.
+                        while decoded.read(1024 * 1024):
+                            pass
+                except (gzip.BadGzipFile, EOFError, zlib.error, tarfile.TarError) as error:
+                    raise ValueError("archive_digest_mismatch") from error
+                after = os.fstat(raw.fileno())
+                if (
+                    compressed.bytes != before.st_size
+                    or compressed.digest.hexdigest() != expected_sha256
+                    or (
+                        before.st_dev,
+                        before.st_ino,
+                        before.st_size,
+                        before.st_mode,
+                        before.st_mtime_ns,
+                        before.st_ctime_ns,
+                    )
+                    != (
+                        after.st_dev,
+                        after.st_ino,
+                        after.st_size,
+                        after.st_mode,
+                        after.st_mtime_ns,
+                        after.st_ctime_ns,
+                    )
+                ):
+                    raise ValueError("archive_digest_mismatch")
+            with stage("archive.sync_publish"):
+                # All hardlinks now exist. Flush each primary inode once, including
+                # final ownership/mode/link metadata, before publishing either root.
+                for member in members:
+                    target = staging / member.name
+                    if member.isfile():
+                        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                        try:
+                            if owner is not None:
+                                os.fchown(fd, *owner)
+                            os.fchmod(fd, member.mode)
+                            os.fsync(fd)
+                        finally:
+                            os.close(fd)
+                    elif member.issym() and owner is not None:
+                        os.chown(target, *owner, follow_symlinks=False)
+                for member in reversed(members):
+                    if member.isdir():
+                        directory = staging / member.name
+                        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                        try:
+                            if owner is not None:
+                                os.fchown(fd, *owner)
+                            os.fchmod(fd, member.mode)
+                            os.fsync(fd)
+                        finally:
+                            os.close(fd)
+                if owner is not None:
+                    os.chown(staging, *owner, follow_symlinks=False)
+                sync_dir(staging)
+                if os.path.lexists(destination):
+                    raise ValueError("restore_destination_exists")
+                os.rename(staging, destination)
+                published = True
+                sync_dir(destination.parent)
+                return dict(version=FORMAT, sha256=expected_sha256, entries=len(members))
         finally:
             if not published:
                 for root, dirs, _files in os.walk(staging):

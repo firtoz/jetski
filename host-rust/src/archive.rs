@@ -307,6 +307,7 @@ pub fn capture(
     limits: Limits,
     frame_bytes: usize,
 ) -> io::Result<CaptureReceipt> {
+    let _timing = crate::timing::Stage::new("archive.capture");
     let limits = limits.validate()?;
     let canonical = [fs::canonicalize(roots[0])?, fs::canonicalize(roots[1])?];
     if canonical[0].starts_with(&canonical[1]) || canonical[1].starts_with(&canonical[0]) {
@@ -520,6 +521,7 @@ pub fn restore(
     limits: Limits,
     owner: Option<Owner>,
 ) -> io::Result<RestoreReceipt> {
+    let _timing = crate::timing::Stage::new("archive.restore");
     let limits = limits.validate()?;
     let owner = owner.map(Owner::validate).transpose()?;
     if expected_sha256.len() != 64
@@ -560,6 +562,7 @@ pub fn restore(
         published: false,
     };
     fs::set_permissions(&staging.path, fs::Permissions::from_mode(0o700))?;
+    let extraction = crate::timing::Stage::new("archive.extract");
     let mut members: Vec<Member> = Vec::new();
     let mut seen: BTreeMap<String, (Kind, u32)> = BTreeMap::new();
     let mut total = 0_u64;
@@ -764,6 +767,8 @@ pub fn restore(
     {
         return Err(reject("archive_digest_mismatch"));
     }
+    drop(extraction);
+    let _sync = crate::timing::Stage::new("archive.sync_publish");
     for member in &members {
         let path = staging.path.join(&member.name);
         if member.kind == Kind::File {

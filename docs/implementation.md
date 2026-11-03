@@ -112,6 +112,10 @@ cycles, two exact source-deleted recoveries and native interactive qualification
 All eight owned hosts are absent. Python stays the default: no consistent speed
 win was measured. The [goal](goals/rust-host.md) records the completed finite scope.
 
+The [host-stage performance goal](goals/host-stage-performance.md) instruments
+both backends, tests bounded extraction buffering and safe request reductions,
+then runs one finite matched baseline/candidate comparison.
+
 ## Keeping this plan useful
 
 Keep this file short (roughly 100 lines). Replace current status; do not prepend

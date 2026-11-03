@@ -5,6 +5,7 @@ import { decodeBase64 } from "../core/command-output.js";
 import type { Json, StateStore } from "../core/contracts.js";
 import { identifier } from "../core/contracts.js";
 import type { HostLease } from "../core/pool.js";
+import { type StageTimingSink, timeStage } from "../core/timing.js";
 import {
   type CachedResumeRequest,
   type CheckpointImportSink,
@@ -49,6 +50,7 @@ export class BoatTransport implements HostTransport {
     ).result;
   }
   private readonly channel: BoatControlChannel;
+  private readonly timings: StageTimingSink | undefined;
   private readonly backend: HostBackend;
   readonly checkpointImport?: (
     host: string,
@@ -69,8 +71,10 @@ export class BoatTransport implements HostTransport {
       archiveReads?: boolean;
       archiveWrites?: boolean;
       backend?: HostBackend;
+      timings?: StageTimingSink;
     } = {},
   ) {
+    this.timings = options.timings;
     this.backend = structuredClone(options.backend ?? PYTHON_HOST_BACKEND);
     validateHostBackend(this.backend);
     this.channel = new BoatControlChannel(
@@ -78,6 +82,7 @@ export class BoatTransport implements HostTransport {
       api,
       timeoutSeconds,
       this.backend.kind === "rust" ? this.backend.sha256 : undefined,
+      options.timings,
     );
     if (
       options.archiveReads !== undefined &&
@@ -256,12 +261,14 @@ export class BoatTransport implements HostTransport {
     if (request.version !== HOST_PROTOCOL_VERSION)
       throw Error("Unsupported host protocol");
     await bindHostBackend(this.state, host, this.backend);
-    const stdout = await this.channel.run(
-      host,
-      Buffer.from(JSON.stringify(request)),
-      ["sudo", "-n", ...hostControlArguments(this.backend)],
-      signal,
-      hostRequestByteLimit(request.action),
+    const stdout = await timeStage(this.timings, "host." + request.action, () =>
+      this.channel.run(
+        host,
+        Buffer.from(JSON.stringify(request)),
+        ["sudo", "-n", ...hostControlArguments(this.backend, !!this.timings)],
+        signal,
+        hostRequestByteLimit(request.action),
+      ),
     );
     try {
       const response = JSON.parse(stdout) as HostResponse;

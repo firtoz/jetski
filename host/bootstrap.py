@@ -31,6 +31,7 @@ from runtime_backend import DEFAULT_BACKEND, PREPARED_USER_NAMESPACE, write_work
 MODULES = (
     "archive.py",
     "frames.py",
+    "timing.py",
     "fence.py",
     "runtime.py",
     "runtime_backend.py",

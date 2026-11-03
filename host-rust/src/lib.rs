@@ -25,3 +25,5 @@ pub mod streams;
 pub mod terminal_input;
 pub mod uploads;
 pub mod worker;
+
+pub mod timing;

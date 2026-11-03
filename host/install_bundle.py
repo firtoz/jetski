@@ -31,6 +31,7 @@ MODULES = {
     "file_upload.py",
     "files.py",
     "frames.py",
+    "timing.py",
     "import_checkpoint.py",
     "local_checkpoint.py",
     "checkpoint_export.py",

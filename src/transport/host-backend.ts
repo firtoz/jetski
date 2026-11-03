@@ -49,6 +49,7 @@ export async function bindHostBackend(
 }
 export function hostControlArguments(
   backend: HostBackend = PYTHON_HOST_BACKEND,
+  timings = false,
 ): string[] {
   validateHostBackend(backend);
   if (backend.kind === "rust")
@@ -56,6 +57,7 @@ export function hostControlArguments(
       "env",
       "-i",
       "PATH=/usr/bin:/bin",
+      ...(timings ? ["JETSKI_HOST_TIMING=1"] : []),
       "/opt/jetski/native/jetski-host",
       "__control",
       backend.sha256,
@@ -65,6 +67,7 @@ export function hostControlArguments(
     "env",
     "-i",
     "PATH=/usr/bin:/bin",
+    ...(timings ? ["JETSKI_HOST_TIMING=1"] : []),
     "sh",
     "-c",
     "test ! -e /var/lib/jetski-native/intent.json && exec python3 -I /opt/jetski/host/control.py",

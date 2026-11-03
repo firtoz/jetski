@@ -10,6 +10,7 @@ import tempfile
 
 from archive import sync_dir
 from fence import identity
+from timing import stage
 
 
 class LocalCheckpoint:
@@ -59,6 +60,7 @@ class LocalCheckpoint:
         finally:
             os.close(fd)
 
+    @stage("cache.publish")
     def publish(self, raw, publication):
         lease = identity(raw)
         with self.fence.locked():

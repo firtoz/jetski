@@ -68,6 +68,11 @@ import {
   TerminalInputJournal,
   terminalGeometry,
 } from "./terminal-input.js";
+import {
+  observeCheckpointStore,
+  type StageTimingSink,
+  timeStage,
+} from "./timing.js";
 import { CheckpointTransfer } from "./transfer.js";
 import { HOST_PROTOCOL_VERSION, type HostTransport } from "./transport.js";
 import { UploadCoordinator } from "./uploads.js";
@@ -141,6 +146,8 @@ export type ManagerOptions = {
   idlePriceSource?: IdlePriceSource;
   now?: () => number;
   events?: EventSink;
+  /** Optional monotonic, best-effort diagnostics; not lifecycle authority. */
+  timings?: StageTimingSink;
 };
 
 /** Portable lifecycle coordinator; all principal scope is supplied by the caller's
@@ -164,6 +171,7 @@ export class SandboxManager {
   private readonly shutdown: ShutdownCoordinator;
   private readonly now: () => number;
   private readonly commandStartWaitMs: number;
+  private readonly timings: StageTimingSink | undefined;
   private readonly lifecycle: HostLifecycle;
   private readonly idlePriceSource: IdlePriceSource | undefined;
   hostCapabilities() {
@@ -181,6 +189,11 @@ export class SandboxManager {
       typeof options.automaticCollection !== "boolean"
     )
       throw Error("Invalid automatic collection policy");
+    this.timings = options.timings;
+    if (options.timings) {
+      objects = observeCheckpointStore(objects, options.timings);
+      this.objects = objects;
+    }
     this.commandStartWaitMs =
       options.commandStartWaitMs ?? DEFAULTS.commandStartWaitMs;
     if (
@@ -314,6 +327,7 @@ export class SandboxManager {
           }
         : {}),
       captureFrameBytes: frameBytes,
+      ...(options.timings ? { timings: options.timings } : {}),
       settleUploads: (scope) => this.uploads.settle(scope),
       state,
       operations: this.operations,
@@ -654,14 +668,19 @@ export class SandboxManager {
     action: string,
     payload: Json,
   ): Promise<Json> {
-    return (
-      await this.transport.request(lease.machineId, {
-        version: HOST_PROTOCOL_VERSION,
-        id: crypto.randomUUID(),
-        action,
-        payload,
-      })
-    ).result;
+    return timeStage(
+      this.timings,
+      "control." + action,
+      async () =>
+        (
+          await this.transport.request(lease.machineId, {
+            version: HOST_PROTOCOL_VERSION,
+            id: crypto.randomUUID(),
+            action,
+            payload,
+          })
+        ).result,
+    );
   }
   private async recoverObservedCreates(owner: string): Promise<void> {
     for (const slot of await this.pool.inspect(owner)) {
@@ -940,15 +959,18 @@ export class SandboxManager {
         const resources = workloadResources(
           sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES,
         );
-        const resumedCached = sandbox.restoreCheckpoint
-          ? await resumeCachedCheckpoint(
-              this.checkpoints,
-              { ...scope, generation: sandbox.generation },
-              lease,
-              sandbox.image,
-              resources,
-              sandbox.restoreCheckpoint,
-              this.transport,
+        const restoreCheckpointId = sandbox.restoreCheckpoint;
+        const resumedCached = restoreCheckpointId
+          ? await timeStage(this.timings, "resume.cached", () =>
+              resumeCachedCheckpoint(
+                this.checkpoints,
+                { ...scope, generation: sandbox.generation },
+                lease,
+                sandbox.image,
+                resources,
+                restoreCheckpointId,
+                this.transport,
+              ),
             )
           : false;
         if (!resumedCached) {

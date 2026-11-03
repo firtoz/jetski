@@ -24,6 +24,7 @@ import type { Sandbox } from "./manager.js";
 import { verifyCheckpointObjects } from "./object-verification.js";
 import type { OperationJournal } from "./operations.js";
 import type { HostLease, PoolJournal } from "./pool.js";
+import { type StageTimingSink, timeStage } from "./timing.js";
 import {
   type CapturedArchive,
   CheckpointTransfer,
@@ -108,6 +109,7 @@ export function missingSourceRecovery(value: unknown): MissingSourceRecovery {
 }
 type Dependencies = {
   captureFrameBytes: number;
+  timings?: StageTimingSink;
   checkpointSource?: (
     lease: HostLease,
     archive: CapturedArchive,
@@ -410,32 +412,34 @@ export class ShutdownCoordinator {
         );
         let failure: { reason: unknown } | undefined;
         try {
-          await transfer.save(
-            fence,
-            record.id,
-            record.archive,
-            boundSource ?? {
-              readConcurrency: 4,
-              readChunkBytes: record.readChunkBytes,
-              read: async (offset, bytes) => {
-                const value = await request(record.lease, "read-checkpoint", {
-                  ...payload,
-                  offset,
-                  bytes,
-                });
-                if (
-                  !value ||
-                  typeof value !== "object" ||
-                  Array.isArray(value) ||
-                  value.offset !== offset ||
-                  value.bytes !== bytes ||
-                  typeof value.base64 !== "string"
-                )
-                  throw Error("Invalid archive segment");
-                return decodeBase64(value.base64, bytes);
+          await timeStage(this.deps.timings, "save.transfer_publish", () =>
+            transfer.save(
+              fence,
+              record.id,
+              record.archive,
+              boundSource ?? {
+                readConcurrency: 4,
+                readChunkBytes: record.readChunkBytes,
+                read: async (offset, bytes) => {
+                  const value = await request(record.lease, "read-checkpoint", {
+                    ...payload,
+                    offset,
+                    bytes,
+                  });
+                  if (
+                    !value ||
+                    typeof value !== "object" ||
+                    Array.isArray(value) ||
+                    value.offset !== offset ||
+                    value.bytes !== bytes ||
+                    typeof value.base64 !== "string"
+                  )
+                    throw Error("Invalid archive segment");
+                  return decodeBase64(value.base64, bytes);
+                },
               },
-            },
-            record.previous ?? undefined,
+              record.previous ?? undefined,
+            ),
           );
         } catch (reason) {
           failure = { reason };
@@ -465,12 +469,14 @@ export class ShutdownCoordinator {
           canonical(checkpointArchive(root)) !== canonical(record.archive)
         )
           throw Error("Durable publication unavailable");
-        await verifyCheckpointObjects(
-          this.deps.objects,
-          fence,
-          root.frames,
-          "Published checkpoint integrity failure",
-          checkpointObjectRanges([root]),
+        await timeStage(this.deps.timings, "save.verify_before_cleanup", () =>
+          verifyCheckpointObjects(
+            this.deps.objects,
+            fence,
+            root.frames,
+            "Published checkpoint integrity failure",
+            checkpointObjectRanges([root]),
+          ),
         );
       }
       if (record.stage === "remove" && record.finalizeVersion === 1) {

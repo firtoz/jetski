@@ -34,6 +34,7 @@ export {
   type TerminalInput,
   TerminalInputNotFound,
 } from "./terminal-input.js";
+export * from "./timing.js";
 export * from "./transfer.js";
 export * from "./transport.js";
 export * from "./uploads.js";
