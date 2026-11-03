@@ -41,5 +41,13 @@ class CgroupPolicyTests(unittest.TestCase):
                 self.assertEqual(argv[-len(prefix + [action, name]) :], prefix + [action, name])
             self.assertEqual(
                 environment.argv(prefix + ["list", "--format=json"]),
-                ["runuser", "podman", "unshare", *prefix, "list", "--format=json"],
+                [
+                    "runuser",
+                    "podman",
+                    "--cgroup-manager=cgroupfs",
+                    "unshare",
+                    *prefix,
+                    "list",
+                    "--format=json",
+                ],
             )

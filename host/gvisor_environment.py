@@ -143,7 +143,9 @@ class RootlessEnvironment:
     def argv(self, arguments):
         if arguments[: len(self.commands.prefix())] != self.commands.prefix():
             raise ValueError("invalid_gvisor_native_command")
-        prefix = runtime_argv(self.account)
+        # This utility only supplies the user namespace. Its default systemd
+        # manager moves itself (and Sentry) out of our enforced workload group.
+        prefix = runtime_argv(self.account) + ["--cgroup-manager=cgroupfs"]
         action = arguments[len(self.commands.prefix())]
         if action in ("run", "restore", "exec"):
             name = arguments[-1]
