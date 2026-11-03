@@ -171,7 +171,9 @@ class GvisorRuntime:
             raise ValueError("invalid_memory_limit")
         if type(cpus) is not int or not 1 <= cpus <= 64:
             raise ValueError("invalid_cpu_limit")
-        requested = dict(backend="gvisor", image=self.image, memoryMb=memory_mb, cpus=cpus)
+        requested = dict(
+            backend="gvisor", image=self.image, memoryMb=memory_mb, cpus=cpus, relay=True
+        )
         with self.fence.locked():
             state = self.fence.read()
             self.fence.match(state, lease)

@@ -248,7 +248,9 @@ class PodmanBackend:
         if info["store"]["graphDriverName"] not in ("overlay", "vfs"):
             raise ValueError("unsupported_storage_driver")
         details = dict(
-            podmanVersion=info["version"]["Version"], storageDriver=info["store"]["graphDriverName"]
+            podmanVersion=info["version"]["Version"],
+            storageDriver=info["store"]["graphDriverName"],
+            runtimeKind="podman",
         )
         program = info["store"].get("graphOptions", {}).get("overlay.mount_program")
         if isinstance(program, dict):
@@ -353,3 +355,108 @@ class PodmanBackend:
 
 
 DEFAULT_BACKEND: RuntimeBackend = PodmanBackend()
+
+
+def runtime_policy(config):
+    """Immutable operator policy, never derived from a workload request."""
+    policy = config.get("runtime", {"kind": "podman"})
+    if not isinstance(policy, dict):
+        raise ValueError("invalid_runtime_policy")
+    if policy == {"kind": "podman"}:
+        return dict(policy)
+    from gvisor_oci import RELEASE, ARCHIVE_SHA256
+
+    if (
+        set(policy) != {"kind", "version", "release", "archiveSha256"}
+        or policy["kind"] != "gvisor"
+        or type(policy["version"]) is not int
+        or policy["version"] != 1
+        or policy["release"] != RELEASE
+        or policy["archiveSha256"] != ARCHIVE_SHA256
+    ):
+        raise ValueError("unsupported_runtime_policy")
+    if config.get("networkMode", "none") != "none":
+        raise ValueError("gvisor_egress_not_qualified")
+    return dict(policy)
+
+
+class GvisorBackend(PodmanBackend):
+    """Native effects; Podman is used only for approved OCI image preparation."""
+
+    def __init__(self, account, config):
+        if runtime_policy(config)["kind"] != "gvisor":
+            raise ValueError("gvisor_operator_policy_required")
+        self.account, self.config = account, json.loads(json.dumps(config))
+
+    def environment(self):
+        from gvisor_environment import RootlessEnvironment
+
+        return RootlessEnvironment(
+            self.account, self.config["images"], self.config.get("networkMode", "none")
+        )
+
+    def probe(self, run):
+        from gvisor_install import INSTALL_ROOT
+        from gvisor_oci import RELEASE
+        from supervisor import bounded_command, runtime_argv, CONTROL_ROOT
+
+        details = super().probe(run)
+        observed = bounded_command(
+            runtime_argv(self.account)
+            + ["unshare", str(INSTALL_ROOT / RELEASE / "runsc"), "--version"],
+            CONTROL_ROOT,
+            timeout=30,
+            max_output=4096,
+        )
+        if observed["exitCode"] != 0 or RELEASE.removeprefix("release-") not in observed["stdout"]:
+            raise ValueError("gvisor_version_unconfirmed")
+        return {
+            **details,
+            "runtimeKind": "gvisor",
+            "runtimeRelease": RELEASE,
+            "runtimePlatform": "systrap",
+        }
+
+    def lifecycle(
+        self,
+        fence,
+        run,
+        image,
+        data_root,
+        approved_images,
+        supervisor=None,
+        relay=None,
+        network_mode="none",
+        user_namespace=WORKLOAD_USER_NAMESPACE,
+        uid_mappings=None,
+        gid_mappings=None,
+    ):
+        from gvisor_native import GvisorRuntime, RunscDriver
+        from supervisor import DATA_ROOT
+
+        environment = self.environment()
+        if (
+            pathlib.Path(data_root) != DATA_ROOT
+            or tuple(approved_images) != tuple(self.config["images"])
+            or network_mode != "none"
+            or user_namespace != PREPARED_USER_NAMESPACE
+            or uid_mappings != environment.ownership["uidMappings"]
+            or gid_mappings != environment.ownership["gidMappings"]
+            or supervisor not in (None, "/opt/jetski/command-supervisor")
+            or relay not in (None, "/opt/jetski/tcp-relay")
+        ):
+            raise ValueError("gvisor_host_policy_conflict")
+        return GvisorRuntime(fence, RunscDriver(environment), image, approved_images)
+
+    def execution(self, uid):
+        if uid != self.account.pw_uid:
+            raise ValueError("gvisor_runtime_identity_conflict")
+        from gvisor_exec import ExecApi
+
+        return ExecApi(self.environment())
+
+
+def selected_backend(config, account):
+    if runtime_policy(config)["kind"] == "podman":
+        return DEFAULT_BACKEND
+    return GvisorBackend(account, config)

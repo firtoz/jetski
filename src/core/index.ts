@@ -24,6 +24,14 @@ export * from "./ports.js";
 export * from "./preview-sessions.js";
 export * from "./resources.js";
 export {
+  GVISOR_ARCHIVE_SHA256,
+  GVISOR_RELEASE,
+  GVISOR_RUNTIME,
+  PODMAN_RUNTIME,
+  type RuntimePolicy,
+  validateRuntimePolicy,
+} from "./runtime-policy.js";
+export {
   type MissingSourceRecovery,
   missingSourceRecovery,
 } from "./shutdown.js";

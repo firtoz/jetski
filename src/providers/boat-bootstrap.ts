@@ -4,6 +4,7 @@ import type {
   RuntimeStorageMode,
   StateStore,
 } from "../core/contracts.js";
+import { PODMAN_RUNTIME, type RuntimePolicy } from "../core/runtime-policy.js";
 import type { BoatApi } from "./boat.js";
 import {
   BOAT_BOOTSTRAP_MODULES,
@@ -19,6 +20,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
     images: string[],
     networkMode: RuntimeNetworkMode = "none",
     storageMode: RuntimeStorageMode = "default",
+    runtime: RuntimePolicy = PODMAN_RUNTIME,
   ) {
     super(
       state,
@@ -40,6 +42,8 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
       },
       networkMode,
       storageMode,
+      undefined,
+      runtime,
     );
   }
 }

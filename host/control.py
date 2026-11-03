@@ -29,7 +29,7 @@ from import_checkpoint import CheckpointImport, IMPORT_REQUEST_BYTES  # noqa: E4
 from local_checkpoint import LocalCheckpoint  # noqa: E402
 from checkpoint_export import CheckpointExport  # noqa: E402
 from fence import Fence, identity  # noqa: E402
-from runtime_backend import DEFAULT_BACKEND, WORKLOAD_USER_NAMESPACE, read_workload_identity  # noqa: E402
+from runtime_backend import selected_backend, WORKLOAD_USER_NAMESPACE, read_workload_identity  # noqa: E402
 from supervisor import (  # noqa: E402
     ARCHIVE_ROOT,
     CONTROL_ROOT,
@@ -48,7 +48,7 @@ def dispatch(
     account,
     run,
     launch=None,
-    backend=DEFAULT_BACKEND,
+    backend=None,
     storage_owner=None,
     user_namespace=WORKLOAD_USER_NAMESPACE,
     parent_uid=None,
@@ -63,6 +63,8 @@ def dispatch(
         raise ValueError("invalid_protocol_request")
     if not isinstance(request["id"], str) or not 1 <= len(request["id"]) <= 128:
         raise ValueError("invalid_request_id")
+    if backend is None:
+        backend = selected_backend(config, account)
     action = request["action"]
     if action == "status":
         proof = preflight(config, account, run, backend)

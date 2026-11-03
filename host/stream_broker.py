@@ -7,7 +7,7 @@ import signal
 import threading
 import time
 from fence import Fence, identity
-from runtime_backend import DEFAULT_BACKEND
+from runtime_backend import selected_backend
 from stream_protocol import Decoder
 from streams import Streams
 from supervisor import CONTROL_ROOT
@@ -29,7 +29,9 @@ def write_frame(fd, data):
         at += count
 
 
-def serve(request, config, account, source=0, destination=1, backend=DEFAULT_BACKEND):
+def serve(request, config, account, source=0, destination=1, backend=None):
+    if backend is None:
+        backend = selected_backend(config, account)
     if (
         set(request) != {"version", "id", "action", "payload"}
         or request["version"] != 1

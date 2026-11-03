@@ -7,6 +7,11 @@ import {
   type RuntimeNetworkMode,
   type RuntimeStorageMode,
 } from "../core/contracts.js";
+import {
+  PODMAN_RUNTIME,
+  type RuntimePolicy,
+  validateRuntimePolicy,
+} from "../core/runtime-policy.js";
 import { BoatControlChannel } from "../transport/boat-channel.js";
 import {
   bindHostBackend,
@@ -39,6 +44,14 @@ export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "checkpoint_export.py",
   "runtime.py",
   "runtime_backend.py",
+  "gvisor_environment.py",
+  "gvisor_exec.py",
+  "gvisor_install.py",
+  "gvisor_lifecycle.py",
+  "gvisor_memory.py",
+  "gvisor_native.py",
+  "gvisor_oci.py",
+  "gvisor_rootfs.py",
   "runtime_service.py",
   "supervisor.py",
 ]);
@@ -60,8 +73,16 @@ export class EmbeddedBoatBootstrap {
     private readonly networkMode: RuntimeNetworkMode = "none",
     private readonly storageMode: RuntimeStorageMode = "default",
     private readonly backend: HostBackend = PYTHON_HOST_BACKEND,
+    private readonly runtime: RuntimePolicy = PODMAN_RUNTIME,
   ) {
     validateHostBackend(backend);
+    validateRuntimePolicy(runtime);
+    if (
+      runtime.kind === "gvisor" &&
+      (backend.kind !== "python" || networkMode !== "none")
+    )
+      throw Error("gVisor requires the Python host and isolated networking");
+    this.runtime = structuredClone(runtime);
     this.backend = structuredClone(backend);
     identifier(poolId);
     if (!RUNTIME_STORAGE_MODES.includes(storageMode))
@@ -116,6 +137,7 @@ export class EmbeddedBoatBootstrap {
           archiveTransferUser: "user",
           poolId: this.poolId,
           images: this.images,
+          ...(this.runtime.kind === "podman" ? {} : { runtime: this.runtime }),
           ...(this.storageMode === "default"
             ? {}
             : { storageMode: this.storageMode }),

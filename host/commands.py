@@ -321,7 +321,7 @@ def run_worker(
     import secrets
     import threading
     from podman_exec import CompletionDecoder
-    from runtime_backend import DEFAULT_BACKEND
+    from runtime_backend import selected_backend
     from terminal_input import TerminalInputs
     from supervisor import (
         CONTROL_ROOT,
@@ -335,7 +335,7 @@ def run_worker(
     config = configuration()
     account = runtime_account()
     if backend is None:
-        backend = DEFAULT_BACKEND
+        backend = selected_backend(config, account)
     api = backend.execution(account.pw_uid)
     with fence.locked():
         state = fence.read()

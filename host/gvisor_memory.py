@@ -208,3 +208,56 @@ def verify_image(root, expected, binding, **bounds):
     if actual != expected:
         raise ValueError("memory_image_integrity")
     return actual
+
+
+def normalize_permissions(root, *, owner_uid):
+    """Seal native output modes after stopped-runtime proof, without following links.
+
+    This is not a content proof. image_manifest still re-reads every byte after
+    normalization; neither routine alone establishes a durable publication.
+    """
+    root = pathlib.Path(root)
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    count = 0
+    try:
+        _directory(os.fstat(fd), owner_uid)
+
+        def visit(directory, depth):
+            nonlocal count
+            if depth > 4:
+                raise ValueError("memory_image_depth")
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    count += 1
+                    if count > MAX_ENTRIES:
+                        raise ValueError("memory_image_entries")
+                    meta = entry.stat(follow_symlinks=False)
+                    is_directory = stat.S_ISDIR(meta.st_mode)
+                    if (
+                        meta.st_uid != owner_uid
+                        or not (is_directory or stat.S_ISREG(meta.st_mode))
+                        or (not is_directory and meta.st_nlink != 1)
+                    ):
+                        raise ValueError("unsafe_memory_member")
+                    child = os.open(
+                        entry.name,
+                        os.O_RDONLY
+                        | os.O_NOFOLLOW
+                        | os.O_NONBLOCK
+                        | (os.O_DIRECTORY if is_directory else 0),
+                        dir_fd=directory,
+                    )
+                    try:
+                        if _token(os.fstat(child)) != _token(meta):
+                            raise ValueError("memory_image_changed")
+                        os.fchmod(child, 0o700 if is_directory else 0o600)
+                        if is_directory:
+                            visit(child, depth + 1)
+                        os.fsync(child)
+                    finally:
+                        os.close(child)
+            os.fsync(directory)
+
+        visit(fd, 0)
+    finally:
+        os.close(fd)

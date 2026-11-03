@@ -67,26 +67,33 @@ No host or controller allocated for this goal yet. No runsc installed on desktop
 
 ## Current implementation
 
-The [runtime design](../gvisor-runtime.md) records the native-runtime and durability
-contract. New composition modules provide pinned whole-bundle installation, fixed
-OCI policy/command construction, a native effect adapter, bounded memory integrity
-proofs and a durable freeze/seal/successor-resume journal. Twenty targeted local
-tests pass, including corruption, incompatible identity, unsettled I/O, generation
-fencing, restart and uncertain acknowledgement. Build/typecheck/lint, 288 TypeScript tests and the existing Python suite pass. These
-are composition/unit results, not native or hosted qualification. The modules are
-not yet installed or selected by bootstrap/control; no default behavior changed.
+The [runtime design](../gvisor-runtime.md) records the contract. Pinned installation,
+fixed OCI policy, concrete caller-managed rootless environment, native lifecycle/
+exec, bounded memory proofs and freeze/seal/successor journaling are implemented.
+Python bootstrap, control, workers and forwarding select the optional backend;
+all source/bundle allowlists include its modules. Pinned TypeScript policy rejects
+unsupported Rust/egress combinations before effects. Podman remains default.
 
-Still required: concrete rootless image/bundle/cgroup environment, execution/PTY/
-forwarding adapter, immutable bootstrap selection and core/SDK/API wiring to the
-existing verified R2 publication path. A bounded native capability helper is
-prepared privately but has not run. No hosts or paid effects have occurred.
+Local build/typecheck/lint and Ruff pass; 289 TypeScript and 169 Python tests pass,
+including 27 targeted gVisor composition checks. Tests use local files/processes
+and driver doubles: they are not native or hosted qualification. Foundation
+`090811e` CI passed seven jobs but its unchanged Chrome Browser.getVersion fixture
+timed out; preserve the failure instead of repeating unchanged checks. Native host
+selection milestone remains unqualified until the finite hosted pass.
+
+Still required: operator-configured workload init (same optional policy for both
+runtimes) to exercise a useful persistent RAM workload while tracked I/O is settled;
+managed core/SDK/API memory operations, exact frozen inode/link identity and R2
+publication binding, successor pool-generation coordination and explicit fallback.
+Then freeze the candidate and run the finite native/recovery comparison. Prepared
+private capability helper has not run. No hosts or paid effects have occurred.
 
 ## Next actions
 
-1. Implement the concrete caller-managed rootless environment and execution
-   adapter, then wire runtime selection and explicit memory operations. Keep the
-   trusted-controller publication check off public request payloads.
-2. Implement Python runtime/bootstrap capability selection and bounded runsc adapter;
-   coordinate frozen files, memory identity and verified R2 publication.
-3. Run affected local/CI checks, freeze candidates, perform approved finite hosted
-   comparison/recovery, clean owned hosts and publish honest results/limitations.
+1. Add optional operator workload init without changing defaults; implement the
+   core/pool/SDK memory lifecycle and host control actions, keeping R2 verification
+   authoritative and uncertain effects fenced. Expose actual negotiated capability.
+2. Complete affected cleanup/interactive checks, freeze artifact/workload, then
+   use the first approved matrix host for the bounded native capability preflight.
+3. Complete the single matched comparison, both source-deleted recoveries, owned
+   cleanup, honest report and final exact-SHA publication. No repeated baseline matrix.

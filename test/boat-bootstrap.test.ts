@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
+import {
+  GVISOR_RUNTIME,
+  validateRuntimePolicy,
+} from "../src/core/runtime-policy.js";
 import { BoatApi } from "../src/providers/boat.js";
 import { BoatBootstrap } from "../src/providers/boat-bootstrap.js";
 import {
@@ -188,4 +192,70 @@ test("standalone Boat selection requires explicit credentials and approved image
     { BOAT_KEY: "fixture" },
   );
   assert.equal(hosts.provider.capabilities().kind, "machine-host");
+});
+
+test("optional gVisor policy rejects unsupported host/network combinations before effects", () => {
+  const state = new SqliteState(":memory:");
+  try {
+    let calls = 0;
+    const api = new BoatApi("fixture", async () => {
+      calls++;
+      throw Error("Unexpected network effect");
+    });
+    const assets = async () => {
+      throw Error("Unexpected asset effect");
+    };
+    assert.throws(
+      () =>
+        new EmbeddedBoatBootstrap(
+          state,
+          api,
+          "pool",
+          [image],
+          assets,
+          "none",
+          "default",
+          { kind: "rust", sha256: "a".repeat(64) },
+          GVISOR_RUNTIME,
+        ),
+      /Python host/,
+    );
+    assert.throws(
+      () =>
+        new EmbeddedBoatBootstrap(
+          state,
+          api,
+          "pool",
+          [image],
+          assets,
+          "egress",
+          "default",
+          undefined,
+          GVISOR_RUNTIME,
+        ),
+      /isolated networking/,
+    );
+    new EmbeddedBoatBootstrap(
+      state,
+      api,
+      "pool",
+      [image],
+      assets,
+      "none",
+      "default",
+      undefined,
+      GVISOR_RUNTIME,
+    );
+    assert.throws(
+      () =>
+        validateRuntimePolicy({
+          ...GVISOR_RUNTIME,
+          release: "latest",
+        } as never),
+      /unpinned/,
+    );
+    assert.equal(calls, 0);
+  } finally {
+    state.close();
+  }
 });

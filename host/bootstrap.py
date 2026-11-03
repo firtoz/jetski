@@ -26,7 +26,12 @@ from supervisor import (
     bounded_command,
 )
 
-from runtime_backend import DEFAULT_BACKEND, PREPARED_USER_NAMESPACE, write_workload_identity
+from runtime_backend import (
+    DEFAULT_BACKEND,
+    PREPARED_USER_NAMESPACE,
+    write_workload_identity,
+    runtime_policy,
+)
 
 MODULES = (
     "archive.py",
@@ -35,6 +40,14 @@ MODULES = (
     "fence.py",
     "runtime.py",
     "runtime_backend.py",
+    "gvisor_environment.py",
+    "gvisor_exec.py",
+    "gvisor_install.py",
+    "gvisor_lifecycle.py",
+    "gvisor_memory.py",
+    "gvisor_native.py",
+    "gvisor_oci.py",
+    "gvisor_rootfs.py",
     "supervisor.py",
     "control.py",
     "commands.py",
@@ -105,11 +118,12 @@ def bootstrap(config):
     if os.geteuid() != 0:
         raise ValueError("root_required")
     if (
-        set(config) - {"networkMode", "storageMode", "archiveTransferUser"}
+        set(config) - {"networkMode", "storageMode", "archiveTransferUser", "runtime"}
         != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
         raise ValueError("invalid_host_configuration")
+    policy = runtime_policy(config)
     if "archiveTransferUser" in config:
         name = config["archiveTransferUser"]
         if not isinstance(name, str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", name):
@@ -199,6 +213,10 @@ def bootstrap(config):
     def run(args):
         return bounded_command(runtime_argv(account) + args, CONTROL_ROOT, timeout=600)
 
+    if policy["kind"] == "gvisor":
+        from gvisor_install import install
+
+        install()
     proof = preflight(config, account, run)
     write_workload_identity(account, proof)
     for image in config["images"]:
@@ -209,6 +227,18 @@ def bootstrap(config):
             run, image, PREPARED_USER_NAMESPACE, proof["uidMappings"], proof["gidMappings"]
         )
     source = pathlib.Path(__file__).resolve().parent
+    if policy["kind"] == "gvisor":
+        from gvisor_environment import prepare_images
+
+        entry = pathlib.Path("/opt/jetski/gvisor_rootfs.py")
+        if entry.is_symlink():
+            raise ValueError("unsafe_gvisor_rootfs_entry")
+        with open(source / "gvisor_rootfs.py", "rb") as input_file, open(entry, "wb") as output:
+            shutil.copyfileobj(input_file, output)
+            os.fchmod(output.fileno(), 0o644)
+            output.flush()
+            os.fsync(output.fileno())
+        prepare_images(account, config["images"], run)
     for name in ("command-supervisor", "tcp-relay"):
         native = source / "native" / f"{name}.c"
         if not native.exists():

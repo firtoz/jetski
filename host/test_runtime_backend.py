@@ -45,6 +45,7 @@ class BackendProbeTests(unittest.TestCase):
             PodmanBackend().probe(run),
             dict(
                 podmanVersion="4.9.3",
+                runtimeKind="podman",
                 storageDriver="overlay",
                 runtimeUid=1001,
                 runtimeGid=1001,

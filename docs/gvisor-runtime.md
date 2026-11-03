@@ -1,7 +1,8 @@
 # Optional gVisor runtime
 
-This is active implementation work, not a qualified or selectable runtime yet.
-Podman remains the supported default. The [goal](goals/gvisor-runtime.md) tracks
+This is active implementation work. The optional Python host path can be selected
+for qualification, but native operation and managed memory resume are not yet
+qualified. Podman remains the supported default. The [goal](goals/gvisor-runtime.md) tracks
 the finite integration, benchmark and recovery gates.
 
 ## Composition
@@ -56,7 +57,13 @@ source or remove a retained durable checkpoint. Missing, incompatible or corrupt
 memory must be refused. Cold recovery from R2 explicitly reports process-state
 loss; it cannot claim that RAM, sockets or in-flight work survived.
 
-The new integrity/lifecycle tests use local files and a driver double. They prove
-bounded checks and journal transitions, not native gVisor operation or hosted
-performance. Native execution/transport integration, actual memory continuity,
-matched timings and source-deleted R2 recovery are separate remaining gates.
+The Python bootstrap/control path now selects native lifecycle and exec adapters
+from immutable host policy. The SDK exports the pinned `GVISOR_RUNTIME` policy for
+explicit bootstrap composition. Unsupported Rust/egress combinations are rejected
+before effects; ordinary bootstrap configuration still selects Podman.
+
+Local tests exercise exec byte streams, cancellation/start identity, image-path
+isolation and journal transitions using local processes or driver doubles. They
+do not prove native gVisor operation or hosted performance. Managed suspend/resume
+API integration, real process-memory continuity, native interactive qualification,
+matched timings and source-deleted R2 recovery remain separate gates.

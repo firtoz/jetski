@@ -43,7 +43,7 @@ def configuration():
         raise ValueError("host_configuration_limit")
     config = json.loads(CONFIG_PATH.read_text())
     if (
-        set(config) - {"networkMode", "storageMode", "archiveTransferUser"}
+        set(config) - {"networkMode", "storageMode", "archiveTransferUser", "runtime"}
         != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
@@ -54,6 +54,9 @@ def configuration():
         raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:
         raise ValueError("invalid_image_policy")
+    from runtime_backend import runtime_policy
+
+    runtime_policy(config)
     private_root(CONTROL_ROOT)
     private_root(ARCHIVE_ROOT)
     private_root(DATA_ROOT, 0o711)
@@ -180,9 +183,9 @@ def preflight(config, account, run, backend=None):
         if not pathlib.Path("/proc/self/ns", namespace).exists():
             raise ValueError("required_namespace_unavailable")
     if backend is None:
-        from runtime_backend import DEFAULT_BACKEND
+        from runtime_backend import selected_backend
 
-        backend = DEFAULT_BACKEND
+        backend = selected_backend(config, account)
     details = backend.probe(run)
     if not isinstance(details, dict) or set(details) & {
         "ready",
