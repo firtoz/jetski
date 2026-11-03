@@ -169,6 +169,7 @@ def bootstrap(config):
     if (CONTROL_ROOT / "slot" / "state.json").exists():
         raise ValueError("existing_host_assignment_requires_managed_upgrade")
     for path in (
+        pathlib.Path("/opt/jetski"),
         CONFIG_PATH.parent,
         pathlib.Path("/var/lib/jetski"),
         CONTROL_ROOT,
@@ -186,6 +187,8 @@ def bootstrap(config):
         if path.stat().st_uid != 0:
             raise ValueError("unsafe_install_owner")
         mode = 0o700
+        if path == pathlib.Path("/opt/jetski"):
+            mode = 0o755
         if path in (DATA_ROOT, pathlib.Path("/var/lib/jetski")):
             mode = 0o711
         os.chmod(path, mode)
