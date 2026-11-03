@@ -225,6 +225,7 @@ class RunscCommands:
             "--rootless=false",
             "--network=sandbox",
             "--file-access=shared",
+            "--overlay2=none",
         ]
 
     def command(self, action, lease, *, bundle=None, image=None, process=None):
