@@ -72,7 +72,7 @@ and deadline-bounded JSON/binary control entrypoints now join the components.
 Combined cached-resume, quiesce/finalize/release/purge actions are implemented;
 release reads its already-locked state rather than reacquiring the fence.
 
-The local candidate passes **58 Rust tests, 282 TypeScript tests and three
+The local candidate passes **59 Rust tests, 282 TypeScript tests and three
 native-installer tests**, plus build/typecheck/lint/clippy. New source provides
 explicit Boat/SSH backend selection, pre-bootstrap native intent, a pinned binary
 installer and protected native installation checks. Controller restart cannot
@@ -89,11 +89,13 @@ or physical-host replacement. Map: [contract](../../host-rust/contract.md).
 
 ## Next actions
 
-1. Candidate `9c29eff` passes all eight exact-SHA CI jobs. The first live native
-   host exposed an installer omission: its fixed slot directory was not prepared
-   before readiness. No assignment/data was admitted; read-only proof and failed
-   setup evidence are preserved. The installer now prepares the private slot;
-   publish that affected fix and replace the unassigned test host within reserves.
+1. Live startup exposed two compatibility gaps before any native assignment:
+   installation omitted the fixed fence directory (fixed in `e56ffe9`, all CI
+   green), and the existing providers send null status payloads. Native status
+   now accepts that existing no-argument form; mutations still require objects.
+   Publish/test this affected fix and use the remaining explicit failure reserve.
+   Failed hosts had no workload data and were positively retired; original scopes,
+   IDs, diagnosis and attempts remain preserved outside the successful samples.
 2. Observe the existing four-arm run rather than duplicating it. Ten timed cycles
    per backend, native live interactive checks outside timed samples, and one
    source-deleted replacement per backend remain the finite hosted gates. Preserve

@@ -39,11 +39,14 @@ fn main() {
             }
         }
         Some("__control") if args.len() == 2 => {
-            if args[1]
+            let result = args[1]
                 .to_str()
-                .is_none_or(|sha| jetski_host::control_io::entry(sha).is_err())
-            {
-                eprintln!("native control unavailable or uncertain; inspect original receipts");
+                .ok_or_else(|| std::io::Error::other("invalid_native_identity"))
+                .and_then(jetski_host::control_io::entry);
+            if let Err(error) = result {
+                // These are bounded domain/OS errors on an authenticated control
+                // channel. Do not print request bodies, configuration or argv.
+                eprintln!("native control failed: {error}; inspect original receipts");
                 std::process::exit(1);
             }
         }

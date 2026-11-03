@@ -80,12 +80,7 @@ pub struct Control<'a, R: HostRunner> {
 }
 impl<R: HostRunner> Control<'_, R> {
     pub fn dispatch(&self, request: &Request) -> io::Result<Value> {
-        if request.version != 1
-            || !(1..=128).contains(&request.id.chars().count())
-            || !request.payload.is_object()
-        {
-            return Err(reject("invalid_protocol_request"));
-        }
+        request.validate()?;
         self.config.validate()?;
         self.ownership.validate(self.account)?;
         if request.action == "status" {

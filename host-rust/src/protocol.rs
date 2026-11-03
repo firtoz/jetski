@@ -22,18 +22,22 @@ fn invalid(message: &'static str) -> io::Error {
 }
 
 impl Request {
+    pub fn validate(&self) -> io::Result<()> {
+        if self.version != 1
+            || !(1..=128).contains(&self.id.chars().count())
+            || !(self.payload.is_object() || (self.action == "status" && self.payload.is_null()))
+        {
+            return Err(invalid("invalid_protocol_request"));
+        }
+        Ok(())
+    }
     pub fn decode(raw: &[u8]) -> io::Result<Self> {
         if raw.len() > IMPORT_REQUEST_BYTES {
             return Err(invalid("host_request_limit"));
         }
         let request: Self =
             serde_json::from_slice(raw).map_err(|_| invalid("invalid_protocol_request"))?;
-        if request.version != 1
-            || !(1..=128).contains(&request.id.chars().count())
-            || !request.payload.is_object()
-        {
-            return Err(invalid("invalid_protocol_request"));
-        }
+        request.validate()?;
         if request.action != "import-chunk" && raw.len() > REQUEST_BYTES {
             return Err(invalid("host_request_limit"));
         }
@@ -121,9 +125,23 @@ mod tests {
             r#"{"version":2,"id":"request","action":"status","payload":{}}"#,
             r#"{"version":1,"id":"a","id":"b","action":"status","payload":{}}"#,
             r#"{"version":1,"id":"a","action":"status","payload":{},"extra":1}"#,
-            r#"{"version":1,"id":"a","action":"status","payload":null}"#,
+            r#"{"version":1,"id":"a","action":"claim","payload":null}"#,
         ] {
             assert!(Request::decode(raw.as_bytes()).is_err());
+        }
+    }
+
+    #[test]
+    fn provider_readiness_accepts_null_status_payload_without_relaxing_mutations() {
+        // Both real host providers send this no-argument status form.
+        let request =
+            Request::decode(br#"{"version":1,"id":"readiness","action":"status","payload":null}"#)
+                .unwrap();
+        request.validate().unwrap();
+        for action in ["claim", "create", "import-finish"] {
+            let mut value = serde_json::to_value(&request).unwrap();
+            value["action"] = Value::String(action.into());
+            assert!(Request::decode(&serde_json::to_vec(&value).unwrap()).is_err());
         }
     }
 
