@@ -103,6 +103,27 @@ export class OperationJournal {
   async get(scope: Scope, id: string): Promise<Operation | undefined> {
     return this.state.transaction((tx) => this.getIn(tx, scope, id));
   }
+  /** Lifecycle transition only: caller fences the old host and advances registry
+   * authority in the same transaction. Terminal outcomes are never rebased. */
+  rebasePendingIn(
+    tx: Transaction,
+    fence: Fence,
+    id: string,
+    previousGeneration: number,
+  ): void {
+    this.check(tx, fence);
+    const key = this.key(fence, id),
+      op = tx.get<Operation>(key);
+    if (!op) throw Error("Unknown operation");
+    if (op.generation === fence.generation) return;
+    if (
+      op.generation !== previousGeneration ||
+      fence.generation !== previousGeneration + 1 ||
+      !["queued", "running", "uncertain"].includes(op.phase)
+    )
+      throw Error("Pending operation generation mismatch");
+    tx.put(key, { ...op, generation: fence.generation, updatedAt: this.now() });
+  }
   async claim(fence: Fence, id: string): Promise<boolean> {
     return this.state.transaction((tx) => this.claimIn(tx, fence, id));
   }

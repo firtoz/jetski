@@ -37,7 +37,11 @@ import {
 } from "./host-lifecycle.js";
 import type { HostStreamTransport } from "./host-stream.js";
 import { CheckpointMaintenance } from "./maintenance.js";
-import type { MemoryCheckpointReceipt } from "./memory-contracts.js";
+import type {
+  MemoryCheckpointReceipt,
+  SandboxRuntimeCapabilities,
+} from "./memory-contracts.js";
+import { MemoryResumeCoordinator } from "./memory-resume.js";
 import { observeLifecycle } from "./observability.js";
 import { OperationJournal } from "./operations.js";
 import {
@@ -100,6 +104,11 @@ export type Sandbox = {
   lease: HostLease | null;
   checkpoint: string | null;
   memory?: MemoryCheckpointReceipt | null;
+  memoryRecovery?: {
+    operationId: string;
+    memoryPreserved: false;
+    reason: string;
+  };
   generation: number;
   /** Last explicit loss acknowledgement; verify its operation before using it
    * to settle a client's old-generation business ownership. */
@@ -173,6 +182,7 @@ export class SandboxManager {
   readonly uploads: UploadCoordinator;
   private readonly terminalInputs: TerminalInputJournal;
   private readonly shutdown: ShutdownCoordinator;
+  private readonly memoryResumes: MemoryResumeCoordinator;
   private readonly now: () => number;
   private readonly commandStartWaitMs: number;
   private readonly timings: StageTimingSink | undefined;
@@ -410,6 +420,16 @@ export class SandboxManager {
     for (const image of this.images)
       if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}$/.test(image))
         throw new Error("Approved image must be digest pinned");
+    this.memoryResumes = new MemoryResumeCoordinator({
+      state,
+      objects,
+      registry: this.checkpoints,
+      operations: this.operations,
+      pool: this.pool,
+      request: (lease, action, payload) => this.request(lease, action, payload),
+      hostAbsent: async (lease) =>
+        (await provider.inspect(lease.machineId)).state === "absent",
+    });
   }
   private key(scope: Scope) {
     return `sandbox/${scopeKey(scope)}`;
@@ -861,6 +881,7 @@ export class SandboxManager {
             cancel.id,
           );
       await this.terminalInputs.reconcile(owner);
+      await this.memoryResumes.reconcile(owner);
       await this.recoverObservedCreates(owner);
       await this.drainExpiringHosts(owner);
       await this.shutdown.reconcile(owner);
@@ -1246,11 +1267,32 @@ export class SandboxManager {
     this.uuid(id);
     return this.shutdown.recoverMissingSource(scope, id, input);
   }
+  async runtimeCapabilities(scope: Scope): Promise<SandboxRuntimeCapabilities> {
+    const sandbox = await this.get(scope);
+    if (!sandbox) throw Error("Sandbox missing");
+    if (!sandbox.lease)
+      return { runtimeKind: null, memorySuspendVersion: null };
+    const status = await this.request(sandbox.lease, "status", {});
+    if (!status || typeof status !== "object" || Array.isArray(status))
+      throw Error("Invalid runtime capabilities");
+    const kind = status.runtimeKind;
+    if (kind !== "podman" && kind !== "gvisor")
+      throw Error("Invalid runtime kind");
+    return {
+      runtimeKind: kind,
+      memorySuspendVersion: status.memorySuspendVersion === 1 ? 1 : null,
+    };
+  }
+  async resumeMemory(scope: Scope, id: string) {
+    this.uuid(id);
+    return this.memoryResumes.admit(scope, id);
+  }
   async suspend(scope: Scope, id: string) {
     this.uuid(id);
     const prior = await this.operations.get(scope, id);
     if (prior) {
-      if (prior.kind !== "suspend") throw Error("Operation identity conflict");
+      if (prior.kind !== "suspend" || canonical(prior.input) !== "{}")
+        throw Error("Operation identity conflict");
       return prior;
     }
     const sandbox = await this.get(scope);

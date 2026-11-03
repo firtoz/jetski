@@ -257,7 +257,47 @@ class RootlessEnvironment:
         directory = private_directory(self.bundle(successor), self.account, create=True)
         write_json(directory / "config.json", spec, self.account)
 
+    def verify_successor(self, previous, successor):
+        expected = copy.deepcopy(self.config(previous))
+        expected["annotations"]["org.jetski.generation"] = str(successor["generation"])
+        expected["linux"]["cgroupsPath"] = str(self.limits_path(successor)).removeprefix(
+            "/sys/fs/cgroup"
+        )
+        if self.config(successor) != expected:
+            return False
+        resources = expected["linux"]["resources"]
+        return self.verify_resources(
+            successor,
+            resources["memory"]["limit"] // 1024**2,
+            resources["cpu"]["quota"] // resources["cpu"]["period"],
+        )
+
     def cleanup(self, lease):
+        # Native absence is established by RunscDriver before this method.
+        # The controller has settled streams/output before lifecycle removal.
+        from gvisor_exec import ExecApi
+
+        api = ExecApi(self)
+        container = container_name(lease)
+        for entry in api.root.iterdir():
+            if not entry.is_dir() or entry.is_symlink():
+                raise ValueError("unsafe_exec_journal")
+            with api.locked(entry.name) as journal:
+                state = api.read(journal)
+                if state["container"] != container:
+                    continue
+                runtime_path = self.root / "exec" / entry.name
+                if runtime_path.exists():
+                    private_directory(runtime_path, self.account)
+                    shutil.rmtree(runtime_path)
+                    sync_dir(runtime_path.parent)
+            shutil.rmtree(entry)
+            sync_dir(api.root)
+        memory = self.root / "memory" / container
+        if memory.exists():
+            private_directory(memory, self.account)
+            shutil.rmtree(memory)
+            sync_dir(memory.parent)
         path = self.limits_path(lease)
         if path.exists():
             if (path / "cgroup.procs").read_text().strip():

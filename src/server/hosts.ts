@@ -10,6 +10,12 @@ import {
   type IdlePriceSource,
 } from "../core/host-lifecycle.js";
 import type { HostStreamTransport } from "../core/host-stream.js";
+import {
+  PODMAN_RUNTIME,
+  type RuntimePolicy,
+  validateRuntimePolicy,
+  validateWorkloadInit,
+} from "../core/runtime-policy.js";
 import type { HostTransport } from "../core/transport.js";
 import type { BoatMachineType } from "../providers/boat.js";
 import type { SshHost } from "../transport/ssh.js";
@@ -21,6 +27,8 @@ export type HostConfig =
       machine?: BoatMachineType;
       networkMode?: RuntimeNetworkMode;
       storageMode?: RuntimeStorageMode;
+      runtime?: RuntimePolicy;
+      workloadInit?: readonly string[];
     };
 /** Selected adapters only. Boat installs on allocated machines, never locally. */
 export async function standaloneHosts(
@@ -71,6 +79,8 @@ export async function standaloneHosts(
     import("../transport/boat-stream.js"),
     import("../providers/boat-pricing.js"),
   ]);
+  validateRuntimePolicy(config.runtime ?? PODMAN_RUNTIME);
+  validateWorkloadInit(config.workloadInit);
   const api = new BoatApi(environment[config.tokenEnv]!);
   const idle = hostLifecycle(lifecycle).idle;
   const transport = new BoatTransport(state, api);
@@ -81,6 +91,8 @@ export async function standaloneHosts(
     approvedImages,
     config.networkMode,
     config.storageMode,
+    config.runtime,
+    config.workloadInit,
   );
   return {
     transport,

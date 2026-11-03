@@ -34,3 +34,9 @@ export function memoryCheckpointReceipt(
     memoryBytes: value.memoryBytes,
   };
 }
+
+/** Observed on the assigned host; an unassigned sandbox has no runtime capability. */
+export type SandboxRuntimeCapabilities = {
+  runtimeKind: "podman" | "gvisor" | null;
+  memorySuspendVersion: 1 | null;
+};

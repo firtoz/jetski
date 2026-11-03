@@ -352,6 +352,28 @@ export function createHttpServer(
       }
       if (
         parts.length === 4 &&
+        parts[3] === "capabilities" &&
+        request.method === "GET"
+      ) {
+        send(response, 200, await manager.runtimeCapabilities(scope));
+        return;
+      }
+      if (
+        parts.length === 4 &&
+        parts[3] === "resume-memory" &&
+        request.method === "POST"
+      ) {
+        const input = await body(request);
+        fields(input, ["operationId"]);
+        send(
+          response,
+          202,
+          await manager.resumeMemory(scope, string(input.operationId)),
+        );
+        return;
+      }
+      if (
+        parts.length === 4 &&
         parts[3] === "suspend" &&
         request.method === "POST"
       ) {

@@ -41,9 +41,12 @@ class MemoryControlTests(unittest.TestCase):
         self.payload["publication"] = dict(checkpointId=self.id, sha256=receipt["sha256"])
 
     def call(self, action, **extra):
-        return handle(
+        result = handle(
             action, {**self.payload, **extra}, self.fence, self.backend, self.archives, self.data
         )
+        if action == "memory-seal":
+            self.payload["memorySha256"] = result["sha256"]
+        return result
 
     def test_freeze_seal_resume_and_lost_ack_replay_preserve_exact_identity(self):
         self.prepared()
@@ -53,6 +56,35 @@ class MemoryControlTests(unittest.TestCase):
         self.assertEqual(resumed, self.call("memory-resume", nextLease=self.successor))
         self.assertEqual(self.driver.restores, 1)
         self.assertEqual(self.fence.read()["lease"], self.successor)
+
+    def test_discard_fences_delayed_resume_and_replays_after_lost_ack(self):
+        self.prepared()
+        self.call("memory-seal")
+        removed = set()
+        self.driver.absent = lambda lease: (
+            lease["generation"] == 2 or lease["generation"] in removed
+        )
+        self.driver.remove = lambda lease: removed.add(lease["generation"])
+        result = self.call("memory-discard", nextLease=self.successor)
+        self.assertEqual(result["phase"], "discarded")
+        self.assertEqual(self.call("memory-discard", nextLease=self.successor), result)
+        self.assertEqual(self.fence.read()["lease"], self.successor)
+        self.assertEqual(self.fence.read()["phase"], "closed")
+        with self.assertRaises(ValueError):
+            self.call("memory-resume", nextLease=self.successor)
+        self.assertEqual(self.driver.restores, 0)
+
+    def test_lost_resume_ack_status_observes_successor_without_replaying(self):
+        self.prepared()
+        sealed = self.call("memory-seal")
+        self.call("memory-resume", nextLease=self.successor)
+        status = self.call("memory-status")
+        self.assertEqual(status["lease"], self.successor)
+        self.assertEqual(status["sha256"], sealed["sha256"])
+        self.assertTrue(status["memoryPreserved"])
+        discarded = self.call("memory-discard", nextLease=self.successor)
+        self.assertEqual(discarded["phase"], "resumed")
+        self.assertEqual(self.driver.restores, 1)
 
     def test_repeated_changed_save_after_resume_keeps_assignment_and_uses_fresh_archive(self):
         self.prepared()

@@ -13,7 +13,10 @@ export * from "./files.js";
 export * from "./host-lifecycle.js";
 export * from "./host-stream.js";
 export * from "./manager.js";
-export type { MemoryCheckpointReceipt } from "./memory-contracts.js";
+export type {
+  MemoryCheckpointReceipt,
+  SandboxRuntimeCapabilities,
+} from "./memory-contracts.js";
 export * from "./observability.js";
 export * from "./operations.js";
 export {

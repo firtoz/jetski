@@ -500,6 +500,13 @@ if (command === "serve") {
         values.checkpoint,
       );
       break;
+    case "resume-memory":
+      result = await client.resumeMemory(
+        required(positionals[1], "sandbox ID"),
+        required(values.operation, "--operation"),
+      );
+      break;
+    case "suspend":
     case "stop":
     case "checkpoint":
       result = await client.request(

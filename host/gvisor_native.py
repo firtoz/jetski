@@ -29,6 +29,7 @@ class NativeEnvironment(Protocol):
     def memory_owner(self) -> int: ...
     def seal_permissions(self, lease, checkpoint) -> None: ...
     def prepare_successor(self, previous, successor) -> None: ...
+    def verify_successor(self, previous, successor) -> bool: ...
     def cleanup(self, lease) -> None: ...
 
 
@@ -147,8 +148,12 @@ class RunscDriver:
                 image=self.memory_path(previous, identifier),
             )
         )
-        if not self.running(successor):
+        if (
+            not self.running(successor)
+            or self.env.verify_successor(previous, successor) is not True
+        ):
             raise ValueError("gvisor_restore_unconfirmed")
+        self.env.cleanup(previous)
 
 
 class GvisorRuntime:

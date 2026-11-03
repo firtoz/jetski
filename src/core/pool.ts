@@ -482,6 +482,72 @@ export class PoolJournal {
       return { ticket, slot: next, lease };
     });
   }
+  /** Reserve the same exclusive assignment under its next physical generation.
+   * Caller blocks sandbox execution and retains the durable FS root in this tx. */
+  reserveMemorySuccessorIn(
+    tx: Transaction,
+    lease: HostLease,
+    id: string,
+  ): HostLease {
+    const key = `${this.prefix()}memory-resume/${identifier(lease.owner)}/${identifier(lease.sandboxId)}/${identifier(id)}`;
+    const prior = tx.get<{ previous: HostLease; successor: HostLease }>(key);
+    if (prior) {
+      if (canonical(prior.previous) !== canonical(lease))
+        throw Error("Memory lease identity conflict");
+      this.exact(tx, prior.successor);
+      return prior.successor;
+    }
+    const slot = this.exact(tx, lease);
+    if (slot.phase !== "quiescing")
+      throw Error("Memory source is not suspended");
+    const machine = tx.get<Machine>(this.machineKey(lease.machineId));
+    if (
+      !machine ||
+      machine.generation !== lease.generation ||
+      !Number.isSafeInteger(lease.generation + 1)
+    )
+      throw Error("Memory machine generation mismatch");
+    const successor = { ...lease, generation: lease.generation + 1 };
+    tx.put(this.machineKey(lease.machineId), {
+      ...machine,
+      generation: successor.generation,
+    });
+    tx.put(this.slotKey(slot.id), { ...slot, lease: successor });
+    tx.put(key, { previous: lease, successor });
+    return successor;
+  }
+  /** Only after the host attests the exact successor and the root is verified. */
+  activateMemorySuccessorIn(
+    tx: Transaction,
+    lease: HostLease,
+    id: string,
+  ): void {
+    const receipt = tx.get<{ successor: HostLease }>(
+      `${this.prefix()}memory-resume/${identifier(lease.owner)}/${identifier(lease.sandboxId)}/${identifier(id)}`,
+    );
+    if (!receipt || canonical(receipt.successor) !== canonical(lease))
+      throw Error("Memory successor unavailable");
+    const slot = this.exact(tx, lease);
+    if (!["quiescing", "quarantined", "active"].includes(slot.phase))
+      throw Error("Memory successor state changed");
+    tx.put(this.slotKey(slot.id), { ...slot, phase: "active" });
+  }
+  /** After positive native absence/discard, prepare the reserved generation for release. */
+  quiesceMemorySuccessorIn(
+    tx: Transaction,
+    lease: HostLease,
+    id: string,
+  ): void {
+    const receipt = tx.get<{ successor: HostLease }>(
+      `${this.prefix()}memory-resume/${identifier(lease.owner)}/${identifier(lease.sandboxId)}/${identifier(id)}`,
+    );
+    if (!receipt || canonical(receipt.successor) !== canonical(lease))
+      throw Error("Memory successor unavailable");
+    const slot = this.exact(tx, lease);
+    if (!["quiescing", "quarantined"].includes(slot.phase))
+      throw Error("Memory successor is not closed");
+    tx.put(this.slotKey(slot.id), { ...slot, phase: "quiescing" });
+  }
   async transition(
     lease: HostLease,
     to: "active" | "quiescing" | "quarantined",
@@ -505,43 +571,44 @@ export class PoolJournal {
     });
   }
   async release(lease: HostLease): Promise<void> {
-    await this.state.transaction((tx) => {
-      const receiptKey = `${this.prefix()}released/${identifier(lease.assignmentId)}`;
-      const previous = tx.get<HostLease>(receiptKey);
-      if (previous) {
-        if (canonical(previous) !== canonical(lease))
-          throw new Error("Release identity conflict");
-        return;
-      }
-      const slot = this.exact(tx, lease);
-      if (slot.phase !== "quiescing")
-        throw new Error("Release requires quiescence");
-      const ticket = tx
-        .scan<Ticket>(`${this.prefix()}ticket/${lease.owner}/`)
-        .map((row) => row.value)
-        .find(
-          (ticket) =>
-            ticket.sandboxId === lease.sandboxId && ticket.phase === "assigned",
-        );
-      if (!ticket) throw new Error("Placement receipt missing");
-      tx.put(this.ticketKey(ticket.owner, ticket.id), {
-        ...ticket,
-        phase: "finished",
-      });
-      tx.put(receiptKey, lease);
-      const at = this.now();
-      const historyKey = `${this.prefix()}returns/${lease.owner}`;
-      const history = tx.get<{ lastReleaseAt: number | null; gaps: number[] }>(
-        historyKey,
+    await this.state.transaction((tx) => this.releaseIn(tx, lease));
+  }
+  releaseIn(tx: Transaction, lease: HostLease): void {
+    const receiptKey = `${this.prefix()}released/${identifier(lease.assignmentId)}`;
+    const previous = tx.get<HostLease>(receiptKey);
+    if (previous) {
+      if (canonical(previous) !== canonical(lease))
+        throw new Error("Release identity conflict");
+      return;
+    }
+    const slot = this.exact(tx, lease);
+    if (slot.phase !== "quiescing")
+      throw new Error("Release requires quiescence");
+    const ticket = tx
+      .scan<Ticket>(`${this.prefix()}ticket/${lease.owner}/`)
+      .map((row) => row.value)
+      .find(
+        (ticket) =>
+          ticket.sandboxId === lease.sandboxId && ticket.phase === "assigned",
       );
-      tx.put(historyKey, { lastReleaseAt: at, gaps: history?.gaps ?? [] });
-      tx.put(this.slotKey(slot.id), {
-        ...slot,
-        phase: "idle",
-        lease: null,
-        idleSince: at,
-        idleDecision: this.idleIn(tx, slot, at),
-      });
+    if (!ticket) throw new Error("Placement receipt missing");
+    tx.put(this.ticketKey(ticket.owner, ticket.id), {
+      ...ticket,
+      phase: "finished",
+    });
+    tx.put(receiptKey, lease);
+    const at = this.now();
+    const historyKey = `${this.prefix()}returns/${lease.owner}`;
+    const history = tx.get<{ lastReleaseAt: number | null; gaps: number[] }>(
+      historyKey,
+    );
+    tx.put(historyKey, { lastReleaseAt: at, gaps: history?.gaps ?? [] });
+    tx.put(this.slotKey(slot.id), {
+      ...slot,
+      phase: "idle",
+      lease: null,
+      idleSince: at,
+      idleDecision: this.idleIn(tx, slot, at),
     });
   }
   /** The coordinator must positively observe provider absence first. A stale

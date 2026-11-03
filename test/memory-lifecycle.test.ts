@@ -20,7 +20,16 @@ import { LocalCheckpointStore } from "../src/storage/local.js";
 const hash = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
 const image = "example/linux@sha256:" + "a".repeat(64);
-for (const failure of ["none", "seal-ack", "upload", "unsupported"] as const)
+for (const failure of [
+  "none",
+  "seal-ack",
+  "upload",
+  "unsupported",
+  "resume-ack",
+  "resume-uncertain",
+  "memory-unavailable",
+  "source-absent",
+] as const)
   test(`memory suspension publication and replay: ${failure}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "jetski-memory-"));
     const state = new SqliteState(join(directory, "state.sqlite"));
@@ -67,7 +76,18 @@ for (const failure of ["none", "seal-ack", "upload", "unsupported"] as const)
     let frozen = false,
       sealed = false,
       freezeEffects = 0,
-      sealEffects = 0;
+      sealEffects = 0,
+      resumeEffects = 0,
+      resumedLease: Json = null,
+      loseResume = failure === "resume-ack";
+    let sourceAbsent = false;
+    const importReceipt = {
+      id: "",
+      sha256: manifest.sha256,
+      bytes: archive.length,
+      offset: 0,
+      phase: "receiving",
+    };
     const provider: HostProvider = {
       capabilities: () => ({
         kind: "machine-host",
@@ -75,10 +95,12 @@ for (const failure of ["none", "seal-ack", "upload", "unsupported"] as const)
         rootlessPodman: true,
       }),
       allocate: async (input) => ({
-        id: "machine",
+        id: sourceAbsent ? "replacement" : "machine",
         allocationId: input.operationId,
       }),
-      inspect: async () => ({ state: "ready" }),
+      inspect: async (id) => ({
+        state: sourceAbsent && id === "machine" ? "absent" : "ready",
+      }),
       retire: async () => {
         throw Error("Unexpected retirement");
       },
@@ -120,6 +142,77 @@ for (const failure of ["none", "seal-ack", "upload", "unsupported"] as const)
             };
             break;
           }
+          case "memory-discard":
+            result = {
+              phase: "discarded",
+              checkpointId: payload.checkpointId!,
+              lease: payload.nextLease!,
+            };
+            break;
+          case "release":
+          case "purge-source":
+            break;
+          case "import-begin":
+            importReceipt.id = String(payload.checkpointId);
+            result = { ...importReceipt };
+            break;
+          case "import-chunk": {
+            assert.equal(payload.offset, importReceipt.offset);
+            const bytes = Buffer.from(String(payload.base64), "base64");
+            assert.deepEqual(
+              bytes,
+              archive.subarray(
+                importReceipt.offset,
+                importReceipt.offset + bytes.length,
+              ),
+            );
+            importReceipt.offset += bytes.length;
+            result = { ...importReceipt };
+            break;
+          }
+          case "import-finish":
+            assert.equal(importReceipt.offset, archive.length);
+            importReceipt.phase = "ready";
+            result = { ...importReceipt };
+            break;
+          case "memory-resume":
+            if (failure === "resume-uncertain")
+              throw Error("Unknown native effect");
+            if (failure === "memory-unavailable")
+              throw Error("Memory unavailable before effect");
+            if (!resumedLease) {
+              resumedLease = payload.nextLease!;
+              resumeEffects++;
+            }
+            if (loseResume) {
+              loseResume = false;
+              throw Error("Lost resume acknowledgement");
+            }
+            result = {
+              phase: "resumed",
+              checkpointId: payload.checkpointId!,
+              filesystemSha256: manifest.sha256,
+              sha256: "b".repeat(64),
+              memoryPreserved: true,
+              lease: resumedLease,
+            };
+            break;
+          case "memory-status":
+            result = resumedLease
+              ? {
+                  phase: "resumed",
+                  checkpointId: payload.checkpointId!,
+                  filesystemSha256: manifest.sha256,
+                  sha256: "b".repeat(64),
+                  memoryPreserved: true,
+                  lease: resumedLease,
+                }
+              : {
+                  phase:
+                    failure === "memory-unavailable" ? "sealed" : "resuming",
+                  canDiscard: failure === "memory-unavailable",
+                };
+            break;
           case "memory-seal": {
             assert.ok(frozen);
             const publication = payload.publication as {
@@ -174,7 +267,7 @@ for (const failure of ["none", "seal-ack", "upload", "unsupported"] as const)
       return;
     }
     await manager.suspend(scope, id);
-    if (failure !== "none") {
+    if (failure === "seal-ack" || failure === "upload") {
       await assert.rejects(manager.reconcile(owner));
       assert.equal((await manager.get(scope))?.phase, "quarantined");
       assert.ok(frozen);
@@ -213,4 +306,50 @@ for (const failure of ["none", "seal-ack", "upload", "unsupported"] as const)
       before,
       "terminal replay must observe the original outcome",
     );
+    const resumeId = randomUUID();
+    sourceAbsent = failure === "source-absent";
+    await manager.resumeMemory(scope, resumeId);
+    manager = new SandboxManager(state, provider, transport, objects, options);
+    if (failure === "resume-uncertain") {
+      await assert.rejects(manager.reconcile(owner), /Unknown native effect/);
+      assert.equal((await manager.get(scope))?.phase, "quarantined");
+      assert.equal(
+        (await manager.operation(scope, resumeId))?.phase,
+        "uncertain",
+      );
+      assert.ok(
+        !actions.includes("release") && !actions.includes("purge-source"),
+      );
+      return;
+    }
+    await manager.reconcile(owner);
+    const running = await manager.get(scope);
+    assert.equal(running?.phase, "running");
+    assert.equal(running.generation, stopped.generation + 1);
+    if (failure === "memory-unavailable" || failure === "source-absent") {
+      await manager.reconcile(owner);
+      const outcome = await manager.operation(scope, resumeId);
+      assert.equal(outcome?.phase, "succeeded");
+      assert.equal(
+        (outcome.result as Record<string, Json>).memoryPreserved,
+        false,
+      );
+      assert.equal(resumeEffects, 0);
+      assert.equal(importReceipt.offset, archive.length);
+      assert.notEqual(running.lease?.assignmentId, stopped.lease.assignmentId);
+      if (failure === "source-absent")
+        assert.equal(running.lease?.machineId, "replacement");
+      return;
+    }
+    assert.equal(running.lease?.generation, stopped.lease.generation + 1);
+    assert.equal(running.lease?.assignmentId, stopped.lease.assignmentId);
+    assert.equal(resumeEffects, 1);
+    assert.equal(
+      (await manager.operation(scope, resumeId))?.phase,
+      "succeeded",
+    );
+    const completedActions = actions.length;
+    await manager.resumeMemory(scope, resumeId);
+    await manager.reconcile(owner);
+    assert.equal(actions.length, completedActions);
   });

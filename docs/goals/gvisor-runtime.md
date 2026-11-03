@@ -74,23 +74,27 @@ bind physical inode/link identity, original native checksums, exact archive byte
 and verified publication. Successful RAM resume retires only the derived old tar
 so subsequent changed saves can reuse the assignment safely.
 
-Managed SDK/server suspend uses the durable filesystem transfer/verification
-pipeline, retains its exclusive source, persists memory receipts and re-observes
-lost seal ACKs. Managed resume/fallback and pool generation coordination remain
-unfinished. Unit/composition results do not establish native qualification.
+Managed SDK/server suspend and resume use durable filesystem transfer/verification,
+exclusive physical successor reservation, separately fenced core generations and
+retained-root holds. Known pre-effect failures explicitly fall back to filesystem
+placement; uncertain native effects retain/quarantine source. Pool release and
+fallback transition commit together. SDK/HTTP/CLI and standalone Boat policy expose
+the optional path; per-sandbox runtime capability discovery is implemented.
 
-Local build/typecheck/lint, Ruff and targeted tests pass. The native-selection CI
-`70d04a7` passed seven jobs; Rust probe parity failed because its response lacked
-the new runtime-kind field. The corresponding Rust field is now fixed in source.
-The older unrelated Chrome timeout remains preserved rather than re-run.
-No hosts, native runtime execution or paid effects have occurred for this goal.
+Local build/typecheck/lint and Ruff pass; 297 TypeScript and 180 Python tests pass,
+including lost seal/resume ACK, restart, uncertain-source retention, known memory
+failure and absent-source fallback. These are composition checks, not native proof.
+CI `85a5d52` passed all eight existing jobs. The new native job first found a real
+bootstrap bug under permissive umask: a newly created trusted parent inherited777.
+Explicit creation fixes it. Native bootstrap now passes but launch fails with
+`gvisor_effect_unconfirmed`; bounded synthetic-fixture diagnostics are being added.
+No Boat allocations, controller, native desktop execution or wallet spend.
 
 ## Next actions
 
-1. Complete managed resume/fallback with exclusive pool successor reservation,
-   separate core/physical generations, retained root holds and explicit process
-   loss. Finish owned exec/bundle/memory/cgroup cleanup and affected API docs.
-2. Add targeted native CI qualification for the new runtime path, then freeze
+1. Diagnose the actual native launch error on disposable CI; do not weaken
+   namespace, filesystem or resource protections. Qualify the new cleanup path.
+2. Complete targeted native CI qualification for the new runtime path, then freeze
    artifact/workload. Adapt the stale private capability helper to the actual
    concrete environment before using the first approved matrix host.
 3. Complete the single matched comparison, both source-deleted recoveries, owned

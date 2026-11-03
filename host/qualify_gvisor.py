@@ -27,6 +27,17 @@ def main():
     config, account = configuration(), runtime_account()
     image = config["images"][0]
     environment = RootlessEnvironment(account, [image], init_argv=config["workloadInit"])
+    native_run = environment.run
+
+    def diagnostic_run(arguments):
+        result = native_run(arguments)
+        if result["exitCode"]:
+            # This guarded disposable fixture contains no provider credentials
+            # or user workload; preserve bounded native errors for diagnosis.
+            print(json.dumps({"nativeFailure": result}), flush=True)
+        return result
+
+    environment.run = diagnostic_run
     driver, fence = RunscDriver(environment), Fence(CONTROL_ROOT / "native-qualification")
     lease = dict(
         owner="qualification",
@@ -142,7 +153,8 @@ def main():
         sync_dir(durable.parent)
         assert digest(durable) == receipt["sha256"]
         payload["publication"] = dict(checkpointId=checkpoint, sha256=receipt["sha256"])
-        handle("memory-seal", payload, fence, backend, ARCHIVE_ROOT, DATA_ROOT)
+        sealed = handle("memory-seal", payload, fence, backend, ARCHIVE_ROOT, DATA_ROOT)
+        payload["memorySha256"] = sealed["sha256"]
         successor = {**lease, "generation": 2}
         resumed = handle(
             "memory-resume",

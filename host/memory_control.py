@@ -16,7 +16,9 @@ from fence import identity
 from gvisor_lifecycle import MemoryLifecycle, checkpoint_id
 from memory_filesystem import frozen_identity
 
-MEMORY_ACTIONS = frozenset(("memory-freeze", "memory-seal", "memory-resume", "memory-status"))
+MEMORY_ACTIONS = frozenset(
+    ("memory-freeze", "memory-seal", "memory-resume", "memory-status", "memory-discard")
+)
 
 
 def publication_checked(payload, identifier):
@@ -46,7 +48,7 @@ def handle(action, payload, fence, backend, archives, data):
         state = fence.read()
         # Resume ACK replay must reach MemoryLifecycle under the original lease,
         # even after the successful successor became authoritative.
-        if action != "memory-resume":
+        if action not in ("memory-resume", "memory-status", "memory-discard"):
             fence.match(state, lease)
         if not state or state.get("runtime", {}).get("image") != payload.get("image"):
             raise ValueError("memory_image_conflict")
@@ -66,8 +68,91 @@ def handle(action, payload, fence, backend, archives, data):
         memory = state.get("memory")
         if not memory or memory["id"] != identifier:
             return dict(checkpointId=identifier, phase="unavailable")
-        return dict(checkpointId=identifier, phase=memory["phase"])
+        if state["lease"] != lease and (
+            memory.get("manifest", {}).get("binding", {}).get("lease") != lease
+            or memory.get("successor") != state["lease"]
+        ):
+            raise ValueError("stale_lease")
+        result = dict(checkpointId=identifier, phase=memory["phase"])
+        result["canDiscard"] = (
+            memory["phase"] in ("sealed", "discarding")
+            and state["phase"] == "closed"
+            and state["lease"] == lease
+        )
+        if memory["phase"] == "resumed":
+            if driver.running(state["lease"]) is not True:
+                raise ValueError("memory_restore_unconfirmed")
+            result.update(
+                lease=state["lease"],
+                memoryPreserved=True,
+                filesystemSha256=memory["manifest"]["binding"]["filesystemSha256"],
+                sha256=memory["manifest"]["sha256"],
+            )
+        return result
     publication = publication_checked(payload, identifier)
+    if action == "memory-discard":
+        successor = copy.deepcopy(identity(payload.get("nextLease")))
+        if (
+            any(lease[key] != successor[key] for key in lease if key != "generation")
+            or successor["generation"] != lease["generation"] + 1
+        ):
+            raise ValueError("invalid_memory_successor")
+        with fence.locked():
+            state = fence.read()
+            memory = state.get("memory")
+            if not memory or memory["id"] != identifier:
+                raise ValueError("memory_operation_conflict")
+            if memory["phase"] == "resumed":
+                if state["lease"] != successor or driver.running(successor) is not True:
+                    raise ValueError("memory_restore_unconfirmed")
+                return dict(
+                    phase="resumed",
+                    checkpointId=identifier,
+                    lease=successor,
+                    memoryPreserved=True,
+                    filesystemSha256=memory["manifest"]["binding"]["filesystemSha256"],
+                    sha256=memory["manifest"]["sha256"],
+                )
+            if memory["phase"] == "discarded":
+                fence.match(state, successor)
+                if not driver.absent(lease) or not driver.absent(successor):
+                    raise ValueError("memory_cleanup_unconfirmed")
+                return dict(phase="discarded", checkpointId=identifier, lease=successor)
+            fence.match(state, lease)
+            if (
+                state["phase"] != "closed"
+                or memory["phase"] not in ("sealed", "discarding")
+                or state.get("checkpoint", {}).get("sha256") != publication["sha256"]
+            ):
+                raise ValueError("memory_discard_requires_known_stopped_source")
+            if memory["phase"] == "sealed" and (
+                driver.stopped(lease) is not True or not driver.absent(successor)
+            ):
+                raise ValueError("memory_cleanup_unconfirmed")
+            # Persist rejection of delayed original resume requests BEFORE any
+            # cleanup. Only a known pre-effect failure may use cold fallback.
+            memory = {**memory, "phase": "discarding", "successor": successor}
+            state = {**state, "memory": memory}
+            fence.write(state)
+            driver.remove(lease)
+            driver.remove(successor)
+            if not driver.absent(lease) or not driver.absent(successor):
+                raise ValueError("memory_cleanup_unconfirmed")
+            memory = {**memory, "phase": "discarded"}
+            fence.write(
+                {
+                    **state,
+                    "lease": successor,
+                    "phase": "closed",
+                    "memory": memory,
+                    "runtime": {
+                        **state["runtime"],
+                        "name": driver.container(successor),
+                        "phase": "removed",
+                    },
+                }
+            )
+            return dict(phase="discarded", checkpointId=identifier, lease=successor)
     with fence.locked():
         state = fence.read()
         memory = state.get("memory")
@@ -93,6 +178,10 @@ def handle(action, payload, fence, backend, archives, data):
                 filesystemIdentitySha256=memory["filesystemIdentitySha256"],
                 **memory["compatibility"],
             )
+        if action == "memory-resume" and payload.get("memorySha256") != memory.get(
+            "manifest", {}
+        ).get("sha256"):
+            raise ValueError("memory_image_identity_conflict")
         # A resumed binding remains bound to its original physical generation.
         if memory.get("manifest") and memory["manifest"]["binding"] != binding:
             raise ValueError("memory_binding_mismatch")
@@ -159,5 +248,6 @@ def handle(action, payload, fence, backend, archives, data):
         phase=resumed["phase"],
         lease=successor,
         memoryPreserved=True,
+        sha256=resumed["manifest"]["sha256"],
         filesystemSha256=binding["filesystemSha256"],
     )

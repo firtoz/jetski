@@ -1,8 +1,8 @@
 # Optional gVisor runtime
 
 This is active implementation work. The optional Python host path can be selected
-for qualification, but native operation and managed memory resume are not yet
-qualified. Podman remains the supported default. The [goal](goals/gvisor-runtime.md) tracks
+for qualification, but native operation is not yet qualified. Managed memory resume and explicit
+filesystem fallback are implemented with targeted restart/ACK-loss tests. Podman remains the supported default. The [goal](goals/gvisor-runtime.md) tracks
 the finite integration, benchmark and recovery gates.
 
 ## Composition
@@ -75,3 +75,30 @@ isolation and journal transitions using local processes or driver doubles. They
 do not prove native gVisor operation or hosted performance. Managed memory resume/fallback
 integration, real process-memory continuity, native interactive qualification,
 matched timings and source-deleted R2 recovery remain separate gates.
+
+## Operator and client usage
+
+Select `runtime: GVISOR_RUNTIME` in the Boat bootstrap options, or the equivalent
+pinned runtime policy in standalone `hostProvider` configuration. `workloadInit`
+is an optional approved-image argv for the application init, identical on either
+runtime. Unsupported egress and Rust-host combinations fail before installation.
+The standalone service uses the same adapters and fencing as embedded clients.
+
+Observe `sdk.runtimeCapabilities(sandboxId)` on an assigned sandbox. Memory
+suspension requires `memorySuspendVersion: 1`. Call `sdk.suspend(sandboxId, id)`
+and observe the stable operation until it completes. This publishes and verifies
+the declared filesystem checkpoint, seals local memory, stops execution and retains
+the exclusive source. It does not release that host into the idle pool.
+
+Call `sdk.resumeMemory(sandboxId, id)` to resume. Successful operations explicitly
+report `memoryPreserved`. A known unusable memory image or positively absent host
+uses a retained, verified filesystem checkpoint and reports `memoryPreserved: false`
+and a fallback reason after the replacement actually runs. Uncertain native effects
+remain quarantined for reconciliation. Reconnect using the same operation ID;
+never submit a second command to resolve an uncertain first command.
+
+HTTP equivalents are `POST .../suspend`, `POST .../resume-memory` with an
+`operationId`, and `GET .../capabilities`, under `/v1/sandboxes/{sandboxId}`.
+The CLI exposes `suspend` and `resume-memory` with `--operation`. Ordinary `resume`
+keeps its filesystem semantics. Memory artifacts are local and optional; durable
+recovery depends on the configured checkpoint store, with R2 qualification pending.
