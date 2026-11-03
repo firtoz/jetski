@@ -110,6 +110,22 @@ test("cached resume retains a reader and rejects ambiguous or stale readiness", 
       },
     );
   assert.equal(await invoke(ready), true);
+  const portable = {
+    ...ready,
+    runtime: { ...ready.runtime, name: "opaque-runtime-id", lease },
+  };
+  assert.equal(await invoke(portable), true);
+  await assert.rejects(
+    invoke({
+      ...portable,
+      runtime: {
+        ...portable.runtime,
+        lease: { ...lease, generation: lease.generation + 1 },
+      },
+    }),
+    /runtime identity/,
+  );
+
   assert.equal(await invoke({ ...ready, ready: false, runtime: null }), false);
   for (const invalid of [
     { ...ready, sha256: "b".repeat(64) },

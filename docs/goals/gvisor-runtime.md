@@ -81,24 +81,28 @@ placement; uncertain native effects retain/quarantine source. Pool release and
 fallback transition commit together. SDK/HTTP/CLI and standalone Boat policy expose
 the optional path; per-sandbox runtime capability discovery is implemented.
 
-Local build/typecheck/lint and Ruff pass; 297 TypeScript and 180 Python tests pass,
+Local build/typecheck/lint and Ruff pass; 297 TypeScript and 187 Python tests pass,
 including lost seal/resume ACK, restart, uncertain-source retention, known memory
 failure and absent-source fallback. These are composition checks, not native proof.
 CI `85a5d52` passed all eight existing jobs. The new disposable native job caught
 and drove concrete bootstrap/namespace/cgroup fixes. Direct native namespaces now
 use the prepared exact subordinate maps; a scoped launcher AppArmor profile is
 loaded on restricted hosts without changing sysctls. Actual native binary I/O,
-PTY and Sentry cgroup/limits pass. TCP relay exits before complete framing; bounded
-relay diagnostics are in the next native run. Stop now observes asynchronous
-termination before reporting success. Memory/restore has not yet run natively.
+PTY and Sentry cgroup/limits pass. Native TCP forwarding and real memory save/restore now pass the stateful RAM
+marker/counter and exact filesystem assertions. The final quiesce bookkeeping fix passes the full disposable native fixture,
+including source-tree deletion, exact local cold restore and owned cleanup
+(CI `cc80695`, native job126244381282). This is local-store native evidence, not
+R2 or a replacement physical host. Stop observes asynchronous termination before reporting success.
+The portable cache receipt now binds the full host lease instead of a runtime
+container-name convention; existing immutable Podman receipts retain their contract.
 No Boat allocations, controller, native desktop execution or wallet spend.
 
 ## Next actions
 
-1. Diagnose the actual native launch error on disposable CI; do not weaken
-   namespace, filesystem or resource protections. Qualify the new cleanup path.
-2. Complete targeted native CI qualification for the new runtime path, then freeze
-   artifact/workload. Adapt the stale private capability helper to the actual
-   concrete environment before using the first approved matrix host.
+1. Publish the portable cache lease receipt fix and check exact-SHA CI. Freeze
+   the artifact/workload; preserve the completed native evidence.
+2. Implement the private finite controller from persisted `benchmark/plan.json`,
+   then inspect inventory/limits/queued state before the first approved matrix
+   host. That host doubles as the Boat capability preflight; no extra VM.
 3. Complete the single matched comparison, both source-deleted recoveries, owned
    cleanup, honest report and final exact-SHA publication. No repeated baseline matrix.

@@ -211,6 +211,7 @@ class GvisorRuntime:
                     self.fence.write({**state, "phase": "quarantined"})
                 raise ValueError("runtime_state_uncertain")
             runtime = dict(
+                lease=lease,
                 name=self.container(lease),
                 phase="creating",
                 image=self.image,

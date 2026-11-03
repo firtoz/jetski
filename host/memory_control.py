@@ -148,6 +148,7 @@ def handle(action, payload, fence, backend, archives, data):
                     "runtime": {
                         **state["runtime"],
                         "name": driver.container(successor),
+                        "lease": successor,
                         "phase": "removed",
                     },
                 }

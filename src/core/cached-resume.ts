@@ -63,7 +63,6 @@ export async function resumeCachedCheckpoint(
       Array.isArray(runtime) ||
       runtime.phase !== "running" ||
       runtime.image !== image ||
-      runtime.name !== "jetski-" + lease.assignmentId ||
       !runtime.configuration ||
       typeof runtime.configuration !== "object" ||
       Array.isArray(runtime.configuration) ||
@@ -72,6 +71,13 @@ export async function resumeCachedCheckpoint(
       runtime.configuration.cpus !== resources.cpus
     )
       throw Error("Invalid cached resume runtime");
+    // New runtimes attest the complete lease; names remain opaque. Existing
+    // immutable Podman hosts use their original deterministic-name contract.
+    const exactLease =
+      runtime.lease === undefined
+        ? runtime.name === "jetski-" + lease.assignmentId
+        : canonical(runtime.lease) === canonical(lease);
+    if (!exactLease) throw Error("Invalid cached resume runtime identity");
     return true;
   } finally {
     await registry.close(fence, reader);

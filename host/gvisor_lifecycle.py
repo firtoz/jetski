@@ -278,6 +278,7 @@ class MemoryLifecycle:
                         "runtime": {
                             **state["runtime"],
                             "name": self.driver.container(successor),
+                            "lease": successor,
                             "phase": "running",
                         },
                     }
