@@ -9,7 +9,9 @@ Host providers: Boat allocation and explicitly adopted SSH Linux hosts. Initial
 platform Linux x86-64. Runtime: rootless Podman; one active assignment per host,
 no cross-owner reuse. Default zero warm minimum, demand creation, ten-minute idle
 retention, one host per owner with excess queued; configurable owner capacity.
-Boat lifetime bounded to one hour. SSH hosts are operator-owned and never powered
+Boat lifetime defaults to one hour. Opt-in lifecycle policy supports bounded longer
+leases and adaptive idle decisions; see the [active qualification](goals/adaptive-host-lifecycle.md).
+SSH hosts are operator-owned and never powered
 off or deleted. Bootstrap validates namespaces, cgroups, subordinate IDs,
 filesystem and runtime versions. Images require operator-approved OCI digests.
 Example image is generic Linux. EC2, Daytona, Cloudflare Containers, concurrent

@@ -45,6 +45,7 @@ if (command === "serve") {
     automaticCollection?: boolean;
     port?: number;
     hostsPerOwner?: number;
+    hostLifecycle?: import("./core/host-lifecycle.js").HostLifecycle;
     checkpointPackBytes?: number;
     checkpointFrameBytes?: number;
     commandStartWaitMs?: number;
@@ -102,6 +103,9 @@ if (command === "serve") {
         ? { workloadResources: config.workloadResources }
         : {}),
       hostsPerOwner: config.hostsPerOwner ?? 1,
+      ...(config.hostLifecycle === undefined
+        ? {}
+        : { hostLifecycle: config.hostLifecycle }),
       ...(config.inlineCommandOutputBytes !== undefined
         ? { inlineCommandOutputBytes: config.inlineCommandOutputBytes }
         : {}),

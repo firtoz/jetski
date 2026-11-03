@@ -6,6 +6,15 @@ import {
   type StateStore,
   type Transaction,
 } from "./contracts.js";
+import {
+  decideIdleRetention,
+  HOST_LIFECYCLE_LIMITS,
+  type HostLifecycle,
+  hostLifecycle,
+  type IdleDecision,
+  type IdlePriceQuote,
+  idlePriceQuote,
+} from "./host-lifecycle.js";
 
 export type HostLease = {
   owner: string;
@@ -33,6 +42,9 @@ export type PoolSlot = {
   lease: HostLease | null;
   expiresAt: number;
   idleSince: number | null;
+  /** Existing published slots without these fields retain the fixed v1 policy. */
+  lifecycle?: HostLifecycle;
+  idleDecision?: IdleDecision;
 };
 type Ticket = {
   id: string;
@@ -59,16 +71,84 @@ export class InsufficientHostLifetimeError extends Error {
  * Lifecycle coordination must verify checkpoint publication and host cleanup
  * before calling release; this module does not itself perform either effect. */
 export class PoolJournal {
+  private readonly lifecycle: HostLifecycle;
   constructor(
     private readonly state: StateStore,
     readonly poolId: string,
     private readonly now = Date.now,
     private readonly newId = () => crypto.randomUUID(),
     private readonly capacity: number = DEFAULTS.hostsPerOwner,
+    lifecycle?: HostLifecycle,
   ) {
     identifier(poolId);
     if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 64)
       throw new Error("Invalid owner capacity");
+    this.lifecycle = hostLifecycle(lifecycle);
+  }
+  drainAt(slot: PoolSlot): number {
+    return slot.expiresAt - hostLifecycle(slot.lifecycle).drainMs;
+  }
+  idleRetireAt(slot: PoolSlot): number {
+    if (slot.idleSince === null) return this.drainAt(slot);
+    const decision =
+      slot.idleDecision ??
+      decideIdleRetention({
+        policy: hostLifecycle(slot.lifecycle),
+        idleSince: slot.idleSince,
+        expiresAt: slot.expiresAt,
+        returnGapsMs: [],
+      });
+    return Math.min(this.drainAt(slot), decision.retireAt);
+  }
+  /** Trusted embedding supplies account pricing outside its state transactions.
+   * Updating a quote does not silently extend an existing idle decision. */
+  async setIdlePriceQuote(owner: string, input: IdlePriceQuote): Promise<void> {
+    identifier(owner);
+    const quote = idlePriceQuote(input);
+    await this.state.transaction((tx) => {
+      const key = `${this.prefix()}price/${owner}`;
+      const prior = tx.get<IdlePriceQuote>(key);
+      if (prior && prior.observedAt > quote.observedAt)
+        throw Error("Stale idle price quote");
+      if (
+        prior &&
+        prior.observedAt === quote.observedAt &&
+        canonical(prior) !== canonical(quote)
+      )
+        throw Error("Idle price quote identity conflict");
+      tx.put(key, quote);
+    });
+  }
+  private idleIn(tx: Transaction, slot: PoolSlot, at: number): IdleDecision {
+    const history = tx.get<{ lastReleaseAt: number | null; gaps: number[] }>(
+      `${this.prefix()}returns/${slot.owner}`,
+    );
+    return decideIdleRetention({
+      policy: hostLifecycle(slot.lifecycle),
+      idleSince: at,
+      expiresAt: slot.expiresAt,
+      returnGapsMs: history?.gaps ?? [],
+      quote: tx.get<IdlePriceQuote>(`${this.prefix()}price/${slot.owner}`),
+    });
+  }
+  async nextMaintenanceAt(owner: string): Promise<number | null> {
+    return this.state.transaction((tx) => {
+      const waiting = tx
+        .scan<Ticket>(`${this.prefix()}ticket/${identifier(owner)}/`)
+        .some((row) => row.value.phase === "queued");
+      const deadlines = this.slots(tx, owner)
+        .filter((slot) => slot.phase !== "retired")
+        .map((slot) => {
+          if (slot.phase === "idle" && !waiting) return this.idleRetireAt(slot);
+          return this.drainAt(slot);
+        });
+      return deadlines.length
+        ? Math.max(
+            this.now() + HOST_LIFECYCLE_LIMITS.maintenanceRetryMs,
+            Math.min(...deadlines),
+          )
+        : null;
+    });
   }
   private prefix() {
     return `pool/${this.poolId}/`;
@@ -114,7 +194,7 @@ export class PoolJournal {
     if (slot.phase !== "active") throw new Error("Host assignment not active");
     if (
       slot.expiresAt <=
-      this.now() + timeoutSeconds * 1000 + DEFAULTS.hostDrainMs
+      this.now() + timeoutSeconds * 1000 + hostLifecycle(slot.lifecycle).drainMs
     )
       throw new InsufficientHostLifetimeError();
   }
@@ -170,6 +250,22 @@ export class PoolJournal {
       sequence,
     };
     tx.put(key, ticket);
+    const historyKey = `${this.prefix()}returns/${owner}`;
+    const history = tx.get<{ lastReleaseAt: number | null; gaps: number[] }>(
+      historyKey,
+    );
+    if (
+      history?.lastReleaseAt !== null &&
+      history?.lastReleaseAt !== undefined
+    ) {
+      const gap = Math.max(0, this.now() - history.lastReleaseAt);
+      tx.put(historyKey, {
+        lastReleaseAt: null,
+        gaps: [...history.gaps, gap].slice(
+          -HOST_LIFECYCLE_LIMITS.historySamples,
+        ),
+      });
+    }
     return ticket;
   }
   async reserve(owner: string): Promise<PoolSlot | undefined> {
@@ -187,9 +283,7 @@ export class PoolJournal {
       if (pending) return pending;
       if (
         slots.some(
-          (slot) =>
-            slot.phase === "idle" &&
-            slot.expiresAt > this.now() + DEFAULTS.hostDrainMs,
+          (slot) => slot.phase === "idle" && this.drainAt(slot) > this.now(),
         ) ||
         slots.length >= this.capacity
       )
@@ -202,8 +296,9 @@ export class PoolJournal {
         machineId: null,
         phase: "allocating",
         lease: null,
-        expiresAt: this.now() + DEFAULTS.hostLifetimeMs,
+        expiresAt: this.now() + this.lifecycle.lifetimeMs,
         idleSince: null,
+        lifecycle: hostLifecycle(this.lifecycle),
       };
       tx.put(this.slotKey(slot.id), slot);
       return slot;
@@ -285,6 +380,7 @@ export class PoolJournal {
         phase: "idle",
         idleSince: this.now(),
       };
+      next.idleDecision = this.idleIn(tx, next, next.idleSince!);
       tx.put(key, machine);
       tx.put(this.slotKey(id), next);
       return next;
@@ -306,7 +402,7 @@ export class PoolJournal {
         (slot) =>
           slot.phase === "idle" &&
           (readySlots === undefined || readySlots.has(slot.id)) &&
-          slot.expiresAt > this.now() + DEFAULTS.hostDrainMs,
+          this.drainAt(slot) > this.now(),
       );
       if (!ticket || !slot || !slot.machineId) return undefined;
       const machine = tx.get<Machine>(this.machineKey(slot.machineId));
@@ -392,11 +488,18 @@ export class PoolJournal {
         phase: "finished",
       });
       tx.put(receiptKey, lease);
+      const at = this.now();
+      const historyKey = `${this.prefix()}returns/${lease.owner}`;
+      const history = tx.get<{ lastReleaseAt: number | null; gaps: number[] }>(
+        historyKey,
+      );
+      tx.put(historyKey, { lastReleaseAt: at, gaps: history?.gaps ?? [] });
       tx.put(this.slotKey(slot.id), {
         ...slot,
         phase: "idle",
         lease: null,
-        idleSince: this.now(),
+        idleSince: at,
+        idleDecision: this.idleIn(tx, slot, at),
       });
     });
   }
@@ -457,12 +560,15 @@ export class PoolJournal {
       const slot = tx.get<PoolSlot>(this.slotKey(id));
       if (!slot || slot.phase !== "idle" || slot.lease || !slot.machineId)
         throw new Error("Host not idle");
-      if (
-        slot.expiresAt > this.now() + DEFAULTS.hostDrainMs &&
-        (slot.idleSince === null ||
-          slot.idleSince + DEFAULTS.idleMs > this.now())
-      )
+      if (this.idleRetireAt(slot) > this.now())
         throw new Error("Idle retention not elapsed");
+      if (
+        this.drainAt(slot) > this.now() &&
+        tx
+          .scan<Ticket>(`${this.prefix()}ticket/${slot.owner}/`)
+          .some((row) => row.value.phase === "queued")
+      )
+        return slot;
       // Keep the machine binding until provider retirement is observed.
       const next: PoolSlot = { ...slot, phase: "quarantined" };
       tx.put(this.slotKey(id), next);

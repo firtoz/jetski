@@ -95,15 +95,16 @@ The already-running hosted comparison may finish and must clean its owned hosts.
 
 ## Next steps
 
-The original v1 baseline acceptance matrix and actual-grace check are complete.
-The separately authorized [checkpoint performance goal](goals/checkpoint-performance.md)
-remains active. Current main includes those follow-on changes; baseline evidence
-does not automatically qualify every new path or imply performance parity.
+The original v1 baseline and the [checkpoint performance goal](goals/checkpoint-performance.md)
+are qualified. Qualification34 completes the matched warm comparison, large cold
+recovery and pinned staging save/warm/source-deleted replacement with owned cleanup.
+Reuse that evidence for unchanged paths instead of repeating the completed matrices.
 
-Complete that goal's frozen matched comparison, large cold/replacement recovery,
-pinned downstream workflow and owned cleanup. Preserve its full objective and
-report unmet targets. The old timed follow-up has been removed; do not repeat its
-completed fixture or mark the performance goal complete from this result.
+The active [adaptive host lifecycle goal](goals/adaptive-host-lifecycle.md) adds
+opt-in longer leases and cost-aware idle retention, measures the actual resource
+savings and qualifies the pinned staging integration. Its finite checklist and
+separate spending allowance govern that work. Preserve existing checkpoint and
+real-grace fixtures.
 
 ## Keeping this plan useful
 

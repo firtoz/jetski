@@ -9,10 +9,13 @@ Allocation persists a random provider idempotency key and the complete request
 before network dispatch. A replay uses the same body, including the originally
 chosen machine type and TTL. Configuration changes do not change an admitted
 request. The supported machine types are `small`, `default`, and `large`, with
-`small` as the default. Lifetime is bounded to one hour. Snapshots and provider
+`small` as the default. Pool policy defaults to one hour and permits opt-in leases
+up to24 hours. The eight-hour policy is undergoing separate live qualification.
+Snapshots and provider
 monitoring are disabled, and no provider environment is inherited.
 
-Creation retries stop when the requested lifetime expires. An expired unknown
+Creation retries stop at the requested expiry or23 hours after admission,
+whichever is earlier. The retry horizon is independent of a longer physical lease. An expired unknown
 allocation needs operator reconciliation; starting another operation is not a safe
 substitute. The provider documents a 24-hour idempotency retention window, so the
 adapter never intentionally retries beyond that window. A known completed

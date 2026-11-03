@@ -756,3 +756,23 @@ checkpoint publication or permits replay of uncertain commands.
 
 Native bucket bindings in embedded deployments can use the optional
 [native R2 adapter](storage-r2.md), including its qualified checksum-reuse policy.
+
+### Opt-in host lifecycle policy
+
+The `serve` configuration accepts `hostLifecycle` with `lifetimeMs`, `drainMs` and
+`idle`. Without it, the original one-hour lifetime and ten-minute fixed idle window
+remain. An eight-hour lease is `lifetimeMs: 28800000` with `drainMs: 300000`.
+Providers must advertise an adequate `maxLifetimeMs`; adopted hosts are released,
+never powered off or deleted. Existing slots keep their original policy/deadline.
+
+For a fixed idle policy use `{ "mode": "fixed", "timeoutMs": 600000 }`. Adaptive
+configuration is `{ "mode": "adaptive", "minMs": 120000, "maxMs": 3600000,
+"fallbackMs": 600000, "maxIdleSpendMicros": 18000 }`. Currency is integer millionths
+of a dollar. Trusted embeddings supply fresh effective prices through
+`manager.setIdlePriceQuote(owner, quote)` outside state transactions. Ordinary
+workload API callers cannot set prices. The standalone service currently uses the
+bounded fallback unless its operator embedding supplies those quotes. Stale pricing
+never extends an existing idle decision. Warm minimum capacity remains zero.
+
+These opt-in lifecycle paths are undergoing the separate hosted qualification;
+existing checkpoint/transport qualification does not establish their live savings.

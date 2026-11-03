@@ -146,6 +146,8 @@ export type HostCapabilities = {
   kind: "machine-host";
   architecture: "x86_64";
   rootlessPodman: boolean;
+  /** Absence retains the original one-hour allocation contract. */
+  maxLifetimeMs?: number;
 };
 export interface HostProvider {
   capabilities(): HostCapabilities;

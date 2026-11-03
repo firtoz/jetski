@@ -28,6 +28,11 @@ import {
   type Transaction,
 } from "./contracts.js";
 import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
+import {
+  type HostLifecycle,
+  hostLifecycle,
+  type IdlePriceQuote,
+} from "./host-lifecycle.js";
 import type { HostStreamTransport } from "./host-stream.js";
 import { CheckpointMaintenance } from "./maintenance.js";
 import { observeLifecycle } from "./observability.js";
@@ -129,6 +134,8 @@ export type ManagerOptions = {
   /** Store tiny complete output channels in durable transactional metadata. Opt-in. */
   inlineCommandOutputBytes?: number;
   hostsPerOwner?: number;
+  /** New host allocations snapshot this policy; existing slots keep theirs. */
+  hostLifecycle?: HostLifecycle;
   now?: () => number;
   events?: EventSink;
 };
@@ -196,12 +203,22 @@ export class SandboxManager {
     if (options.events)
       state = observeLifecycle(state, options.events, this.now);
     this.state = state;
+    const lifecycle = hostLifecycle(options.hostLifecycle);
+    const maximum =
+      provider.capabilities().maxLifetimeMs ?? DEFAULTS.hostLifetimeMs;
+    if (
+      !Number.isSafeInteger(maximum) ||
+      maximum < 1 ||
+      lifecycle.lifetimeMs > maximum
+    )
+      throw Error("Host lifetime exceeds provider capability");
     this.pool = new PoolJournal(
       state,
       options.poolId,
       this.now,
       () => crypto.randomUUID(),
       options.hostsPerOwner ?? 1,
+      lifecycle,
     );
     this.operations = new OperationJournal(state, this.now);
     this.maintenance = options.automaticCollection
@@ -566,8 +583,8 @@ export class SandboxManager {
   }
   /** Called by a server worker or an embedded platform scheduler, never a browser. */
   async maintain(owner: string): Promise<number | null> {
-    if (!this.maintenance) return null;
-    let nextAt: number | null = null;
+    let nextAt = await this.pool.nextMaintenanceAt(owner);
+    if (!this.maintenance) return nextAt;
     for (const sandbox of await this.list(owner)) {
       if (
         sandbox.lease ||
@@ -584,6 +601,10 @@ export class SandboxManager {
       }
     }
     return nextAt;
+  }
+  /** Operator-only composition surface, not a workload HTTP/SDK operation. */
+  async setIdlePriceQuote(owner: string, quote: IdlePriceQuote): Promise<void> {
+    await this.pool.setIdlePriceQuote(owner, quote);
   }
   async maintenanceStatus(scope: Scope) {
     return this.maintenance?.status(scope);
@@ -709,8 +730,7 @@ export class SandboxManager {
   }
   private async drainExpiringHosts(owner: string): Promise<void> {
     for (const slot of await this.pool.inspect(owner)) {
-      if (!slot.lease || slot.expiresAt > this.now() + DEFAULTS.hostDrainMs)
-        continue;
+      if (!slot.lease || this.pool.drainAt(slot) > this.now()) continue;
       const lease = slot.lease,
         scope = { owner, sandbox: lease.sandboxId };
       await this.state.transaction((tx) => {
@@ -742,12 +762,7 @@ export class SandboxManager {
   private async retireIdleHosts(owner: string): Promise<void> {
     for (let slot of await this.pool.inspect(owner)) {
       if (slot.lease || !slot.machineId) continue;
-      if (
-        slot.phase === "idle" &&
-        (slot.expiresAt <= this.now() + DEFAULTS.hostDrainMs ||
-          (slot.idleSince !== null &&
-            slot.idleSince + DEFAULTS.idleMs <= this.now()))
-      )
+      if (slot.phase === "idle" && this.pool.idleRetireAt(slot) <= this.now())
         slot = await this.pool.retireIdle(slot.id);
       if (slot.phase !== "quarantined" || !slot.machineId) continue;
       // Allocation identity fences provider retries. SSH releases only its
@@ -813,7 +828,7 @@ export class SandboxManager {
             slot.phase !== "idle" ||
             slot.lease ||
             !slot.machineId ||
-            slot.expiresAt <= this.now() + DEFAULTS.hostDrainMs
+            this.pool.drainAt(slot) <= this.now()
           )
             continue;
           const observed = await this.provider.inspect(slot.machineId);

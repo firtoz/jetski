@@ -161,9 +161,9 @@ test("expired uncertain Boat allocation cannot trigger a new billable request", 
     provider.allocate({
       ...input,
       operationId: "too-long",
-      expiresAt: now + 3_601_000,
+      expiresAt: now + 24 * 60 * 60_000 + 1000,
     }),
-    /one hour/,
+    /supported bound/,
   );
   assert.equal(calls, 1);
 });
@@ -228,4 +228,40 @@ test("Boat redirects are refused without reading or following the destination", 
   );
   assert.equal(calls, 1);
   assert.equal(cancelled, true);
+});
+
+test("a long physical lease never extends uncertain allocation replay past key retention", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  let now = 1_000,
+    calls = 0;
+  const api = new BoatApi("fixture", async () => {
+    calls++;
+    throw Error("uncertain");
+  });
+  const provider = new BoatHostProvider(
+    state,
+    api,
+    {
+      request: async () => {
+        throw Error("unused");
+      },
+    },
+    "small",
+    () => now,
+  );
+  const input = {
+    owner: "owner",
+    operationId: "long-lease",
+    expiresAt: now + 24 * 60 * 60_000,
+  };
+  await assert.rejects(provider.allocate(input), /uncertain/);
+  now += 23 * 60 * 60_000;
+  assert.ok(now < input.expiresAt);
+  await assert.rejects(provider.allocate(input), /Expired uncertain/);
+  assert.equal(
+    calls,
+    1,
+    "provider idempotency expiry cannot create another paid VM",
+  );
 });

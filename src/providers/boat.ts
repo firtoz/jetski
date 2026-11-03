@@ -1,11 +1,11 @@
 import {
   canonical,
-  DEFAULTS,
   type HostProvider,
   identifier,
   type Json,
   type StateStore,
 } from "../core/contracts.js";
+import { HOST_LIFECYCLE_LIMITS } from "../core/host-lifecycle.js";
 import {
   HOST_IMPORT_FILE_BYTES,
   HOST_PROTOCOL_VERSION,
@@ -15,6 +15,9 @@ import { sequentialCheckpointDownload } from "../transport/checkpoint-download.j
 
 export const BOAT_MACHINE_TYPES = ["small", "default", "large"] as const;
 export type BoatMachineType = (typeof BOAT_MACHINE_TYPES)[number];
+// Leave a full hour inside the documented 24-hour provider key retention window,
+// independently of a longer physical lease and bounded in-flight HTTP requests.
+const ALLOCATION_REPLAY_WINDOW_MS = 23 * 60 * 60_000;
 export type BoatAllocation = {
   owner: string;
   operationId: string;
@@ -23,6 +26,7 @@ export type BoatAllocation = {
   body: Json;
   id: string | null;
   retired: boolean;
+  retryUntil?: number;
 };
 type Reply = { status: number; value: Record<string, Json> };
 
@@ -363,6 +367,7 @@ export class BoatHostProvider implements HostProvider {
       kind: "machine-host",
       architecture: "x86_64",
       rootlessPodman: true,
+      maxLifetimeMs: HOST_LIFECYCLE_LIMITS.maxLifetimeMs,
     } as const;
   }
   async allocate(input: {
@@ -384,14 +389,18 @@ export class BoatHostProvider implements HostProvider {
       if (
         !Number.isSafeInteger(input.expiresAt) ||
         ttlSeconds < 1 ||
-        ttlSeconds > DEFAULTS.hostLifetimeMs / 1000
+        ttlSeconds > HOST_LIFECYCLE_LIMITS.maxLifetimeMs / 1000
       )
-        throw Error("Boat allocation lifetime must be within one hour");
+        throw Error("Boat allocation lifetime exceeds the supported bound");
       const row: BoatAllocation = {
         ...input,
         key: crypto.randomUUID(),
         id: null,
         retired: false,
+        retryUntil: Math.min(
+          input.expiresAt,
+          this.now() + ALLOCATION_REPLAY_WINDOW_MS,
+        ),
         body: {
           type: this.machine,
           ttlSeconds,
@@ -408,7 +417,13 @@ export class BoatHostProvider implements HostProvider {
       return { id: allocation.id, allocationId: input.operationId };
     // Never risk allocation after provider idempotency expires or the requested
     // lifetime ends. Reconciliation must preserve the original uncertain record.
-    if (this.now() >= allocation.expiresAt)
+    if (
+      this.now() >=
+      Math.min(
+        allocation.expiresAt,
+        allocation.retryUntil ?? allocation.expiresAt,
+      )
+    )
       throw Error("Expired uncertain Boat allocation requires reconciliation");
     const resource = box(
       await this.api.call("/sandboxes", "POST", allocation.body, {

@@ -3,6 +3,7 @@ import {
   identifier,
   type StateStore,
 } from "../core/contracts.js";
+import { HOST_LIFECYCLE_LIMITS } from "../core/host-lifecycle.js";
 import {
   HOST_PROTOCOL_VERSION,
   type HostTransport,
@@ -27,6 +28,7 @@ export class SshHostProvider implements HostProvider {
       kind: "machine-host",
       architecture: "x86_64",
       rootlessPodman: true,
+      maxLifetimeMs: HOST_LIFECYCLE_LIMITS.maxLifetimeMs,
     } as const;
   }
   async allocate(input: {
