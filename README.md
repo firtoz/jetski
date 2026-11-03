@@ -189,6 +189,9 @@ provider/storage contracts. In a twenty-cycle matched Boat/R2 comparison, median
 whole cycles were 13.45 s Python and 13.62 s Rust; both source-deleted recoveries
 matched exactly. There was no consistent speed win. See the [measurements and
 limits](docs/rust-host-benchmarks.md) and [native setup](host-rust/README.md).
+The [instrumented follow-on](docs/host-stage-benchmarks.md) identifies filesystem
+sync, runtime probes and storage publication costs; experimental buffering/batching
+did not establish a repeatable end-to-end win.
 
 ## Development and further reading
 

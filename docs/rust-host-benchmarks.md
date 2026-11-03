@@ -36,7 +36,7 @@ provider transport, container work and storage, rather than just language execut
 | Whole-cycle range                         |    11.01–26.98 s |    11.66–28.45 s |
 | Initial cold readiness, two hosts         | 64.25 / 209.29 s | 59.23 / 135.33 s |
 | Timed R2 upload payload, ten cycles       |      3,603,028 B |      3,609,328 B |
-| Timed R2 download payload                 |              0 B |              0 B |
+| Timed checkpoint restore payload          |              0 B |              0 B |
 | Timed R2 HTTP requests                    |              320 |              320 |
 | Timed authenticated provider API requests |              148 |              161 |
 | Synchronous control user CPU, aggregate   |           9.37 s |           4.85 s |
@@ -55,7 +55,9 @@ Resource samples cover synchronous host-control processes and waited descendants
 not detached command workers, the persistent container engine or total workload
 CPU/RAM. Sample counts differ (138 Python, 151 Rust), including extra observations;
 the CPU totals are scoped diagnostics rather than normalized whole-VM efficiency.
-R2 figures are payload bytes, not total network traffic. Provider counts exclude
+R2 figures are payload bytes, not total network traffic. The zero restore-read
+row excludes the storage adapter’s internal verification readbacks after uploads;
+it does not mean there was no download traffic during saves. Provider counts exclude
 unauthenticated capability fetches and the separate read-only observer.
 
 ## Durability, interaction and consequential failures

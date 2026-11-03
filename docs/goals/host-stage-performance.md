@@ -19,56 +19,40 @@ receipts/credentials private. Inspect current processes/inventory before allocat
 Existing session authorization to push main applies to coherent implementation
 milestones; monitor exact-SHA CI. No client or default-backend switch is implied.
 
-## Finite gates
+## Completed finite gates
 
-| Gate                  | Required evidence                                                                                                                                                                            | State                         |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| Stage instrumentation | Optional bounded, privacy-safe timing sink; host extraction/runtime/capture/finalize and core storage/publication timings; wall vs CPU and nested spans explicit                             | Implemented; local tests pass |
-| Buffering             | Bounded Rust extraction buffers, exact oracle/corruption/partial-stream checks; same fsync/publication boundary                                                                              | Open                          |
-| Round trips           | Remove only demonstrated redundant requests or safely overlap independent reads; preserve replay/uncertainty/durable ordering                                                                | Open                          |
-| Local qualification   | Targeted changed-path tests; build/typecheck/lint/native checks once per coherent candidate                                                                                                  | Open                          |
-| Matched comparison    | Instrumentation-only baseline vs optimized candidate for Python/Rust; two reversed pairs, five cycles per variant per pair (40 total); same workload/image/resources/R2 and durable boundary | Open                          |
-| Recovery and cleanup  | One source-deleted replacement per optimized backend; exact bytes/modes/links; positive owned absence; reuse unchanged interactive qualification                                             | Open                          |
-| Report                | Stage distributions/overhead/CPU scope/bytes/requests/costs/failures; negative results retained; no speed target or matrix expansion                                                         | Open                          |
+| Gate               | Evidence                                                                                                                | Status                             |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Instrumentation    | Optional monotonic core/storage/host spans, bounded allowlisted stderr, privacy/failure containment                     | Complete                           |
+| Buffering          | Bounded 1 MiB native extraction buffer; partial/truncated reads and exact interoperability checks                       | Complete                           |
+| Round trips        | Opt-in combined quiesce/capture; old-host fallback, lost-ACK reconciliation and publication ordering                    | Complete                           |
+| Local checks       | 288 TS, 142 Python, 60 Rust tests; build/typecheck/lint/clippy; runtime candidate all eight CI jobs pass                | Complete                           |
+| Matched comparison | Forty valid cycles, two reversed four-arm groups; one preserved R2-failed attempt replaced only after exact recovery    | Complete                           |
+| Recovery/cleanup   | Both candidate source-deleted recoveries/original output exact; R2 failure guard exact; all ten owned hosts provider404 | Complete                           |
+| Report/publication | [Consolidated results](../host-stage-benchmarks.md); final documentation SHA/CI recorded privately                      | Publication receipt kept privately |
 
-Implementation first, then freeze instrumented baseline/candidate and run one
-hosted matrix. Instrumentation-only baselines make observer overhead comparable;
-previous unchanged receipts remain contextual evidence, not newly timed controls.
-At most ten planned hosts (eight matrix arms and two candidate replacements), plus
-two failure reserves, each small and at most one hour. No new interactive/model/PR
-matrix. Preserve failed rows/IDs and rerun only an affected failure after a fix.
-If no safe request reduction is found, document that finding rather than weaken
-semantics. Do not repeatedly profile/retest unchanged components or chase wins.
+## Result and constraints retained
 
-## Baseline and recovery context
+Instrumentation-only baseline `7fcba34`, candidate `ee37956`. Both native artifacts
+and source packs are frozen. Experimental changes did not demonstrate a repeatable
+end-to-end win: retain Python default and disabled combined capture. Healthy-host
+restore was dominated by sync/publication rather than extraction; slow candidates
+also had probe/runtime delays. Fresh-host variation and changed ordering were not
+independently isolated; do not attribute every slowdown to one cause.
 
-Workspace `/home/frtn/work/2026/jetski`, main `c44ff7511c12dd8efb0fabdf8b020254d5c9d7ab`,
-clean at goal start. Previous native runtime `6d6b688` passed its finite matrix:
-mean resume Python4.57s/Rust5.77s, mean save7.56s/7.64s. Slow Rust resume/system CPU
-was concentrated on one host; buffering is a hypothesis, not a proven cause.
-Independent breakdown: private `rust-host-20261103/benchmark/breakdown.json`.
-The old observer's `/usage` route was locally rejected: fix diagnostics before
-new measurements; never claim exact provider billing from failed samples.
+The user approved a separate $3, existing wallet only, twelve small one-hour hosts
+maximum (ten planned plus two failure reserves). Ten starts were used; reserves
+unused. Provider compute-value bounds are $0.04326–$0.04346; observed wallet debit
+$0 with included starts/credits. Prior experiment and GC funds/fixtures untouched.
+All ten owned hosts are absent, active inventory empty, controller exited, durable
+history retained. No new host or unchanged verification matrix is authorized here.
 
-Private state for this goal: `/home/frtn/.local/state/jetski-qa/host-stages-20261103/`.
-No controller or host is allocated for this goal yet. User approved separate allowance on November 3:
-up to $3, twelve starts maximum, existing wallet only; worst-case reservation at
-$0.07/start and $0.036/hour is $1.272. Prior funds remain untouched.
-
-## Current implementation
-
-Instrumentation-only source `7fcba34` is pushed and building its separate native
-artifact in CI. Private original snapshot is preserved; only Python formatting and
-bootstrap module registration were corrected before its source commit. Candidate
-adds bounded native extraction buffering and opt-in combined quiesce/capture.
-See [instrumentation and optimization semantics](../stage-timings.md). No paid
-hosts have started. A local installed-bundle test caught the omitted timing-module
-registration; it is fixed in both variants before hosted qualification.
-
-## Next actions
-
-1. Implement optional monotonic stage timing without changing lifecycle outcomes;
-   distinguish nested host stages and storage/request spans from total wall time.
-2. Implement bounded extraction buffering and inspect concrete serial requests.
-3. Complete affected checks, freeze identical instrumented controls/candidates,
-   execute the finite paid matrix only after funding approval, then report/clean.
+Private recovery context: `/home/frtn/.local/state/jetski-qa/host-stages-20261103/`.
+`current.json`, `budget.json`, `benchmark/plan.json`, `completed.json`, `report.json`,
+`cost-report.json` and `final-audit.json` contain evidence. The original driver,
+failed trial and R2 HTTP502 boundary are retained. Do not restart controllers or
+replay acknowledged commands. Candidate CI is green; baseline's unchanged Chrome
+startup fixture timed out twice and is explicitly reported, not repeatedly retried.
+The final documentation commit and its GitHub checks are the publication receipt;
+the existing goal closes when those checks pass. No default/client cutover or
+additional experiments are included.
