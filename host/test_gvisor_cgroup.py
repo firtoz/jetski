@@ -1,6 +1,5 @@
 """Launcher policy checks; no host cgroups are created or joined here."""
 
-import os
 import types
 import unittest
 from unittest.mock import patch

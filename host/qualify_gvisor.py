@@ -2,6 +2,7 @@
 
 import json
 import os
+import pathlib
 import secrets
 import shutil
 import struct
@@ -199,6 +200,24 @@ def main():
             )
         )
         print(json.dumps(observed))
+    except Exception:
+        state_result = environment.run(environment.commands.command("state", current_lease))
+        limits = environment.limits_path(current_lease)
+        diagnostics = {"state": state_result, "expectedCgroup": str(limits)}
+        diagnostics["limits"] = {
+            name: (limits / name).read_text()
+            for name in ("memory.max", "cpu.max", "pids.max", "cgroup.procs")
+            if (limits / name).exists()
+        }
+        if state_result["exitCode"] == 0:
+            pid = json.loads(state_result["stdout"]).get("pid")
+            proc = pathlib.Path("/proc", str(pid), "cgroup")
+            diagnostics["actualCgroup"] = proc.read_text() if proc.exists() else "process absent"
+        diagnostics["inventory"] = environment.run(
+            environment.commands.prefix() + ["list", "--format=json"]
+        )
+        print(json.dumps({"nativeDiagnostics": diagnostics}), flush=True)
+        raise
     finally:
         # Only positively owned identities of this disposable qualification.
         for candidate in (
