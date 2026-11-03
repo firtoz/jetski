@@ -12,14 +12,17 @@ from gvisor_oci import RunscCommands
 
 class CgroupPolicyTests(unittest.TestCase):
     def test_rejects_escaping_cgroup_and_arbitrary_executable_before_writes(self):
-        account = types.SimpleNamespace(pw_uid=os.geteuid())
+        account = types.SimpleNamespace(pw_uid=1234)
         with (
             patch("gvisor_cgroup.pwd.getpwnam", return_value=account),
             patch("gvisor_cgroup.os.open", side_effect=AssertionError("must not write")),
         ):
             for path, argv in (
-                ("/sys/fs/cgroup", ["podman", "unshare", "/runsc"]),
-                ("/sys/fs/cgroup/../other", ["podman", "unshare", "/runsc"]),
+                ("/sys/fs/cgroup", ["/usr/sbin/runuser", "-u", "jetski-runtime", "--", "env"]),
+                (
+                    "/sys/fs/cgroup/../other",
+                    ["/usr/sbin/runuser", "-u", "jetski-runtime", "--", "env"],
+                ),
                 ("/arbitrary", ["sh", "-c", "echo unsafe"]),
             ):
                 with self.assertRaises(ValueError):

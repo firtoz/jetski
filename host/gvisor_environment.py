@@ -149,14 +149,15 @@ class RootlessEnvironment:
             name = arguments[-1]
             if not re.fullmatch(r"jetski-[a-f0-9-]{36}-g[1-9][0-9]{0,15}", name):
                 raise ValueError("invalid_workload_cgroup_identity")
-            # Replace only the final fixed podman executable; env/runuser policy
-            # stays identical. The helper joins before runsc can fork Sentry/gofer.
-            return prefix[:-1] + [
-                "python3",
+            # Root joins before dropping privileges: cgroupv2 migration requires
+            # write permission at the common ancestor of source and target.
+            # The workload runtime never receives that host-wide permission.
+            return [
+                "/usr/bin/python3",
                 "-I",
                 "/opt/jetski/gvisor_cgroup.py",
                 str(cgroup_parent(self.account) / name),
-                "podman",
+                *prefix,
                 "unshare",
                 *arguments,
             ]
@@ -185,7 +186,6 @@ class RootlessEnvironment:
         (path / "memory.swap.max").write_text("0")
         (path / "cpu.max").write_text(f"{cpus * 100000} 100000")
         (path / "pids.max").write_text("256")
-        os.chown(path / "cgroup.procs", self.account.pw_uid, self.account.pw_gid)
 
     def prepare(self, lease, image, memory_mb, cpus):
         if image not in self.images:

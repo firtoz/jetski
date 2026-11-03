@@ -1,7 +1,7 @@
 """Enter a preconfigured delegated cgroup before executing trusted runtime argv.
 
-Installed root-owned outside workloads; invoked as the runtime account, before
-its user namespace. The supervisor creates and verifies limits independently.
+Installed root-owned outside workloads; invoked by the root supervisor before
+dropping to the runtime account and entering its user namespace. The supervisor creates and verifies limits independently.
 """
 
 import os
@@ -14,7 +14,13 @@ import sys
 
 def enter(path, argv):
     account = pwd.getpwnam("jetski-runtime")
-    if os.geteuid() != account.pw_uid or not argv or argv[:2] != ["podman", "unshare"]:
+    if (
+        os.geteuid() != 0
+        or account.pw_uid <= 0
+        or len(argv) < 4
+        or argv[0] not in ("/usr/sbin/runuser", "/usr/bin/runuser", "/sbin/runuser", "/bin/runuser")
+        or argv[1:4] != ["-u", "jetski-runtime", "--"]
+    ):
         raise ValueError("invalid_cgroup_launcher")
     path = pathlib.Path(path)
     parent = pathlib.Path(
