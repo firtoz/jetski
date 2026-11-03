@@ -42,6 +42,8 @@ MODULES = {
     "gvisor_install.py",
     "gvisor_lifecycle.py",
     "gvisor_memory.py",
+    "memory_filesystem.py",
+    "memory_control.py",
     "gvisor_native.py",
     "gvisor_oci.py",
     "gvisor_rootfs.py",

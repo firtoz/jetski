@@ -25,7 +25,7 @@ from gvisor_oci import (
     sandbox_spec,
     specification_sha256,
 )
-from runtime_backend import read_workload_identity
+from runtime_backend import read_workload_identity, workload_init
 from supervisor import bounded_command, runtime_argv, CONTROL_ROOT, DATA_ROOT
 
 IMAGE_PROOF = pathlib.Path("/etc/jetski/gvisor-images.json")
@@ -116,12 +116,13 @@ def prepare_delegation(account):
 
 
 class RootlessEnvironment:
-    def __init__(self, account, images, network_mode="none"):
+    def __init__(self, account, images, network_mode="none", init_argv=None):
         if os.geteuid() != 0:
             raise ValueError("root_supervisor_required")
         if network_mode != "none":
             raise ValueError("gvisor_egress_not_qualified")
         self.account, self.images = account, tuple(images)
+        self.init_argv = workload_init({"workloadInit": init_argv})
         self.ownership = read_workload_identity(account)
         self.root = private_directory(pathlib.Path(account.pw_dir) / "gvisor", account)
         self.commands = RunscCommands(
@@ -183,6 +184,7 @@ class RootlessEnvironment:
             str(self.limits_path(lease)).removeprefix("/sys/fs/cgroup"),
             memory_mb=memory_mb,
             cpus=cpus,
+            init_argv=self.init_argv,
         )
         directory = pathlib.Path(self.bundle(lease))
         if os.path.lexists(directory):
@@ -275,7 +277,23 @@ def prepare_images(account, images, run):
         private_directory(root / name, account, create=True)
     proof = dict(version=1, archiveSha256=ARCHIVE_SHA256, images={})
     if os.path.lexists(IMAGE_PROOF):
-        raise ValueError("gvisor_images_already_admitted")
+        expected = {
+            **proof,
+            "images": {
+                image: str(root / "images" / hashlib.sha256(image.encode()).hexdigest() / "rootfs")
+                for image in images
+            },
+        }
+        if read_json(IMAGE_PROOF, 0) != expected:
+            raise ValueError("gvisor_image_policy_conflict")
+        for image_root in expected["images"].values():
+            private_directory(pathlib.Path(image_root).parent, account)
+            if not stat.S_ISDIR(pathlib.Path(image_root).lstat().st_mode):
+                raise ValueError("gvisor_prepared_image_unavailable")
+        # A lost final bootstrap ACK observes its verified preparation proof;
+        # it does not recopy an image or allocate a second physical host.
+        prepare_delegation(account)
+        return
     for image in images:
         key = hashlib.sha256(image.encode()).hexdigest()
         directory = private_directory(root / "images" / key, account, create=True)

@@ -596,6 +596,14 @@ export class JetskiClient {
       checkpointId,
     });
   }
+  /** Quiesce and durably publish filesystem state before acknowledging RAM suspension. */
+  suspend(sandbox: string, operationId: string): Promise<Operation> {
+    return this.request(
+      `/v1/sandboxes/${identifier(sandbox)}/suspend`,
+      "POST",
+      { operationId: identifier(operationId) },
+    );
+  }
   resume(sandbox: string, operationId: string, checkpointId?: string) {
     const body: { [key: string]: Json } = { operationId };
     if (checkpointId !== undefined)

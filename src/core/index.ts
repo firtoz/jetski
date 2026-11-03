@@ -13,6 +13,7 @@ export * from "./files.js";
 export * from "./host-lifecycle.js";
 export * from "./host-stream.js";
 export * from "./manager.js";
+export type { MemoryCheckpointReceipt } from "./memory-contracts.js";
 export * from "./observability.js";
 export * from "./operations.js";
 export {
@@ -30,6 +31,7 @@ export {
   PODMAN_RUNTIME,
   type RuntimePolicy,
   validateRuntimePolicy,
+  validateWorkloadInit,
 } from "./runtime-policy.js";
 export {
   type MissingSourceRecovery,

@@ -21,6 +21,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
     networkMode: RuntimeNetworkMode = "none",
     storageMode: RuntimeStorageMode = "default",
     runtime: RuntimePolicy = PODMAN_RUNTIME,
+    workloadInit?: readonly string[],
   ) {
     super(
       state,
@@ -44,6 +45,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
       storageMode,
       undefined,
       runtime,
+      workloadInit,
     );
   }
 }

@@ -31,3 +31,19 @@ export function validateRuntimePolicy(policy: RuntimePolicy): void {
     return;
   throw Error("Unsupported or unpinned runtime policy");
 }
+
+/** Optional approved-image application init; same unprivileged policy on either runtime. */
+export function validateWorkloadInit(
+  argv: readonly string[] | undefined,
+): void {
+  if (argv === undefined) return;
+  if (
+    !Array.isArray(argv) ||
+    argv.length < 1 ||
+    argv.length > 256 ||
+    !argv[0] ||
+    argv.some((arg) => typeof arg !== "string" || arg.includes("\0")) ||
+    new TextEncoder().encode(JSON.stringify(argv)).byteLength > 65536
+  )
+    throw Error("Invalid operator workload init");
+}

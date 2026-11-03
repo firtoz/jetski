@@ -7,11 +7,13 @@ before sealing memory. This is a composition module, not a bootstrap entrypoint.
 """
 
 import copy
+import hashlib
+import json
 import uuid
 from typing import Protocol
 
 from fence import identity
-from gvisor_memory import binding_checked, image_manifest, verify_image
+from gvisor_memory import COMPATIBILITY_FIELDS, binding_checked, image_manifest, verify_image
 from timing import stage
 
 TERMINAL_COMMANDS = frozenset(("succeeded", "failed", "cancelled"))
@@ -98,14 +100,33 @@ class MemoryLifecycle:
             settled(state)
             # Persist admission/close before the effect. A lost ACK never repeats
             # a checkpoint (which could otherwise capture a different process).
-            memory = dict(id=identifier, phase="freezing")
+            compatibility = copy.deepcopy(self.driver.compatibility(lease))
+            provisional = binding_checked(
+                dict(
+                    version=1,
+                    lease=lease,
+                    checkpointId=identifier,
+                    filesystemSha256="0" * 64,
+                    filesystemIdentitySha256="0" * 64,
+                    **compatibility,
+                )
+            )
+            memory = dict(id=identifier, phase="freezing", compatibility=compatibility)
             state = {**state, "phase": "closed", "memory": memory}
             self.fence.write(state)
             try:
                 self.driver.checkpoint(lease, identifier)
                 if self.driver.stopped(lease) is not True:
                     raise ValueError("memory_quiescence_unconfirmed")
-                memory = {**memory, "phase": "frozen"}
+                # Capture native bytes immediately, before the potentially slow
+                # remote FS publication. A changed image cannot be blessed later
+                # by computing its first checksum only at seal time.
+                staged = image_manifest(
+                    self.driver.memory_path(lease, identifier),
+                    provisional,
+                    owner_uid=self.driver.memory_owner(),
+                )
+                memory = {**memory, "phase": "frozen", "checkpointProof": staged}
                 self.fence.write(
                     {
                         **state,
@@ -133,6 +154,13 @@ class MemoryLifecycle:
             state = self._state(lease)
             self._compatible(lease, binding)
             memory = self._memory(state, identifier)
+            compatibility = memory.get("compatibility")
+            if (
+                not isinstance(compatibility, dict)
+                or set(compatibility) != COMPATIBILITY_FIELDS
+                or compatibility != {key: binding[key] for key in COMPATIBILITY_FIELDS}
+            ):
+                raise ValueError("memory_runtime_incompatible")
             if state["phase"] != "closed" or memory["phase"] not in ("frozen", "sealed"):
                 raise ValueError("memory_not_frozen")
             if (
@@ -153,6 +181,31 @@ class MemoryLifecycle:
                 )
                 return copy.deepcopy(memory)
             manifest = image_manifest(path, binding, owner_uid=self.driver.memory_owner())
+            staged = memory.get("checkpointProof")
+            expected_binding = {
+                **binding,
+                "filesystemSha256": "0" * 64,
+                "filesystemIdentitySha256": "0" * 64,
+            }
+            if not isinstance(staged, dict) or set(staged) != {
+                "version",
+                "binding",
+                "files",
+                "bytes",
+                "sha256",
+            }:
+                raise ValueError("memory_checkpoint_proof_unavailable")
+            staged_payload = {key: value for key, value in staged.items() if key != "sha256"}
+            if (
+                staged["binding"] != expected_binding
+                or staged["sha256"]
+                != hashlib.sha256(
+                    json.dumps(staged_payload, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+                or staged["files"] != manifest["files"]
+                or staged["bytes"] != manifest["bytes"]
+            ):
+                raise ValueError("memory_image_integrity")
             memory = {**memory, "phase": "sealed", "manifest": manifest}
             self.fence.write({**state, "memory": memory})
             return copy.deepcopy(memory)

@@ -77,7 +77,11 @@ def dispatch(
             or proof.get("gidMappings") != gid_mappings
         ):
             raise ValueError("runtime_ownership_changed")
-        return {**proof, "cachedResumeVersion": 1}
+        return {
+            **proof,
+            "cachedResumeVersion": 1,
+            **({"memorySuspendVersion": 1} if hasattr(backend, "memory_driver") else {}),
+        }
     persistent = storage_owner if storage_owner is not None else account
     assignment_uid = persistent.pw_uid if parent_uid is None else parent_uid
     payload = request["payload"]
@@ -138,6 +142,12 @@ def dispatch(
             ready=ready,
             runtime=runtime,
         )
+    from memory_control import MEMORY_ACTIONS, handle as memory_action
+
+    if action in MEMORY_ACTIONS:
+        if payload.get("image") not in config["images"]:
+            raise ValueError("unapproved_image")
+        return memory_action(action, payload, fence, backend, ARCHIVE_ROOT, DATA_ROOT)
     if action == "claim":
         return fence.claim(lease)
     if action == "inspect":
@@ -435,7 +445,10 @@ def dispatch(
         with fence.locked():
             state = fence.read()
             fence.match(state, lease)
-            if state["phase"] != "closed" or state.get("runtime", {}).get("phase") != "stopped":
+            if state["phase"] != "closed" or state.get("runtime", {}).get("phase") not in (
+                "stopped",
+                "frozen",
+            ):
                 raise ValueError("capture_requires_quiescence")
             roots = {
                 name: DATA_ROOT / lease["assignmentId"] / name for name in ("workspace", "home")
@@ -447,9 +460,21 @@ def dispatch(
                 1024 * 1024,
             ):
                 raise ValueError("invalid_capture_frame_size")
+            frozen = state.get("runtime", {}).get("phase") == "frozen"
+            if frozen:
+                from memory_filesystem import frozen_identity
+
+                if frozen_identity(roots) != state.get("memory", {}).get(
+                    "filesystemIdentitySha256"
+                ):
+                    raise ValueError("memory_filesystem_changed")
             receipt = capture(
                 roots, ARCHIVE_ROOT / (lease["assignmentId"] + ".tgz"), frame_bytes=frame_bytes
             )
+            if frozen:
+                if frozen_identity(roots) != state["memory"]["filesystemIdentitySha256"]:
+                    raise ValueError("memory_filesystem_changed")
+                state = {**state, "memory": {**state["memory"], "captureFrameBytes": frame_bytes}}
             fence.write({**state, "checkpoint": receipt})
             return receipt
     if action in ("checkpoint-source", "checkpoint-source-close"):

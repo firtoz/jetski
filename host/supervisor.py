@@ -43,7 +43,8 @@ def configuration():
         raise ValueError("host_configuration_limit")
     config = json.loads(CONFIG_PATH.read_text())
     if (
-        set(config) - {"networkMode", "storageMode", "archiveTransferUser", "runtime"}
+        set(config)
+        - {"networkMode", "storageMode", "archiveTransferUser", "runtime", "workloadInit"}
         != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
@@ -54,9 +55,10 @@ def configuration():
         raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:
         raise ValueError("invalid_image_policy")
-    from runtime_backend import runtime_policy
+    from runtime_backend import runtime_policy, workload_init
 
     runtime_policy(config)
+    workload_init(config)
     private_root(CONTROL_ROOT)
     private_root(ARCHIVE_ROOT)
     private_root(DATA_ROOT, 0o711)

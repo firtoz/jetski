@@ -168,6 +168,14 @@ class MemoryLifecycleTests(unittest.TestCase):
             self.resume(filesystem=lambda binding: False)
         self.assertEqual(self.driver.restores, 0)
 
+    def test_corruption_during_filesystem_publication_cannot_be_blessed_at_seal(self):
+        self.frozen()
+        (self.driver.path / "pages.img").write_bytes(b"changed before the first seal")
+        with self.assertRaisesRegex(ValueError, "memory_image_integrity"):
+            self.life.seal(self.lease, self.id, self.binding, lambda binding: True)
+        self.assertEqual(self.fence.read()["memory"]["phase"], "frozen")
+        self.assertEqual(self.driver.restores, 0)
+
     def test_restart_observes_sealed_and_resumed_outcomes(self):
         self.sealed()
         self.life = MemoryLifecycle(Fence(self.fence.root), self.driver)

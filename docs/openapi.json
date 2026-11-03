@@ -2190,6 +2190,55 @@
         },
         "description": "Requires acknowledgement that unpublished changes are unavailable. Fences the lost assignment and preserves the failed save. Does not resume or replay commands. Stable operation identity supports lost-response recovery."
       }
+    },
+    "/v1/sandboxes/{sandboxId}/suspend": {
+      "post": {
+        "summary": "Suspend process memory after durable filesystem publication",
+        "parameters": [
+          {
+            "name": "sandboxId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["operationId"],
+                "properties": {
+                  "operationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Persisted operation; observe its ID for completion"
+          },
+          "400": {
+            "description": "Invalid or rejected request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sandbox unavailable in principal scope"
+          }
+        },
+        "description": "Experimental, capability-gated memory suspension. Requires settled commands, terminals, connections and uploads. Keeps exclusive host ownership; R2 or the configured checkpoint store remains the independent durable filesystem recovery authority. Memory resume is a separate operation."
+      }
     }
   },
   "components": {

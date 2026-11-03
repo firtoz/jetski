@@ -16,6 +16,28 @@ from typing import Protocol
 
 
 WORKLOAD_USER = "1000:1000"
+DEFAULT_INIT_ARGV = (
+    "/bin/sh",
+    "-c",
+    "trap 'exit 0' TERM INT; while :; do sleep 3600 & wait $!; done",
+)
+
+
+def workload_init(config):
+    value = config.get("workloadInit")
+    if value is None:
+        return None
+    if (
+        not isinstance(value, list)
+        or not 1 <= len(value) <= 256
+        or any(not isinstance(arg, str) or "\0" in arg for arg in value)
+        or not value[0]
+        or len(json.dumps(value).encode()) > 65536
+    ):
+        raise ValueError("invalid_workload_init")
+    return list(value)
+
+
 WORKLOAD_USER_NAMESPACE = "keep-id:uid=1000,gid=1000"
 
 PREPARED_USER_NAMESPACE = "rootless-map"
@@ -235,6 +257,9 @@ class RuntimeBackend(Protocol):
 
 
 class PodmanBackend:
+    def __init__(self, init_argv=None):
+        self.init_argv = workload_init({"workloadInit": init_argv})
+
     def probe(self, run) -> dict:
         result = run(["info", "--format", "json"])
         if result["exitCode"]:
@@ -346,7 +371,7 @@ class PodmanBackend:
     def lifecycle(self, *args, **kwargs) -> SandboxRuntime:
         from runtime import PodmanRuntime
 
-        return PodmanRuntime(*args, **kwargs)
+        return PodmanRuntime(*args, init_argv=self.init_argv, **kwargs)
 
     def execution(self, uid: int) -> ExecutionRuntime:
         from podman_exec import ExecApi
@@ -392,7 +417,10 @@ class GvisorBackend(PodmanBackend):
         from gvisor_environment import RootlessEnvironment
 
         return RootlessEnvironment(
-            self.account, self.config["images"], self.config.get("networkMode", "none")
+            self.account,
+            self.config["images"],
+            self.config.get("networkMode", "none"),
+            init_argv=workload_init(self.config),
         )
 
     def probe(self, run):
@@ -448,6 +476,11 @@ class GvisorBackend(PodmanBackend):
             raise ValueError("gvisor_host_policy_conflict")
         return GvisorRuntime(fence, RunscDriver(environment), image, approved_images)
 
+    def memory_driver(self):
+        from gvisor_native import RunscDriver
+
+        return RunscDriver(self.environment())
+
     def execution(self, uid):
         if uid != self.account.pw_uid:
             raise ValueError("gvisor_runtime_identity_conflict")
@@ -457,6 +490,7 @@ class GvisorBackend(PodmanBackend):
 
 
 def selected_backend(config, account):
+    init = workload_init(config)
     if runtime_policy(config)["kind"] == "podman":
-        return DEFAULT_BACKEND
+        return DEFAULT_BACKEND if init is None else PodmanBackend(init)
     return GvisorBackend(account, config)

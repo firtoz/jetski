@@ -37,6 +37,7 @@ import {
 } from "./host-lifecycle.js";
 import type { HostStreamTransport } from "./host-stream.js";
 import { CheckpointMaintenance } from "./maintenance.js";
+import type { MemoryCheckpointReceipt } from "./memory-contracts.js";
 import { observeLifecycle } from "./observability.js";
 import { OperationJournal } from "./operations.js";
 import {
@@ -98,6 +99,7 @@ export type Sandbox = {
     | "deleted";
   lease: HostLease | null;
   checkpoint: string | null;
+  memory?: MemoryCheckpointReceipt | null;
   generation: number;
   /** Last explicit loss acknowledgement; verify its operation before using it
    * to settle a client's old-generation business ownership. */
@@ -1243,6 +1245,26 @@ export class SandboxManager {
   ) {
     this.uuid(id);
     return this.shutdown.recoverMissingSource(scope, id, input);
+  }
+  async suspend(scope: Scope, id: string) {
+    this.uuid(id);
+    const prior = await this.operations.get(scope, id);
+    if (prior) {
+      if (prior.kind !== "suspend") throw Error("Operation identity conflict");
+      return prior;
+    }
+    const sandbox = await this.get(scope);
+    if (!sandbox?.lease || sandbox.phase !== "running")
+      throw Error("Sandbox not running");
+    const capabilities = await this.request(sandbox.lease, "status", {});
+    if (
+      !capabilities ||
+      typeof capabilities !== "object" ||
+      Array.isArray(capabilities) ||
+      capabilities.memorySuspendVersion !== 1
+    )
+      throw Error("Memory suspend not supported by this host");
+    return this.shutdown.admit(scope, id, "suspend");
   }
   async stop(scope: Scope, id: string, mode: ShutdownMode = "stop") {
     this.uuid(id);

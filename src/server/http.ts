@@ -352,6 +352,20 @@ export function createHttpServer(
       }
       if (
         parts.length === 4 &&
+        parts[3] === "suspend" &&
+        request.method === "POST"
+      ) {
+        const input = await body(request);
+        fields(input, ["operationId"]);
+        send(
+          response,
+          202,
+          await manager.suspend(scope, string(input.operationId)),
+        );
+        return;
+      }
+      if (
+        parts.length === 4 &&
         (parts[3] === "stop" || parts[3] === "checkpoint") &&
         request.method === "POST"
       ) {

@@ -31,6 +31,7 @@ from runtime_backend import (
     PREPARED_USER_NAMESPACE,
     write_workload_identity,
     runtime_policy,
+    workload_init,
 )
 
 MODULES = (
@@ -45,6 +46,8 @@ MODULES = (
     "gvisor_install.py",
     "gvisor_lifecycle.py",
     "gvisor_memory.py",
+    "memory_filesystem.py",
+    "memory_control.py",
     "gvisor_native.py",
     "gvisor_oci.py",
     "gvisor_rootfs.py",
@@ -118,12 +121,14 @@ def bootstrap(config):
     if os.geteuid() != 0:
         raise ValueError("root_required")
     if (
-        set(config) - {"networkMode", "storageMode", "archiveTransferUser", "runtime"}
+        set(config)
+        - {"networkMode", "storageMode", "archiveTransferUser", "runtime", "workloadInit"}
         != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
         raise ValueError("invalid_host_configuration")
     policy = runtime_policy(config)
+    workload_init(config)
     if "archiveTransferUser" in config:
         name = config["archiveTransferUser"]
         if not isinstance(name, str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", name):

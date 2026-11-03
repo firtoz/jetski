@@ -21,6 +21,10 @@ import {
   type Transaction,
 } from "./contracts.js";
 import type { Sandbox } from "./manager.js";
+import {
+  type MemoryCheckpointReceipt,
+  memoryCheckpointReceipt,
+} from "./memory-contracts.js";
 import { verifyCheckpointObjects } from "./object-verification.js";
 import type { OperationJournal } from "./operations.js";
 import type { HostLease, PoolJournal } from "./pool.js";
@@ -31,13 +35,19 @@ import {
   parseArchive,
 } from "./transfer.js";
 
-export const SHUTDOWN_MODES = ["checkpoint", "stop", "delete"] as const;
+export const SHUTDOWN_MODES = [
+  "checkpoint",
+  "stop",
+  "delete",
+  "suspend",
+] as const;
 export type ShutdownMode = (typeof SHUTDOWN_MODES)[number];
 type Stage =
   | "quiesce"
   | "outputs"
   | "capture"
   | "publish"
+  | "seal"
   | "remove"
   | "release"
   | "purge"
@@ -59,6 +69,7 @@ type Shutdown = {
   finalizeVersion?: 1;
   readChunkBytes?: number;
   captureFrameBytes?: number;
+  memory?: MemoryCheckpointReceipt;
 };
 export type MissingSourceRecovery = {
   generation: number;
@@ -264,7 +275,12 @@ export class ShutdownCoordinator {
       return;
     }
     const sandbox = tx.get<Sandbox>(sandboxKey(scope));
-    if (!sandbox?.lease || !["running", "stopped"].includes(sandbox.phase))
+    if (
+      !sandbox?.lease ||
+      !(mode === "suspend" ? ["running"] : ["running", "stopped"]).includes(
+        sandbox.phase,
+      )
+    )
       throw Error("Sandbox cannot stop");
     tx.put(key, {
       ...scope,
@@ -288,6 +304,7 @@ export class ShutdownCoordinator {
     archive = record.archive,
     finalizeVersion = record.finalizeVersion,
     readChunkBytes = record.readChunkBytes,
+    memory = record.memory,
   ) {
     await this.deps.state.transaction((tx) => {
       const key = this.key(record, record.id),
@@ -300,6 +317,7 @@ export class ShutdownCoordinator {
         archive,
         ...(finalizeVersion === 1 ? { finalizeVersion } : {}),
         ...(readChunkBytes !== undefined ? { readChunkBytes } : {}),
+        ...(memory ? { memory } : {}),
       });
     });
     return {
@@ -308,6 +326,7 @@ export class ShutdownCoordinator {
       archive,
       ...(finalizeVersion === 1 ? { finalizeVersion } : {}),
       ...(readChunkBytes !== undefined ? { readChunkBytes } : {}),
+      ...(memory ? { memory } : {}),
     };
   }
   async reconcile(owner: string) {
@@ -346,17 +365,23 @@ export class ShutdownCoordinator {
       if (record.stage === "quiesce") {
         await this.deps.settleUploads(scope);
         await pool.transition(record.lease, "quiescing");
-        const receipt = await request(record.lease, "quiesce", {
-          ...payload,
-          ...(this.deps.eagerCapture
-            ? {
-                captureFrameBytes:
-                  record.captureFrameBytes ?? DEFAULTS.frameBytes,
-              }
-            : {}),
-        });
+        const receipt = await request(
+          record.lease,
+          record.mode === "suspend" ? "memory-freeze" : "quiesce",
+          {
+            ...payload,
+            ...(record.mode === "suspend" ? { checkpointId: record.id } : {}),
+            ...(this.deps.eagerCapture && record.mode !== "suspend"
+              ? {
+                  captureFrameBytes:
+                    record.captureFrameBytes ?? DEFAULTS.frameBytes,
+                }
+              : {}),
+          },
+        );
         const earlyArchive =
           this.deps.eagerCapture &&
+          record.mode !== "suspend" &&
           receipt &&
           typeof receipt === "object" &&
           !Array.isArray(receipt) &&
@@ -482,11 +507,20 @@ export class ShutdownCoordinator {
         }
         record = await this.advance(
           record,
-          record.mode === "checkpoint" ? "finish" : "remove",
+          (
+            {
+              suspend: "seal",
+              checkpoint: "finish",
+              stop: "remove",
+              delete: "remove",
+            } as const
+          )[record.mode],
         );
       }
       // Recheck retained metadata before each cleanup continuation, including restart.
-      if (["remove", "release", "purge", "finish"].includes(record.stage)) {
+      if (
+        ["seal", "remove", "release", "purge", "finish"].includes(record.stage)
+      ) {
         const root = await registry.root(fence, record.id);
         if (
           !root ||
@@ -501,6 +535,28 @@ export class ShutdownCoordinator {
             "Published checkpoint integrity failure",
             checkpointObjectRanges([root]),
           ),
+        );
+      }
+      if (record.stage === "seal") {
+        const sealed = memoryCheckpointReceipt(
+          await request(record.lease, "memory-seal", {
+            ...payload,
+            checkpointId: record.id,
+            publication: {
+              checkpointId: record.id,
+              sha256: record.archive!.sha256,
+            },
+          }),
+          record.id,
+          record.archive!.sha256,
+        );
+        record = await this.advance(
+          record,
+          "finish",
+          record.archive,
+          record.finalizeVersion,
+          record.readChunkBytes,
+          sealed,
         );
       }
       if (record.stage === "remove" && record.finalizeVersion === 1) {
@@ -540,7 +596,14 @@ export class ShutdownCoordinator {
         record = await this.advance(record, "finish");
       }
       if (record.stage === "finish") {
-        if (record.mode !== "checkpoint") await pool.release(record.lease);
+        if (record.mode === "suspend")
+          memoryCheckpointReceipt(
+            { phase: "sealed", ...record.memory },
+            record.id,
+            record.archive!.sha256,
+          );
+        if (record.mode !== "checkpoint" && record.mode !== "suspend")
+          await pool.release(record.lease);
         await state.transaction((tx) => {
           const sandbox = tx.get<Sandbox>(sandboxKey(scope));
           if (
@@ -559,12 +622,20 @@ export class ShutdownCoordinator {
             ...sandbox,
             phase: record.mode === "delete" ? "deleted" : "stopped",
             checkpoint: record.id,
-            lease: record.mode === "checkpoint" ? record.lease : null,
+            lease:
+              record.mode === "checkpoint" || record.mode === "suspend"
+                ? record.lease
+                : null,
+            ...(sandbox.memory ? { memory: null } : {}),
+            ...(record.mode === "suspend" ? { memory: record.memory! } : {}),
           });
         });
         await operations.finish(operationFence, record.id, {
           phase: "succeeded",
-          result: { checkpointId: record.id },
+          result: {
+            checkpointId: record.id,
+            ...(record.mode === "suspend" ? { memory: record.memory! } : {}),
+          },
           error: null,
         });
         await this.advance(record, "done");

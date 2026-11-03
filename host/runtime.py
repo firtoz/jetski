@@ -13,6 +13,8 @@ from fence import identity
 from streams import stopped_streams
 from runtime_backend import (
     WORKLOAD_USER,
+    DEFAULT_INIT_ARGV,
+    workload_init,
     WORKLOAD_USER_NAMESPACE,
     PREPARED_USER_NAMESPACE,
     namespace_arguments,
@@ -33,6 +35,7 @@ class PodmanRuntime:
         user_namespace=WORKLOAD_USER_NAMESPACE,
         uid_mappings=None,
         gid_mappings=None,
+        init_argv=None,
     ):
         if not isinstance(image, str) or not re.fullmatch(
             r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image
@@ -47,6 +50,7 @@ class PodmanRuntime:
             PREPARED_USER_NAMESPACE,
         ):
             raise ValueError("unsupported_workload_namespace")
+        self.init_argv = workload_init({"workloadInit": init_argv})
         self.mapping_args = namespace_arguments(user_namespace, uid_mappings, gid_mappings)
         self.uid_mappings, self.gid_mappings = uid_mappings, gid_mappings
         self.user_namespace = user_namespace
@@ -82,6 +86,8 @@ class PodmanRuntime:
             requested = dict(
                 image=self.image, memoryMb=memory_mb, cpus=cpus, relay=self.relay is not None
             )
+            if self.init_argv is not None:
+                requested["initArgv"] = self.init_argv
             if self.user_namespace != WORKLOAD_USER_NAMESPACE:
                 requested["userNamespace"] = self.user_namespace
                 requested["uidMappings"], requested["gidMappings"] = (
@@ -173,14 +179,7 @@ class PodmanRuntime:
                 # consume the full stop grace before SIGKILL on every save.
                 # Tracked commands are already settled before quiescence; the
                 # namespace exit also removes any remaining idle descendants.
-                args.extend(
-                    [
-                        self.image,
-                        "/bin/sh",
-                        "-c",
-                        "trap 'exit 0' TERM INT; while :; do sleep 3600 & wait $!; done",
-                    ]
-                )
+                args.extend([self.image, *(self.init_argv or DEFAULT_INIT_ARGV)])
                 result = self.run(args)
                 if result["exitCode"] != 0:
                     raise RuntimeError("runtime_create_failed")

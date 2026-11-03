@@ -481,7 +481,7 @@ pub fn runtime_probe(run: &impl HostRunner) -> io::Result<Value> {
     if workload_uid < 65536 || workload_gid < 65536 {
         return Err(reject("subordinate_workload_identity_required"));
     }
-    let mut details = json!({"podmanVersion":version,"storageDriver":driver,"runtimeUid":runtime_uid,"runtimeGid":runtime_gid,"workloadUid":workload_uid,"workloadGid":workload_gid,"uidMappings":uid_mappings,"gidMappings":gid_mappings});
+    let mut details = json!({"podmanVersion":version,"runtimeKind":"podman","storageDriver":driver,"runtimeUid":runtime_uid,"runtimeGid":runtime_gid,"workloadUid":workload_uid,"workloadGid":workload_gid,"uidMappings":uid_mappings,"gidMappings":gid_mappings});
     if let Some(value) = info.pointer("/store/graphOptions/overlay.mount_program")
         && let Some(program) = value
             .as_str()

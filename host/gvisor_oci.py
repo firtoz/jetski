@@ -12,6 +12,7 @@ import pathlib
 import re
 
 from fence import identity
+from runtime_backend import DEFAULT_INIT_ARGV, workload_init
 
 RELEASE = "release-20261102.0"
 ARCHIVE_NAME = "gvisor-x86_64.tar.bz2"
@@ -43,7 +44,7 @@ def process_spec(argv, cwd="/workspace", terminal=False):
     if (
         not isinstance(argv, list)
         or not 1 <= len(argv) <= 256
-        or any(not isinstance(arg, str) or "\0" in arg or len(arg.encode()) > 32768 for arg in argv)
+        or any(not isinstance(arg, str) or "\0" in arg or len(arg.encode()) > 65536 for arg in argv)
         or not argv[0]
         or sum(len(arg.encode()) + 1 for arg in argv) > 128 * 1024
         or type(terminal) is not bool
@@ -77,6 +78,7 @@ def sandbox_spec(
     cpus=1,
     supervisor="/opt/jetski/command-supervisor",
     relay="/opt/jetski/tcp-relay",
+    init_argv=None,
 ):
     """Build a fixed policy. rootfs/assignment/cgroup come only from the host.
 
@@ -163,9 +165,7 @@ def sandbox_spec(
         ociVersion="1.0.2",
         hostname="sandbox",
         root=dict(path=rootfs, readonly=True),
-        process=process_spec(
-            ["/bin/sh", "-c", "trap 'exit 0' TERM INT; while :; do sleep 3600 & wait $!; done"]
-        ),
+        process=process_spec(workload_init({"workloadInit": init_argv}) or list(DEFAULT_INIT_ARGV)),
         mounts=mounts,
         annotations={
             "org.jetski.assignment": lease["assignmentId"],

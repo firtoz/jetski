@@ -54,10 +54,16 @@ class OciPolicyTests(unittest.TestCase):
         changed["linux"]["resources"]["cpu"]["quota"] += 1
         self.assertNotEqual(specification_sha256(spec), specification_sha256(changed))
 
+    def test_optional_operator_init_changes_configuration_without_host_privileges(self):
+        spec = self.spec(init_argv=["/workspace/application", "--serve"])
+        self.assertEqual(spec["process"]["args"], ["/workspace/application", "--serve"])
+        self.assertEqual(spec["process"]["user"]["uid"], 1000)
+        self.assertTrue(spec["process"]["noNewPrivileges"])
+
     def test_untrusted_argv_is_data_and_bounds_are_enforced(self):
         argv = ["--rootless=true", "$(command)", "'quoted'", "line\nbreak"]
         self.assertEqual(process_spec(argv)["args"], argv)
-        for invalid in ([], [""], ["echo", "\0"], ["x"] * 257, ["x" * 32769]):
+        for invalid in ([], [""], ["echo", "\0"], ["x"] * 257, ["x" * 65537]):
             with self.assertRaises(ValueError):
                 process_spec(invalid)
         with self.assertRaises(ValueError):

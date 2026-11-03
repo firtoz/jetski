@@ -33,6 +33,12 @@ BINDING_FIELDS = {
 }
 
 
+COMPATIBILITY_FIELDS = frozenset(
+    BINDING_FIELDS
+    - {"version", "lease", "checkpointId", "filesystemSha256", "filesystemIdentitySha256"}
+)
+
+
 def binding_checked(value):
     if (
         not isinstance(value, dict)

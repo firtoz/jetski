@@ -6,7 +6,7 @@ Implement an optional gVisor runtime backend and benchmark it against Podman,
 including memory checkpoint/resume with R2 as independent durable filesystem recovery.
 Read and maintain `/home/frtn/work/2026/jetski/docs/goals/gvisor-runtime.md` at the
 start of every continuation and after compaction; pursue the complete finite scope.
-Machine provider, runtime and storage remain independent. No Agent37 dependency.
+Machine provider, runtime and storage remain independent. No mandatory managed-sandbox service.
 Podman remains default; existing hosts, clients and retained checkpoints remain intact.
 Start with Python host composition; reject unsupported Rust/runtime selections.
 
@@ -67,33 +67,31 @@ No host or controller allocated for this goal yet. No runsc installed on desktop
 
 ## Current implementation
 
-The [runtime design](../gvisor-runtime.md) records the contract. Pinned installation,
-fixed OCI policy, concrete caller-managed rootless environment, native lifecycle/
-exec, bounded memory proofs and freeze/seal/successor journaling are implemented.
-Python bootstrap, control, workers and forwarding select the optional backend;
-all source/bundle allowlists include its modules. Pinned TypeScript policy rejects
-unsupported Rust/egress combinations before effects. Podman remains default.
+The [runtime design](../gvisor-runtime.md) records the contract. Native Python
+bootstrap/control/exec selection is implemented, including operator workload init
+for both runtimes without changing defaults. Private memory freeze/seal/resume
+bind physical inode/link identity, original native checksums, exact archive bytes
+and verified publication. Successful RAM resume retires only the derived old tar
+so subsequent changed saves can reuse the assignment safely.
 
-Local build/typecheck/lint and Ruff pass; 289 TypeScript and 169 Python tests pass,
-including 27 targeted gVisor composition checks. Tests use local files/processes
-and driver doubles: they are not native or hosted qualification. Foundation
-`090811e` CI passed seven jobs but its unchanged Chrome Browser.getVersion fixture
-timed out; preserve the failure instead of repeating unchanged checks. Native host
-selection milestone remains unqualified until the finite hosted pass.
+Managed SDK/server suspend uses the durable filesystem transfer/verification
+pipeline, retains its exclusive source, persists memory receipts and re-observes
+lost seal ACKs. Managed resume/fallback and pool generation coordination remain
+unfinished. Unit/composition results do not establish native qualification.
 
-Still required: operator-configured workload init (same optional policy for both
-runtimes) to exercise a useful persistent RAM workload while tracked I/O is settled;
-managed core/SDK/API memory operations, exact frozen inode/link identity and R2
-publication binding, successor pool-generation coordination and explicit fallback.
-Then freeze the candidate and run the finite native/recovery comparison. Prepared
-private capability helper has not run. No hosts or paid effects have occurred.
+Local build/typecheck/lint, Ruff and targeted tests pass. The native-selection CI
+`70d04a7` passed seven jobs; Rust probe parity failed because its response lacked
+the new runtime-kind field. The corresponding Rust field is now fixed in source.
+The older unrelated Chrome timeout remains preserved rather than re-run.
+No hosts, native runtime execution or paid effects have occurred for this goal.
 
 ## Next actions
 
-1. Add optional operator workload init without changing defaults; implement the
-   core/pool/SDK memory lifecycle and host control actions, keeping R2 verification
-   authoritative and uncertain effects fenced. Expose actual negotiated capability.
-2. Complete affected cleanup/interactive checks, freeze artifact/workload, then
-   use the first approved matrix host for the bounded native capability preflight.
+1. Complete managed resume/fallback with exclusive pool successor reservation,
+   separate core/physical generations, retained root holds and explicit process
+   loss. Finish owned exec/bundle/memory/cgroup cleanup and affected API docs.
+2. Add targeted native CI qualification for the new runtime path, then freeze
+   artifact/workload. Adapt the stale private capability helper to the actual
+   concrete environment before using the first approved matrix host.
 3. Complete the single matched comparison, both source-deleted recoveries, owned
    cleanup, honest report and final exact-SHA publication. No repeated baseline matrix.

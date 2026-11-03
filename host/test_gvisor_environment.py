@@ -2,11 +2,15 @@ import os
 import pathlib
 import tempfile
 import unittest
+import hashlib
+from unittest.mock import patch
+from types import SimpleNamespace
 
 from gvisor_memory import normalize_permissions
 from gvisor_rootfs import prepare, sync_tree
 from runtime_backend import runtime_policy, selected_backend, DEFAULT_BACKEND
 from gvisor_oci import RELEASE, ARCHIVE_SHA256
+from gvisor_environment import prepare_images
 
 
 class EnvironmentTests(unittest.TestCase):
@@ -50,6 +54,34 @@ class EnvironmentTests(unittest.TestCase):
         pages.chmod(0o644)
         normalize_permissions(memory, owner_uid=os.geteuid())
         self.assertEqual(pages.stat().st_mode & 0o777, 0o600)
+
+    def test_verified_image_preparation_is_observed_after_a_lost_bootstrap_ack(self):
+        # A private home-style ancestor is required; /tmp is intentionally unsafe
+        # for production runtime control directories.
+        with tempfile.TemporaryDirectory(
+            prefix=".jetski-image-test-", dir=pathlib.Path.home()
+        ) as temporary:
+            home = pathlib.Path(temporary)
+            account = SimpleNamespace(pw_uid=os.geteuid(), pw_gid=os.getegid(), pw_dir=str(home))
+            image = "example/linux@sha256:" + "a" * 64
+            image_root = (
+                home / "gvisor/images" / hashlib.sha256(image.encode()).hexdigest() / "rootfs"
+            )
+            image_root.mkdir(parents=True)
+            for directory in (home / "gvisor", home / "gvisor/images", image_root.parent):
+                directory.chmod(0o700)
+            proof = home / "proof.json"
+            proof.write_text("verified by the root-owned receipt reader")
+            expected = dict(
+                version=1, archiveSha256=ARCHIVE_SHA256, images={image: str(image_root)}
+            )
+            with (
+                patch("gvisor_environment.IMAGE_PROOF", proof),
+                patch("gvisor_environment.read_json", return_value=expected),
+                patch("gvisor_environment.prepare_delegation") as delegation,
+            ):
+                prepare_images(account, [image], lambda args: self.fail("Image copying replayed"))
+                delegation.assert_called_once_with(account)
 
     def test_operator_policy_is_pinned_and_default_stays_podman(self):
         self.assertIs(selected_backend({}, None), DEFAULT_BACKEND)

@@ -11,6 +11,7 @@ import {
   PODMAN_RUNTIME,
   type RuntimePolicy,
   validateRuntimePolicy,
+  validateWorkloadInit,
 } from "../core/runtime-policy.js";
 import { BoatControlChannel } from "../transport/boat-channel.js";
 import {
@@ -49,6 +50,8 @@ export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "gvisor_install.py",
   "gvisor_lifecycle.py",
   "gvisor_memory.py",
+  "memory_filesystem.py",
+  "memory_control.py",
   "gvisor_native.py",
   "gvisor_oci.py",
   "gvisor_rootfs.py",
@@ -74,9 +77,15 @@ export class EmbeddedBoatBootstrap {
     private readonly storageMode: RuntimeStorageMode = "default",
     private readonly backend: HostBackend = PYTHON_HOST_BACKEND,
     private readonly runtime: RuntimePolicy = PODMAN_RUNTIME,
+    private readonly workloadInit?: readonly string[],
   ) {
     validateHostBackend(backend);
     validateRuntimePolicy(runtime);
+    validateWorkloadInit(workloadInit);
+    if (workloadInit !== undefined && backend.kind !== "python")
+      throw Error("Operator workload init requires the Python host");
+    this.workloadInit =
+      workloadInit === undefined ? undefined : [...workloadInit];
     if (
       runtime.kind === "gvisor" &&
       (backend.kind !== "python" || networkMode !== "none")
@@ -137,6 +146,9 @@ export class EmbeddedBoatBootstrap {
           archiveTransferUser: "user",
           poolId: this.poolId,
           images: this.images,
+          ...(this.workloadInit === undefined
+            ? {}
+            : { workloadInit: this.workloadInit }),
           ...(this.runtime.kind === "podman" ? {} : { runtime: this.runtime }),
           ...(this.storageMode === "default"
             ? {}
