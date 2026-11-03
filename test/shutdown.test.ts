@@ -20,6 +20,9 @@ const image = "example/linux@sha256:" + "a".repeat(64);
 const sha = (value: Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
 for (const failure of [
+  "eager",
+  "eager-fallback",
+  "eager-ack",
   "release-ack",
   "finalize-ack",
   "upload",
@@ -60,6 +63,7 @@ for (const failure of [
     };
     const actions: string[] = [];
     let quiesced = false;
+    let failEarlyAck = failure === "eager-ack";
     const imported: Buffer[] = [];
     let importReceipt:
       | {
@@ -129,6 +133,18 @@ for (const failure of [
         let result: Json = null;
         if (request.action === "quiesce") {
           quiesced = true;
+          if (failure === "eager" || failure === "eager-ack") {
+            assert.equal(
+              (request.payload as { captureFrameBytes: number })
+                .captureFrameBytes,
+              DEFAULTS.frameBytes,
+            );
+            if (failEarlyAck) {
+              failEarlyAck = false;
+              throw Error("early capture ACK lost");
+            }
+            result = { archive: manifest };
+          }
           if (failure === "finalize-ack")
             result = { finalizeVersion: 1, checkpointReadBytes: 1280 * 1024 };
         }
@@ -204,6 +220,7 @@ for (const failure of [
     };
     const options = {
         poolId: "pool",
+        eagerCheckpointCapture: failure.startsWith("eager"),
         checkpointPackBytes: failure === "packed" ? DEFAULTS.maxObjectBytes : 0,
         approvedImages: [image],
         now: () => now,
@@ -250,13 +267,20 @@ for (const failure of [
       return;
     }
     if (
+      failure === "eager-ack" ||
       failure === "release-ack" ||
       failure === "finalize-ack" ||
       failure === "upload"
     )
       await assert.rejects(
         manager.reconcile("alice"),
-        failure === "upload" ? /interrupted upload/ : /release ACK lost/,
+        failure === "upload"
+          ? /interrupted upload/
+          : new RegExp(
+              failure === "eager-ack"
+                ? "early capture ACK lost"
+                : "release ACK lost",
+            ),
       );
     else await manager.reconcile("alice");
     if (failure === "binary") {
@@ -279,7 +303,14 @@ for (const failure of [
       "cancelled",
     );
     assert.ok(actions.indexOf("quiesce") < actions.indexOf("stream-status"));
-    assert.ok(actions.indexOf("stream-status") < actions.indexOf("capture"));
+    if (failure === "eager" || failure === "eager-ack") {
+      assert.equal(
+        actions.includes("capture"),
+        false,
+        "combined capture avoids a second host call",
+      );
+    } else
+      assert.ok(actions.indexOf("stream-status") < actions.indexOf("capture"));
     if (failure === "none") {
       assert.ok((await manager.get(scope))?.lease, "checkpoint retains host");
       assert.equal(actions.includes("remove"), false);

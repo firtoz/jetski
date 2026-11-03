@@ -110,6 +110,7 @@ export function missingSourceRecovery(value: unknown): MissingSourceRecovery {
 type Dependencies = {
   captureFrameBytes: number;
   timings?: StageTimingSink;
+  eagerCapture?: boolean;
   checkpointSource?: (
     lease: HostLease,
     archive: CapturedArchive,
@@ -345,7 +346,23 @@ export class ShutdownCoordinator {
       if (record.stage === "quiesce") {
         await this.deps.settleUploads(scope);
         await pool.transition(record.lease, "quiescing");
-        const receipt = await request(record.lease, "quiesce", payload);
+        const receipt = await request(record.lease, "quiesce", {
+          ...payload,
+          ...(this.deps.eagerCapture
+            ? {
+                captureFrameBytes:
+                  record.captureFrameBytes ?? DEFAULTS.frameBytes,
+              }
+            : {}),
+        });
+        const earlyArchive =
+          this.deps.eagerCapture &&
+          receipt &&
+          typeof receipt === "object" &&
+          !Array.isArray(receipt) &&
+          receipt.archive !== undefined
+            ? parseArchive(receipt.archive)
+            : record.archive;
         const finalizeVersion =
           receipt &&
           typeof receipt === "object" &&
@@ -367,7 +384,7 @@ export class ShutdownCoordinator {
         record = await this.advance(
           record,
           "outputs",
-          record.archive,
+          earlyArchive,
           finalizeVersion,
           readChunkBytes,
         );
@@ -381,6 +398,13 @@ export class ShutdownCoordinator {
           | Promise<PromiseSettledResult<CapturedArchive>>
           | undefined;
         const startCapture = () => {
+          if (record.archive) {
+            capturing ??= Promise.resolve({
+              status: "fulfilled",
+              value: record.archive,
+            });
+            return;
+          }
           capturing ??= Promise.allSettled([
             request(record.lease, "capture", capturePayload).then(parseArchive),
           ]).then((results) => results[0]!);

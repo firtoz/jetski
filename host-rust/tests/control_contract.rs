@@ -114,8 +114,12 @@ fn combined_control_records_unknown_work_and_releases_only_the_published_root() 
     assert!(dispatch("command-start", invalid).is_err());
     assert_eq!(launches.get(), 1);
     dispatch("command-cancel", json!({"commandId":ID})).unwrap();
-    dispatch("quiesce", json!({})).unwrap();
+    assert!(dispatch("quiesce", json!({"captureFrameBytes":true})).is_err());
+    let stopped = dispatch("quiesce", json!({"captureFrameBytes":262144})).unwrap();
     let checkpoint = dispatch("capture", json!({"frameBytes":262144})).unwrap();
+    assert_eq!(stopped["archive"], checkpoint);
+    let replay = dispatch("quiesce", json!({"captureFrameBytes":262144})).unwrap();
+    assert_eq!(replay["archive"], checkpoint);
     let publication = json!({"checkpointId":ID,"sha256":checkpoint["sha256"]});
     assert!(dispatch("release", json!({"publication":publication})).is_err());
     assert!(f.data.join(&f.lease.assignment_id).exists());

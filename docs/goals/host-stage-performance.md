@@ -16,20 +16,20 @@ No subagents, snapshots, desktop runtime installation/reconfiguration, client
 cutover, npm publication, cross-owner reuse, top-ups or prior budget/fixture use.
 Paid hosts need a separate approved allowance. Keep public material generic and
 receipts/credentials private. Inspect current processes/inventory before allocating.
-No publication beyond existing user authorization; retain coherent local changes
-if publication is not authorized for this goal.
+Existing session authorization to push main applies to coherent implementation
+milestones; monitor exact-SHA CI. No client or default-backend switch is implied.
 
 ## Finite gates
 
-| Gate                  | Required evidence                                                                                                                                                                            | State       |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| Stage instrumentation | Optional bounded, privacy-safe timing sink; host extraction/runtime/capture/finalize and core storage/publication timings; wall vs CPU and nested spans explicit                             | In progress |
-| Buffering             | Bounded Rust extraction buffers, exact oracle/corruption/partial-stream checks; same fsync/publication boundary                                                                              | Open        |
-| Round trips           | Remove only demonstrated redundant requests or safely overlap independent reads; preserve replay/uncertainty/durable ordering                                                                | Open        |
-| Local qualification   | Targeted changed-path tests; build/typecheck/lint/native checks once per coherent candidate                                                                                                  | Open        |
-| Matched comparison    | Instrumentation-only baseline vs optimized candidate for Python/Rust; two reversed pairs, five cycles per variant per pair (40 total); same workload/image/resources/R2 and durable boundary | Open        |
-| Recovery and cleanup  | One source-deleted replacement per optimized backend; exact bytes/modes/links; positive owned absence; reuse unchanged interactive qualification                                             | Open        |
-| Report                | Stage distributions/overhead/CPU scope/bytes/requests/costs/failures; negative results retained; no speed target or matrix expansion                                                         | Open        |
+| Gate                  | Required evidence                                                                                                                                                                            | State                         |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| Stage instrumentation | Optional bounded, privacy-safe timing sink; host extraction/runtime/capture/finalize and core storage/publication timings; wall vs CPU and nested spans explicit                             | Implemented; local tests pass |
+| Buffering             | Bounded Rust extraction buffers, exact oracle/corruption/partial-stream checks; same fsync/publication boundary                                                                              | Open                          |
+| Round trips           | Remove only demonstrated redundant requests or safely overlap independent reads; preserve replay/uncertainty/durable ordering                                                                | Open                          |
+| Local qualification   | Targeted changed-path tests; build/typecheck/lint/native checks once per coherent candidate                                                                                                  | Open                          |
+| Matched comparison    | Instrumentation-only baseline vs optimized candidate for Python/Rust; two reversed pairs, five cycles per variant per pair (40 total); same workload/image/resources/R2 and durable boundary | Open                          |
+| Recovery and cleanup  | One source-deleted replacement per optimized backend; exact bytes/modes/links; positive owned absence; reuse unchanged interactive qualification                                             | Open                          |
+| Report                | Stage distributions/overhead/CPU scope/bytes/requests/costs/failures; negative results retained; no speed target or matrix expansion                                                         | Open                          |
 
 Implementation first, then freeze instrumented baseline/candidate and run one
 hosted matrix. Instrumentation-only baselines make observer overhead comparable;
@@ -54,6 +54,16 @@ Private state for this goal: `/home/frtn/.local/state/jetski-qa/host-stages-2026
 No controller or host is allocated for this goal yet. User approved separate allowance on November 3:
 up to $3, twelve starts maximum, existing wallet only; worst-case reservation at
 $0.07/start and $0.036/hour is $1.272. Prior funds remain untouched.
+
+## Current implementation
+
+Instrumentation-only source `7fcba34` is pushed and building its separate native
+artifact in CI. Private original snapshot is preserved; only Python formatting and
+bootstrap module registration were corrected before its source commit. Candidate
+adds bounded native extraction buffering and opt-in combined quiesce/capture.
+See [instrumentation and optimization semantics](../stage-timings.md). No paid
+hosts have started. A local installed-bundle test caught the omitted timing-module
+registration; it is fixed in both variants before hosted qualification.
 
 ## Next actions
 

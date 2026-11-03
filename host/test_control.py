@@ -55,6 +55,25 @@ class ControlTests(unittest.TestCase):
             self.run_command,
         )
 
+    def test_combined_quiesce_capture_replay_keeps_exact_archive(self):
+        self.request("claim", dict(lease=self.lease))
+        source = self.data / self.lease["assignmentId"]
+        (source / "workspace").mkdir(parents=True)
+        (source / "home").mkdir()
+        (source / "workspace/bytes").write_bytes(b"exact\x00bytes" * 1000)
+        os.link(source / "workspace/bytes", source / "home/hard")
+        self.run_command = lambda args: dict(exitCode=0, stdout="false", stderr="")
+        payload = dict(lease=self.lease, image=self.config["images"][0])
+        self.request("create", payload)
+        with self.assertRaisesRegex(ValueError, "invalid_capture_frame_size"):
+            self.request("quiesce", {**payload, "captureFrameBytes": True})
+        stopped = self.request("quiesce", {**payload, "captureFrameBytes": 262144})
+        separate = self.request("capture", {**payload, "frameBytes": 262144})
+        self.assertEqual(stopped["archive"], separate)
+        replay = self.request("quiesce", {**payload, "captureFrameBytes": 262144})
+        self.assertEqual(replay["archive"], separate)
+        self.assertTrue((source / "workspace/bytes").is_file())
+
     def cached_source(self):
         from local_checkpoint import LocalCheckpoint
         import shutil

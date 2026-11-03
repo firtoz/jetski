@@ -21,6 +21,26 @@ const COPY_BYTES: usize = 1024 * 1024;
 fn reject(message: &'static str) -> io::Error {
     io::Error::other(message)
 }
+// One bounded scratch buffer is shared by all files; no allocation scales with
+// member size. Short reads are normal, but premature EOF cannot publish staging.
+fn copy_exact<R: Read, W: Write>(
+    source: &mut R,
+    target: &mut W,
+    mut bytes: u64,
+    scratch: &mut [u8],
+) -> io::Result<()> {
+    while bytes != 0 {
+        let count = scratch.len().min(bytes.min(usize::MAX as u64) as usize);
+        let read = source.read(&mut scratch[..count])?;
+        if read == 0 {
+            return Err(reject("short_archive_file"));
+        }
+        target.write_all(&scratch[..read])?;
+        bytes -= read as u64;
+    }
+    Ok(())
+}
+
 fn nofollow(path: &Path, directory: bool) -> io::Result<File> {
     let mut flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
     if directory {
@@ -563,6 +583,7 @@ pub fn restore(
     };
     fs::set_permissions(&staging.path, fs::Permissions::from_mode(0o700))?;
     let extraction = crate::timing::Stage::new("archive.extract");
+    let mut copy_buffer = vec![0; COPY_BYTES];
     let mut members: Vec<Member> = Vec::new();
     let mut seen: BTreeMap<String, (Kind, u32)> = BTreeMap::new();
     let mut total = 0_u64;
@@ -726,9 +747,7 @@ pub fn restore(
                     .create_new(true)
                     .open(&target)?;
                 output.set_permissions(fs::Permissions::from_mode(0o600))?;
-                if io::copy(&mut (&mut decoded).take(size), &mut output)? != size {
-                    return Err(reject("short_archive_file"));
-                }
+                copy_exact(&mut decoded, &mut output, size, &mut copy_buffer)?;
                 output.flush()?;
             }
             Kind::Hardlink => {
@@ -835,4 +854,27 @@ pub fn restore(
 
 pub fn capture_default(roots: [&Path; 2], target: &Path) -> io::Result<CaptureReceipt> {
     capture(roots, target, Limits::default(), FRAME_BYTES)
+}
+
+#[cfg(test)]
+mod buffering_tests {
+    use super::*;
+    #[test]
+    fn bounded_copy_handles_partial_reads_and_rejects_truncation() {
+        struct Short(std::io::Cursor<Vec<u8>>);
+        impl Read for Short {
+            fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+                let max = out.len().min(13);
+                self.0.read(&mut out[..max])
+            }
+        }
+        let bytes = vec![0xa5; COPY_BYTES + 37];
+        let mut source = Short(io::Cursor::new(bytes.clone()));
+        let mut target = Vec::new();
+        let mut scratch = vec![0; COPY_BYTES];
+        copy_exact(&mut source, &mut target, bytes.len() as u64, &mut scratch).unwrap();
+        assert_eq!(target, bytes);
+        let mut source = io::Cursor::new(b"short");
+        assert!(copy_exact(&mut source, &mut Vec::new(), 6, &mut scratch).is_err());
+    }
 }

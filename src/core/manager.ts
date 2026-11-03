@@ -136,6 +136,8 @@ export type ManagerOptions = {
   checkpointPackBytes?: number;
   /** Independent capture members: 256 KiB, 512 KiB or the default 1 MiB. */
   checkpointFrameBytes?: number;
+  /** Opt-in combined quiesce/capture; old hosts safely use ordinary capture. */
+  eagerCheckpointCapture?: boolean;
   /** Bounded wait for short noninteractive commands; zero returns immediately. */
   commandStartWaitMs?: number;
   /** Store tiny complete output channels in durable transactional metadata. Opt-in. */
@@ -189,6 +191,11 @@ export class SandboxManager {
       typeof options.automaticCollection !== "boolean"
     )
       throw Error("Invalid automatic collection policy");
+    if (
+      options.eagerCheckpointCapture !== undefined &&
+      typeof options.eagerCheckpointCapture !== "boolean"
+    )
+      throw Error("Invalid eager capture policy");
     this.timings = options.timings;
     if (options.timings) {
       objects = observeCheckpointStore(objects, options.timings);
@@ -327,6 +334,7 @@ export class SandboxManager {
           }
         : {}),
       captureFrameBytes: frameBytes,
+      eagerCapture: options.eagerCheckpointCapture ?? false,
       ...(options.timings ? { timings: options.timings } : {}),
       settleUploads: (scope) => this.uploads.settle(scope),
       state,

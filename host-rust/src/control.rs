@@ -415,10 +415,22 @@ impl<R: HostRunner> Control<'_, R> {
                         )
                     }
                     "quiesce" => {
+                        let capture_frame_bytes = payload
+                            .get("captureFrameBytes")
+                            .map(|_| narrow(payload, "captureFrameBytes", None))
+                            .transpose()?;
+                        if capture_frame_bytes.is_some_and(|bytes| {
+                            ![256 * 1024, 512 * 1024, 1024 * 1024].contains(&bytes)
+                        }) {
+                            return Err(reject("invalid_capture_frame_size"));
+                        }
                         commands.prepare_quiesce(&lease)?;
                         let mut result = runtime.quiesce(&lease)?;
                         result["finalizeVersion"] = json!(1);
                         result["checkpointReadBytes"] = json!(crate::checkpoints::READ_BYTES);
+                        if let Some(frame_bytes) = capture_frame_bytes {
+                            result["archive"] = value(checkpoints.capture(&lease, frame_bytes)?)?;
+                        }
                         Ok(result)
                     }
                     "remove" => runtime.remove(&lease),

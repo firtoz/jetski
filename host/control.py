@@ -314,8 +314,32 @@ def dispatch(
                     os.chown(path, persistent.pw_uid, persistent.pw_gid, follow_symlinks=False)
         return runtime.create(lease, payload.get("memoryMb", 512), payload.get("cpus", 1))
     if action == "quiesce":
+        frame_bytes = payload.get("captureFrameBytes")
+        if "captureFrameBytes" in payload and (
+            type(frame_bytes) is not int or frame_bytes not in (256 * 1024, 512 * 1024, 1024 * 1024)
+        ):
+            raise ValueError("invalid_capture_frame_size")
         commands.prepare_quiesce(lease)
-        return {**runtime.quiesce(lease), "finalizeVersion": 1, "checkpointReadBytes": 1280 * 1024}
+        receipt = {
+            **runtime.quiesce(lease),
+            "finalizeVersion": 1,
+            "checkpointReadBytes": 1280 * 1024,
+        }
+        if frame_bytes is not None:
+            receipt["archive"] = dispatch(
+                {**request, "action": "capture", "payload": {**payload, "frameBytes": frame_bytes}},
+                config,
+                account,
+                run,
+                launch,
+                backend,
+                storage_owner,
+                user_namespace,
+                parent_uid,
+                uid_mappings,
+                gid_mappings,
+            )
+        return receipt
     if action == "finalize":
         publication = payload.get("publication")
         with fence.locked():
