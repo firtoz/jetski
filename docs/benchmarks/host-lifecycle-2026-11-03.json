@@ -1,0 +1,153 @@
+{
+  "policies": {
+    "fixed": {
+      "logicalSessions": 104,
+      "starts": 6,
+      "observedHostSeconds": 11653.75,
+      "retainedIdleSeconds": 8731.573,
+      "computeValueEquivalentDollars": 0.058268749999999994,
+      "providerValueBounds": {
+        "lower": 0.057699999999999994,
+        "upper": 0.05831
+      },
+      "providerPhysicalSecondsBounds": {
+        "lower": 11540,
+        "upper": 11662
+      },
+      "longGapIdleSeconds": [600.699, 600.706],
+      "warmReady": {
+        "medianSeconds": 4.1345,
+        "meanSeconds": 5.45262,
+        "p95Seconds": 14.214
+      },
+      "busyReadyAll": {
+        "medianSeconds": 4.142,
+        "meanSeconds": 6.934754901960784,
+        "p95Seconds": 17.974
+      },
+      "busySave": {
+        "medianSeconds": 5.5815,
+        "meanSeconds": 6.238205882352942,
+        "p95Seconds": 11.537
+      },
+      "busyCycle": {
+        "medianSeconds": 10.909,
+        "meanSeconds": 14.599941176470587,
+        "p95Seconds": 33.748
+      },
+      "coldRolloversSeconds": [92.07, 70.013],
+      "afterGapReadySeconds": [190.044, 97.692],
+      "storageRequests": 2934,
+      "providerRequests": 1163,
+      "storageUploadedBytes": 134250614,
+      "storageDownloadedBytes": 268501228,
+      "meteringRequests": 121
+    },
+    "adaptive": {
+      "logicalSessions": 104,
+      "starts": 4,
+      "observedHostSeconds": 10752.359,
+      "retainedIdleSeconds": 7338.157,
+      "computeValueEquivalentDollars": 0.053761795,
+      "providerValueBounds": {
+        "lower": 0.053430000000000005,
+        "upper": 0.053779999999999994
+      },
+      "providerPhysicalSecondsBounds": {
+        "lower": 10686,
+        "upper": 10756
+      },
+      "longGapIdleSeconds": [120.317, 120.158],
+      "warmReady": {
+        "medianSeconds": 5.6475,
+        "meanSeconds": 9.39892156862745,
+        "p95Seconds": 29.029
+      },
+      "busyReadyAll": {
+        "medianSeconds": 5.6475,
+        "meanSeconds": 9.39892156862745,
+        "p95Seconds": 29.029
+      },
+      "busySave": {
+        "medianSeconds": 6.507,
+        "meanSeconds": 7.77635294117647,
+        "p95Seconds": 14.749
+      },
+      "busyCycle": {
+        "medianSeconds": 13.721,
+        "meanSeconds": 19.607,
+        "p95Seconds": 50.802
+      },
+      "coldRolloversSeconds": [],
+      "afterGapReadySeconds": [143.569, 100.695],
+      "storageRequests": 2916,
+      "providerRequests": 1336,
+      "storageUploadedBytes": 134250614,
+      "storageDownloadedBytes": 134250614,
+      "meteringRequests": 107
+    }
+  },
+  "savings": {
+    "startsPercent": 33.333333333333336,
+    "observedHostSeconds": 901.3909999999996,
+    "observedHostPercent": 7.734772069076479,
+    "providerComputeValueBounds": {
+      "lower": 0.00392,
+      "upper": 0.0048799999999999955
+    }
+  },
+  "totalExperiment": {
+    "benchmarkHosts": 10,
+    "stagingHosts": 2,
+    "providerWeightedCreditSecondsUsed": 13511,
+    "includedCreditValueDollars": 0.13511,
+    "walletDebitDollars": 0.0,
+    "quotedBenchmarkStartSurchargesDollars": 0,
+    "approvedCapDollars": 10,
+    "maximumStarts": 24,
+    "allTwelveHostsRetired": true
+  },
+  "method": {
+    "date": "2026-11-03",
+    "replicas": 2,
+    "baselineArtifact": "qualification.34",
+    "baselineRuntime": "c6864d4faaa5a63be3b61a374d5daf67344b918b",
+    "candidateArtifact": "qualification.35",
+    "candidateRuntime": "cb20593813db9fc9dad0a645e57742302b37ee7e",
+    "baselinePolicy": {
+      "maximumLeaseHours": 1,
+      "idleMinutes": 10
+    },
+    "candidatePolicy": {
+      "maximumLeaseHours": 8,
+      "idleMinMinutes": 2,
+      "idleMaxMinutes": 60,
+      "fallbackMinutes": 10
+    },
+    "trace": "51 sessions90 seconds apart over75 real minutes,25 unused minutes,one cold return per arm",
+    "requestedWorkload": {
+      "cpu": 2,
+      "memoryMiB": 2048,
+      "physicalFixtureBytes": 67108864,
+      "logicalFixtureBytes": 134217808,
+      "filesystemEntries": 11,
+      "storage": "S3-compatible R2",
+      "packing": "256KiB frames/8MiB packs",
+      "network": "egress",
+      "runtimeStorage": "native overlay"
+    },
+    "verification": "208 restore/verify/save cycles exact, plus initial fixture checks; separate embedded staging session/output and source-deleted recovery qualification passed",
+    "caveats": [
+      "Unchanged checkpoints between timed cycles; not a changed-file save or coding-throughput benchmark",
+      "Setup filename/hash preflight failures retained; generated scratch repaired on the same four hosts before timing",
+      "Driver job-headroom handling added between proven durable idle cycles; all prior rows and original runtime/workload/operation IDs preserved",
+      "Two cloud replicas with host variation; no universal speedup or zero-loss guarantee",
+      "Provider usage readings precede permanent deletion; explicit positive-absence tail bounds, weighted seconds converted by0.5",
+      "Included credit value differs from wallet debit; uniform start-fee scenarios are not progressive-tier invoice forecasts"
+    ],
+    "artifactSha256": {
+      "fixed": "3c26f5ea84601272dbd7e2bebc2cc30cca9af4dfe5be5acb84a9d4b41acdad4e",
+      "adaptive": "c2b025ce7594c7bef2b4c72d09c74e11d51e6b2854454f5a5c03a9110827a82a"
+    }
+  }
+}
