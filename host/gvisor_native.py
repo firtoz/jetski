@@ -7,6 +7,7 @@ request data. No remote-storage credentials enter this adapter.
 
 import copy
 import json
+import time
 from typing import Protocol
 
 from fence import identity
@@ -97,8 +98,11 @@ class RunscDriver:
     def stop(self, lease):
         if not self.stopped(lease):
             self._checked(self.env.commands.command("kill", lease))
-        if self.stopped(lease) is not True:
-            raise ValueError("gvisor_stop_unconfirmed")
+        deadline = time.monotonic() + 5
+        while self.stopped(lease) is not True:
+            if time.monotonic() >= deadline:
+                raise ValueError("gvisor_stop_unconfirmed")
+            time.sleep(0.05)
 
     def remove(self, lease):
         if not self.absent(lease):

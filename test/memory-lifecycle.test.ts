@@ -73,6 +73,7 @@ for (const failure of [
       ],
     };
     const actions: string[] = [];
+    let commandStarts = 0;
     let frozen = false,
       sealed = false,
       freezeEffects = 0,
@@ -119,6 +120,37 @@ for (const failure of [
           case "claim":
           case "create":
             break;
+          case "command-start":
+            commandStarts++;
+            result = {
+              id: payload.commandId!,
+              phase: "succeeded",
+              exitCode: 0,
+            };
+            break;
+          case "command-status":
+            result = {
+              id: payload.commandId!,
+              phase: "succeeded",
+              exitCode: 0,
+            };
+            break;
+          case "command-output": {
+            const full =
+              payload.channel === "stdout"
+                ? Buffer.from([0, 255])
+                : Buffer.alloc(0);
+            const part = full.subarray(
+              Number(payload.offset),
+              Number(payload.offset) + Number(payload.bytes),
+            );
+            result = {
+              base64: part.toString("base64"),
+              nextOffset: Number(payload.offset) + part.length,
+              terminal: true,
+            };
+            break;
+          }
           case "memory-freeze":
             if (!frozen) {
               frozen = true;
@@ -259,6 +291,8 @@ for (const failure of [
     await manager.create(owner, sandbox, image, randomUUID());
     await manager.reconcile(owner);
     assert.equal((await manager.get(scope))?.phase, "running");
+    const originalCommand = randomUUID();
+    await manager.startCommand(scope, originalCommand, ["printf", "fixture"]);
     const id = randomUUID();
     if (failure === "unsupported") {
       await assert.rejects(manager.suspend(scope, id), /not supported/);
@@ -326,6 +360,21 @@ for (const failure of [
     const running = await manager.get(scope);
     assert.equal(running?.phase, "running");
     assert.equal(running.generation, stopped.generation + 1);
+    const originalOutput = await manager.commandOutput(
+      scope,
+      originalCommand,
+      "stdout",
+      0,
+      256,
+    );
+    assert.equal((originalOutput as Record<string, Json>).base64, "AP8=");
+    await manager.startCommand(scope, originalCommand, ["printf", "fixture"]);
+    assert.equal(
+      commandStarts,
+      1,
+      "original command replay must not execute again",
+    );
+
     if (failure === "memory-unavailable" || failure === "source-absent") {
       await manager.reconcile(owner);
       const outcome = await manager.operation(scope, resumeId);

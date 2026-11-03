@@ -124,6 +124,11 @@ def main():
                 for tag, payload in parser.feed(data):
                     if tag == b"D":
                         response.extend(payload[5:])
+        status = api.inspect(session)
+        assert status["ExitCode"] == 0, {
+            "relayStatus": status,
+            "response": bytes(response)[:1024].hex(),
+        }
         parser.finish()
         assert api.inspect(session)["ExitCode"] == 0
         return json.loads(bytes(response).split(b"\r\n\r\n", 1)[1])
