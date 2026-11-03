@@ -32,6 +32,7 @@ jobs:
         if: failure()
         run: |
           sudo journalctl --no-pager -n 60 "_UID=$(id -u jetski-runtime)" || true
+          sudo journalctl -k --no-pager -n 60 || true
           sudo find /var/lib/jetski/control -maxdepth 2 -type f -name state.json -exec head -c 20000 {} \; || true
   native-host:
     runs-on: ubuntu-24.04

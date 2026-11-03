@@ -18,7 +18,15 @@ from memory_control import handle
 from memory_filesystem import frozen_identity
 from podman_exec import CompletionDecoder
 from stream_protocol import Decoder
-from supervisor import configuration, runtime_account, CONTROL_ROOT, DATA_ROOT, ARCHIVE_ROOT
+from supervisor import (
+    configuration,
+    runtime_account,
+    CONTROL_ROOT,
+    DATA_ROOT,
+    ARCHIVE_ROOT,
+    bounded_command,
+    runtime_argv,
+)
 from test_archive import oracle
 
 
@@ -39,6 +47,21 @@ def main():
         return result
 
     environment.run = diagnostic_run
+    namespace_proof = bounded_command(
+        runtime_argv(account)[:-1]
+        + environment.namespace_argv
+        + [
+            "/bin/cat",
+            "/proc/self/uid_map",
+            "/proc/self/gid_map",
+            "/proc/self/setgroups",
+            "/proc/self/attr/current",
+            "/proc/self/status",
+        ],
+        CONTROL_ROOT,
+        timeout=20,
+    )
+    print(json.dumps({"namespaceProof": namespace_proof}), flush=True)
     driver, fence = RunscDriver(environment), Fence(CONTROL_ROOT / "native-qualification")
     lease = dict(
         owner="qualification",
