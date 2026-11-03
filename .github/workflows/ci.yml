@@ -3,6 +3,36 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  gvisor-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare disposable execution host
+        run: |
+          sudo timeout --kill-after=5s 180s apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 update
+          sudo timeout --kill-after=5s 300s apt-get install -y podman uidmap slirp4netns fuse-overlayfs dbus-user-session gcc libc6-dev
+          sudo chown root:root /opt
+          sudo chmod 755 /opt
+          sudo cc -static -O2 -Wall -Wextra -Werror host/fixtures/memory-server.c -o /tmp/jetski-memory-server
+          image=docker.io/library/alpine:3.22
+          timeout --kill-after=5s 120s podman pull "$image"
+          digest=$(podman image inspect "$image" --format '{{index .RepoDigests 0}}')
+          python3 - "$digest" <<'PYTHON'
+          import json,sys
+          sys.path.insert(0,'host')
+          from gvisor_oci import RELEASE,ARCHIVE_SHA256
+          value=dict(version=1,machineId='gvisor-ci',poolId='gvisor-ci',images=[sys.argv[1]],runtime=dict(kind='gvisor',version=1,release=RELEASE,archiveSha256=ARCHIVE_SHA256),workloadInit=['/workspace/application','64'])
+          with open('/tmp/jetski-gvisor.json','w') as target: json.dump(value,target)
+          PYTHON
+          sudo python3 host/bootstrap.py --config /tmp/jetski-gvisor.json
+      - name: Qualify native execution, PTY, TCP, RAM and exact local recovery
+        run: sudo env GITHUB_ACTIONS=true JETSKI_TEST_MEMORY_SERVER=/tmp/jetski-memory-server python3 host/qualify_gvisor.py
+      - name: Preserve bounded native diagnostics
+        if: failure()
+        run: |
+          sudo journalctl --no-pager -n 60 "_UID=$(id -u jetski-runtime)" || true
+          sudo find /var/lib/jetski/control -maxdepth 2 -type f -name state.json -exec head -c 20000 {} \; || true
   native-host:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
