@@ -44,8 +44,8 @@ matrix and private recovery pointer instead of appending a run diary.
 
 | Gate                          | Required evidence                                                                                                                                                   | Status                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Portable implementation       | Validated lifetime/idle policy, persisted decisions/history, shared deadlines, Boat and adopted-host capability handling, server/embedded configuration             | Core/CLI implementation added; provider pricing feed and client wiring remain              |
-| Changed lifecycle reliability | Restart/replay, stale policy/price inputs, bounds/budgets, queued demand versus retirement, lifetime drain, cleanup and source preservation                         | 273 TypeScript checks, build/types/lint pass; extended lifecycle integration checks remain |
+| Portable implementation       | Validated lifetime/idle policy, persisted decisions/history, shared deadlines, Boat and adopted-host capability handling, server/embedded configuration             | Core/CLI implementation added; provider pricing feed added; client wiring remains          |
+| Changed lifecycle reliability | Restart/replay, stale policy/price inputs, bounds/budgets, queued demand versus retirement, lifetime drain, cleanup and source preservation                         | 278 TypeScript checks, build/types/lint pass; extended lifecycle integration checks remain |
 | Measured comparison           | Two matched replicas of a frozen trace crossing the one-hour boundary and a longer idle gap; equal images/resources/fixtures                                        | Pending implementation and allowance                                                       |
 | Honest cost accounting        | Actual starts, provider VM usage, retained idle time, R2 bytes/requests and readiness; separate paid invoice effects from modeled quota-tier replay                 | Pending; do not deliberately exhaust free starts                                           |
 | Staging adoption              | Pinned artifact, explicit new idle-policy admission, same-host reuse past one hour, durable save and source-deleted replacement, retained filesystem/session/output | Pending implementation                                                                     |
@@ -86,13 +86,19 @@ capabilities; CLI accepts opt-in lifecycle configuration. Existing hosts keep th
 original deadlines and legacy fixed semantics. Uncertain allocation retries stop
 within23 hours even when the physical lease lasts24 hours, leaving margin inside
 the provider's documented idempotency retention window. Defaults remain one hour/ten minutes.
-All273 TypeScript checks plus build/types/lint pass. Host Python assets are unchanged.
+All278 TypeScript checks plus build/types/lint pass. Host Python assets are unchanged.
 
 A separate additional10-dollar allowance was requested for at most24 starts with
 eight-hour maximum leases (conservative full-lease/start bound8.60 dollars). It is
 pending; no live allocation or other paid qualification has started for this goal.
 
-Next: supply effective Boat pricing through an operator-only adapter and cache,
-wire scoped client admission/scheduling, then freeze the matched trace. Keep source
+The Boat pricing adapter and standalone composition are implemented. Effective
+quotes refresh outside transactions with durable cache/backoff and stale-completion
+fences; unavailable pricing falls back without preventing reconciliation. The
+client's shared configuration now accepts an explicit lifecycle profile, with
+runtime admission and composition still to wire.
+
+Next: publish the coherent artifact, wire scoped client admission/scheduling and
+pricing, then freeze the matched trace. Keep source
 implementation ahead of hosted verification. Private receipts will live under the
 operator's local QA state, not in this public repository.

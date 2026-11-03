@@ -39,6 +39,15 @@ deadline. Failed responses do not echo provider bodies. API credentials should b
 scoped to the intended account and resource permissions; changing accounts requires
 separate controller state.
 
+## Idle pricing
+
+`jetski/providers/boat-pricing` exports an optional controller-only price source.
+It uses the read-only limits endpoint, scales the default hourly rate for the
+selected machine size and preserves a zero next-start fee. A blocked start is not
+converted into an invented monetary quote. Only validated micro-dollar values
+enter the core; wallet/account response data does not enter the quote or workload.
+The core caches refreshes durably, fences old completions and falls back on error.
+
 ## Evidence and limitations
 
 Tests use an injected HTTP fixture plus real SQLite reopen. They cover committed

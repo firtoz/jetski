@@ -768,11 +768,19 @@ never powered off or deleted. Existing slots keep their original policy/deadline
 For a fixed idle policy use `{ "mode": "fixed", "timeoutMs": 600000 }`. Adaptive
 configuration is `{ "mode": "adaptive", "minMs": 120000, "maxMs": 3600000,
 "fallbackMs": 600000, "maxIdleSpendMicros": 18000 }`. Currency is integer millionths
-of a dollar. Trusted embeddings supply fresh effective prices through
-`manager.setIdlePriceQuote(owner, quote)` outside state transactions. Ordinary
-workload API callers cannot set prices. The standalone service currently uses the
-bounded fallback unless its operator embedding supplies those quotes. Stale pricing
-never extends an existing idle decision. Warm minimum capacity remains zero.
+of a dollar. For Boat, standalone configuration automatically supplies the current
+size-adjusted compute rate and next-start fee from the read-only limits endpoint.
+The operator budget is per idle decision, not an automatic wallet authorization.
+Quotes are cached durably for at most five minutes; refreshes have a two-second
+deadline, a durable retry backoff and stale-completion fencing. Failed or blocked
+pricing uses the configured fallback and does not prevent lifecycle work.
+
+Trusted embeddings can inject `idlePriceSource` in manager options, or supply
+`manager.setIdlePriceQuote(owner, quote)` outside state transactions without an
+automatic source. `jetski/providers/boat-pricing` exports `BoatIdlePriceSource` for
+that composition. Ordinary workload API callers cannot set prices. An admitted
+idle decision is not silently extended by later pricing. Warm minimum capacity
+remains zero.
 
 These opt-in lifecycle paths are undergoing the separate hosted qualification;
 existing checkpoint/transport qualification does not establish their live savings.

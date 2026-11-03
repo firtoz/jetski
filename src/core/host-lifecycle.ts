@@ -7,6 +7,8 @@ export const HOST_LIFECYCLE_LIMITS = Object.freeze({
   historySamples: 32,
   maxMoneyMicros: 1_000_000_000,
   maintenanceRetryMs: 1_000,
+  priceRequestMs: 2_000,
+  priceRetryMs: 30_000,
 });
 
 export type IdleRetention =
@@ -35,6 +37,15 @@ export type IdlePriceQuote = {
   avoidedStartMicros: number;
   remainingIdleBudgetMicros: number;
 };
+
+/** Trusted controller-side source. It has no authority over leases or workloads. */
+export interface IdlePriceSource {
+  quote(input: {
+    owner: string;
+    now: number;
+    signal: AbortSignal;
+  }): Promise<IdlePriceQuote | undefined>;
+}
 
 export type IdleDecision = {
   idleSince: number;

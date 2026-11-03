@@ -119,6 +119,47 @@ export class PoolJournal {
       tx.put(key, quote);
     });
   }
+  async claimIdlePriceRefresh(owner: string): Promise<string | undefined> {
+    identifier(owner);
+    return this.state.transaction((tx) => {
+      const now = this.now();
+      const quote = tx.get<IdlePriceQuote>(`${this.prefix()}price/${owner}`);
+      if (quote && quote.observedAt <= now && quote.validUntil > now) return;
+      const key = `${this.prefix()}price-refresh/${owner}`;
+      const prior = tx.get<{ id: string; until: number }>(key);
+      if (prior && prior.until > now) return;
+      const id = this.newId();
+      tx.put(key, { id, until: now + HOST_LIFECYCLE_LIMITS.priceRetryMs });
+      return id;
+    });
+  }
+  async finishIdlePriceRefresh(
+    owner: string,
+    id: string,
+    input?: IdlePriceQuote,
+  ): Promise<boolean> {
+    const quote = input === undefined ? undefined : idlePriceQuote(input);
+    return this.state.transaction((tx) => {
+      const now = this.now(),
+        key = `${this.prefix()}price-refresh/${identifier(owner)}`;
+      const claim = tx.get<{ id: string; until: number }>(key);
+      if (!claim || claim.id !== id || claim.until <= now) return false;
+      tx.put(key, { id, until: now + HOST_LIFECYCLE_LIMITS.priceRetryMs });
+      if (!quote || quote.observedAt > now || quote.validUntil <= now)
+        return false;
+      const priceKey = `${this.prefix()}price/${owner}`,
+        prior = tx.get<IdlePriceQuote>(priceKey);
+      if (
+        prior &&
+        (prior.observedAt > quote.observedAt ||
+          (prior.observedAt === quote.observedAt &&
+            canonical(prior) !== canonical(quote)))
+      )
+        return false;
+      tx.put(priceKey, quote);
+      return true;
+    });
+  }
   private idleIn(tx: Transaction, slot: PoolSlot, at: number): IdleDecision {
     const history = tx.get<{ lastReleaseAt: number | null; gaps: number[] }>(
       `${this.prefix()}returns/${slot.owner}`,

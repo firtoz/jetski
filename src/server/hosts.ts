@@ -4,6 +4,11 @@ import type {
   RuntimeStorageMode,
   StateStore,
 } from "../core/contracts.js";
+import {
+  type HostLifecycle,
+  hostLifecycle,
+  type IdlePriceSource,
+} from "../core/host-lifecycle.js";
 import type { HostStreamTransport } from "../core/host-stream.js";
 import type { HostTransport } from "../core/transport.js";
 import type { BoatMachineType } from "../providers/boat.js";
@@ -24,10 +29,12 @@ export async function standaloneHosts(
   poolId: string,
   approvedImages: string[],
   environment = process.env,
+  lifecycle?: HostLifecycle,
 ): Promise<{
   provider: HostProvider;
   transport: HostTransport;
   streamTransport?: HostStreamTransport;
+  idlePriceSource?: IdlePriceSource;
 }> {
   if (config.kind === "ssh") {
     const [{ SshTransport }, { SshHostProvider }] = await Promise.all([
@@ -56,13 +63,16 @@ export async function standaloneHosts(
     { BoatTransport },
     { BoatBootstrap },
     { BoatStreamTransport },
+    { BoatIdlePriceSource },
   ] = await Promise.all([
     import("../providers/boat.js"),
     import("../transport/boat.js"),
     import("../providers/boat-bootstrap.js"),
     import("../transport/boat-stream.js"),
+    import("../providers/boat-pricing.js"),
   ]);
   const api = new BoatApi(environment[config.tokenEnv]!);
+  const idle = hostLifecycle(lifecycle).idle;
   const transport = new BoatTransport(state, api);
   const bootstrap = new BoatBootstrap(
     state,
@@ -74,6 +84,15 @@ export async function standaloneHosts(
   );
   return {
     transport,
+    ...(idle.mode === "adaptive"
+      ? {
+          idlePriceSource: new BoatIdlePriceSource(
+            api,
+            config.machine ?? "small",
+            idle.maxIdleSpendMicros,
+          ),
+        }
+      : {}),
     streamTransport: new BoatStreamTransport(state, api),
     provider: new BoatHostProvider(
       state,

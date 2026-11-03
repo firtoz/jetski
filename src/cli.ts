@@ -83,12 +83,15 @@ if (command === "serve") {
   const directory = resolve(config.dataDirectory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const state = new SqliteState(join(directory, "state.sqlite"));
-  const { provider, transport, streamTransport } = await standaloneHosts(
-    state,
-    config.hostProvider,
-    config.poolId,
-    config.approvedImages,
-  );
+  const { provider, transport, streamTransport, idlePriceSource } =
+    await standaloneHosts(
+      state,
+      config.hostProvider,
+      config.poolId,
+      config.approvedImages,
+      process.env,
+      config.hostLifecycle,
+    );
   const storage = await standaloneStorage(directory, config.storage);
   const manager = new SandboxManager(
     state,
@@ -97,6 +100,7 @@ if (command === "serve") {
     storage.store,
     {
       poolId: config.poolId,
+      ...(idlePriceSource ? { idlePriceSource } : {}),
       ...(streamTransport ? { streamTransport } : {}),
       approvedImages: config.approvedImages,
       ...(config.workloadResources !== undefined

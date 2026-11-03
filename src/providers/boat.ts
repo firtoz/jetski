@@ -264,12 +264,16 @@ export class BoatApi {
       signal?: AbortSignal;
     } = {},
   ): Promise<Reply> {
+    const limits = path === "/limits";
     if (
+      !limits &&
       !/^\/sandboxes(?:\/bx_[a-zA-Z0-9_-]+(?:\/(?:commands|files(?:\/(?:upload|download)-url)?|sshkey))?)?$/.test(
         path,
       )
     )
       throw Error("Unsupported Boat route");
+    if (limits && (method !== "GET" || body !== undefined))
+      throw Error("Boat limits is read-only");
     const maxBytes = options.maxBytes ?? 1024 * 1024;
     const timeoutMs = options.timeoutMs ?? 30_000;
     if (

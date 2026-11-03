@@ -29,9 +29,11 @@ import {
 } from "./contracts.js";
 import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
 import {
+  HOST_LIFECYCLE_LIMITS,
   type HostLifecycle,
   hostLifecycle,
   type IdlePriceQuote,
+  type IdlePriceSource,
 } from "./host-lifecycle.js";
 import type { HostStreamTransport } from "./host-stream.js";
 import { CheckpointMaintenance } from "./maintenance.js";
@@ -136,6 +138,7 @@ export type ManagerOptions = {
   hostsPerOwner?: number;
   /** New host allocations snapshot this policy; existing slots keep theirs. */
   hostLifecycle?: HostLifecycle;
+  idlePriceSource?: IdlePriceSource;
   now?: () => number;
   events?: EventSink;
 };
@@ -161,6 +164,8 @@ export class SandboxManager {
   private readonly shutdown: ShutdownCoordinator;
   private readonly now: () => number;
   private readonly commandStartWaitMs: number;
+  private readonly lifecycle: HostLifecycle;
+  private readonly idlePriceSource: IdlePriceSource | undefined;
   hostCapabilities() {
     return this.provider.capabilities();
   }
@@ -204,6 +209,13 @@ export class SandboxManager {
       state = observeLifecycle(state, options.events, this.now);
     this.state = state;
     const lifecycle = hostLifecycle(options.hostLifecycle);
+    this.lifecycle = lifecycle;
+    this.idlePriceSource = options.idlePriceSource;
+    if (
+      this.idlePriceSource &&
+      typeof this.idlePriceSource.quote !== "function"
+    )
+      throw Error("Invalid idle price source");
     const maximum =
       provider.capabilities().maxLifetimeMs ?? DEFAULTS.hostLifetimeMs;
     if (
@@ -606,6 +618,34 @@ export class SandboxManager {
   async setIdlePriceQuote(owner: string, quote: IdlePriceQuote): Promise<void> {
     await this.pool.setIdlePriceQuote(owner, quote);
   }
+  /** Bounded best effort: a pricing outage cannot prevent normal reconciliation.
+   * Both network I/O and the optional provider implementation stay outside tx. */
+  async refreshIdlePrices(owner: string): Promise<boolean> {
+    const source = this.idlePriceSource;
+    if (!source || this.lifecycle.idle.mode !== "adaptive") return false;
+    const id = await this.pool.claimIdlePriceRefresh(owner);
+    if (!id) return false;
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const deadline = new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => {
+          abort.abort();
+          resolve(undefined);
+        }, HOST_LIFECYCLE_LIMITS.priceRequestMs);
+      });
+      const quote = await Promise.race([
+        source.quote({ owner, now: this.now(), signal: abort.signal }),
+        deadline,
+      ]);
+      return await this.pool.finishIdlePriceRefresh(owner, id, quote);
+    } catch {
+      return await this.pool.finishIdlePriceRefresh(owner, id);
+    } finally {
+      clearTimeout(timer);
+      abort.abort();
+    }
+  }
   async maintenanceStatus(scope: Scope) {
     return this.maintenance?.status(scope);
   }
@@ -777,6 +817,7 @@ export class SandboxManager {
     if (this.activeOwners.has(owner)) return;
     this.activeOwners.add(owner);
     try {
+      await this.refreshIdlePrices(owner);
       const cancellations = await this.state.transaction((tx) =>
         tx
           .scan<{ owner: string; sandbox: string; id: string; outcome: Json }>(

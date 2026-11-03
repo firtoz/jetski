@@ -2329,6 +2329,11 @@
               },
               "rootlessPodman": {
                 "type": "boolean"
+              },
+              "maxLifetimeMs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Adapter allocation capability; operator lifecycle policy may impose a lower limit."
               }
             },
             "required": ["kind", "architecture", "rootlessPodman"],
