@@ -239,7 +239,8 @@ class GvisorRuntime:
             try:
                 self.driver.stop(lease)
                 runtime = {**runtime, "phase": "stopped"}
-                self.fence.write({**state, "runtime": runtime, "streams": stopped_streams(state)})
+                stopped = {**state, "runtime": runtime}
+                self.fence.write({**stopped, "streams": stopped_streams(stopped)})
                 return runtime
             except BaseException:
                 self.fence.write({**state, "phase": "quarantined"})

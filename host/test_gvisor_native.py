@@ -43,6 +43,18 @@ class NativeJournalTests(unittest.TestCase):
         self.assertEqual(driver._checked.call_count, 1)
         sleep.assert_called_once_with(0.05)
 
+    def test_verified_quiescence_cancels_streams_without_claiming_delivery(self):
+        state = self.fence.read()
+        self.fence.write({**state, "streams": {"relay": {"phase": "running"}}})
+        driver = Mock()
+        runtime = GvisorRuntime(self.fence, driver, self.binding["image"], [self.binding["image"]])
+        runtime.quiesce(self.lease)
+        saved = self.fence.read()
+        self.assertEqual(saved["runtime"]["phase"], "stopped")
+        self.assertEqual(saved["streams"]["relay"]["phase"], "cancelled")
+        self.assertEqual(saved["streams"]["relay"]["delivery"], "unknown")
+        driver.stop.assert_called_once_with(self.lease)
+
     def test_runtime_absence_requires_a_valid_inventory(self):
         class Environment:
             commands = RunscCommands("/opt/runsc", "/state")
