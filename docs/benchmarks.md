@@ -1,50 +1,53 @@
 # Hosted performance qualification
 
-## Current candidate: qualification32
+## Current candidate: qualification33
 
-The frozen `27720c6` comparison completed ten trials per arm on two independent
-Boat host pairs, five per arm per pair with reversed order on the second pair.
-Image, two CPUs,2 GiB, native overlay,64 MiB fixture and verified durability/
-readiness boundaries match the preceding comparison. All20 independent filesystem
-checks match; all four hosts have positive provider-absence receipts and both
-pairs of temporary controllers are deleted. Setup, priming and final release
-are outside timed rows. Source archives and failed historical attempts remain
-separate; this is not a cold-recovery qualification.
+Frozen runtime `62eab00` completed ten trials per arm across two fresh Boat host
+pairs, reversing order on the second pair. Both arms use the same approved image,
+two CPUs,2 GiB, native overlay and64 MiB fixture, ending at verified publication/
+readiness and independent filesystem comparison. All20 comparisons match. Four
+physical hosts were used, two per arm, and all hosts/controllers are retired.
 
 | Warm metric                            | Reference median / sample p95 | Candidate median / sample p95 |
 | -------------------------------------- | ----------------------------: | ----------------------------: |
-| Durable save/release                   |              10.369 /16.091 s |               7.196 /11.230 s |
-| Resume readiness                       |               4.726 /11.206 s |                4.588 /7.279 s |
-| Complete work/save/resume/verification |              19.783 /34.636 s |              16.474 /21.865 s |
+| Durable save/release                   |                4.923 /5.903 s |                2.499 /3.853 s |
+| Resume readiness                       |                2.018 /3.292 s |                1.104 /1.836 s |
+| Complete work/save/resume/verification |               8.034 /10.271 s |                4.933 /6.119 s |
 | Payload uploaded                       |                      1.042 MB |                      0.263 MB |
 | Payload downloaded                     |                      0.005 MB |                          0 MB |
-| Storage / provider API requests        |                        18 /16 |                        31 /20 |
+| Storage / provider API requests        |                        18 /16 |                      31 /10.5 |
 
-These pooled save/cycle medians improve, but **consistent parity is unproven**.
-The first pair loses substantially while the second wins; pooled readiness differs
-by only138 ms and the median paired readiness ratio is1.003, effectively tied.
-Do not interpret host variance as the restore change's isolated effect. With ten
-observations per arm, sample p95 is the maximum. API counts exclude signed data
-streams; payload counts exclude HTTP overhead. Reference coordination uses Node
-and a native-R2 bridge, while the candidate uses a Durable Object and native R2.
+Save/cycle medians improve on both pairs. Second-pair readiness is nearly tied
+at1.054 versus1.042 s, so this is not an every-run or universal speed claim.
+Sample p95 is the maximum of ten observations; bytes exclude HTTP overhead and
+provider counts exclude signed data streams. Candidate coordination uses a
+Durable Object/native R2; reference coordination uses Node/a native-R2 bridge.
+Reference setup failed before timed work on the first pair and was repaired on
+its original host. Its failure and retained compute remain in the receipts.
+Setup, priming and final cleanup are outside warm rows.
 
-| Host pair | Save reference / candidate | Readiness reference / candidate | Cycle reference / candidate |
-| --------- | -------------------------: | ------------------------------: | --------------------------: |
-| First     |             6.314 /7.843 s |                  2.073 /2.959 s |             8.963 /19.104 s |
-| Second    |            13.831 /5.577 s |                  8.287 /5.024 s |            28.761 /14.538 s |
+Every candidate row uses the capability-negotiated combined cached resume, which
+retains the ordinary claim/import/create checks and core reader fencing. The
+command observer avoids unrelated reconciliation and observes stable command IDs.
+Host I/O and control-plane placement still vary; this comparison does not isolate
+the new composition's contribution to the save-time difference. Storage requests
+remain higher despite fewer bytes and provider requests.
 
-The host restore now hashes/validates while unpacking into private staging,
-applies final metadata and syncs primary inodes once, then publishes atomically.
-Successful cached import finishes during begin without another control call.
-A separate driver correction immediately rechecks authoritative completion after
-reconciliation; it no longer always waits250 ms after completion. Both replicas
-include that correction, so this comparison cannot isolate its effect from the
-runtime change. Earlier measured rows below are preserved without estimated
-subtraction. Local screens did not establish a speedup. The pinned downstream workflow and exact larger source-deleted recovery now pass.
-A further corrected-observer host pair still loses warm parity; its cold caller
-was interrupted and recovered, so it supplies recovery evidence rather than a
-clean latency win. An optional combined cache-resume path is under qualification;
-see the [active goal](goals/checkpoint-performance.md).
+The current-build larger cold pair restores436,207,724 logical bytes exactly after
+source deletion, including modes, links, saved output and repeated saves. Cold
+readiness remains slower:188.574 versus47.045 s. Roughly151 s precede the
+candidate's first host-status call;13 binary writes take20.840 s and import finish
+7.852 s. Bootstrap is the next implementation target; the warm result does not
+close cold parity. Both cold hosts/controllers are retired. See the
+[active goal](goals/checkpoint-performance.md).
+
+## Previous candidate: qualification32
+
+The earlier ten-per-arm matrix was exact but host-pair reversal left consistent
+parity unproven. Its pooled candidate/reference median save was7.196/10.3685 s,
+readiness4.588/4.726 s and cycle16.4735/19.783 s. These rows are preserved without
+estimated subtraction or pooling with the new candidate; detailed context is in
+[the qualification32 report](benchmarks/qualification32.md).
 
 ## Previous candidate: qualification31
 
