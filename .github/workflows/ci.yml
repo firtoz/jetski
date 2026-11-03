@@ -5,7 +5,7 @@ permissions:
 jobs:
   gvisor-runtime:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Prepare disposable execution host
@@ -25,7 +25,8 @@ jobs:
           value=dict(version=1,machineId='gvisor-ci',poolId='gvisor-ci',images=[sys.argv[1]],runtime=dict(kind='gvisor',version=1,release=RELEASE,archiveSha256=ARCHIVE_SHA256),workloadInit=['/workspace/application','64'])
           with open('/tmp/jetski-gvisor.json','w') as target: json.dump(value,target)
           PYTHON
-          sudo python3 host/bootstrap.py --config /tmp/jetski-gvisor.json
+          # Keep a stalled runner setup diagnosable without weakening runtime checks.
+          sudo timeout --kill-after=10s 480s python3 -c "import faulthandler,runpy,sys; faulthandler.dump_traceback_later(60,repeat=True); sys.path.insert(0,'host'); runpy.run_path('host/bootstrap.py',run_name='__main__')" --config /tmp/jetski-gvisor.json
       - name: Qualify native execution, PTY, TCP, RAM and exact local recovery
         run: sudo env GITHUB_ACTIONS=true JETSKI_TEST_MEMORY_SERVER=/tmp/jetski-memory-server python3 host/qualify_gvisor.py
       - name: Preserve bounded native diagnostics
