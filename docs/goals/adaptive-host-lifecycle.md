@@ -42,14 +42,14 @@ matrix and private recovery pointer instead of appending a run diary.
 
 ## Finite acceptance matrix
 
-| Gate                          | Required evidence                                                                                                                                                   | Status                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Portable implementation       | Validated lifetime/idle policy, persisted decisions/history, shared deadlines, Boat and adopted-host capability handling, server/embedded configuration             | Core/CLI implementation added; provider pricing feed added; client wiring remains          |
-| Changed lifecycle reliability | Restart/replay, stale policy/price inputs, bounds/budgets, queued demand versus retirement, lifetime drain, cleanup and source preservation                         | 278 TypeScript checks, build/types/lint pass; extended lifecycle integration checks remain |
-| Measured comparison           | Two matched replicas of a frozen trace crossing the one-hour boundary and a longer idle gap; equal images/resources/fixtures                                        | Pending implementation and allowance                                                       |
-| Honest cost accounting        | Actual starts, provider VM usage, retained idle time, R2 bytes/requests and readiness; separate paid invoice effects from modeled quota-tier replay                 | Pending; do not deliberately exhaust free starts                                           |
-| Staging adoption              | Pinned artifact, explicit new idle-policy admission, same-host reuse past one hour, durable save and source-deleted replacement, retained filesystem/session/output | Pending implementation                                                                     |
-| Publication and cleanup       | Main runtime/client CI, finite evidence report, positive absence for owned test hosts, retained checkpoint references and unchanged protected fixtures              | Pending                                                                                    |
+| Gate                          | Required evidence                                                                                                                                                   | Status                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Portable implementation       | Validated lifetime/idle policy, persisted decisions/history, shared deadlines, Boat and adopted-host capability handling, server/embedded configuration             | Core/CLI, bounded provider pricing and pinned client admission/scheduling implemented                  |
+| Changed lifecycle reliability | Restart/replay, stale policy/price inputs, bounds/budgets, queued demand versus retirement, lifetime drain, cleanup and source preservation                         | 278 runtime tests and controller/config checks; root builds/types/lint pass; hosted acceptance remains |
+| Measured comparison           | Two matched replicas of a frozen trace crossing the one-hour boundary and a longer idle gap; equal images/resources/fixtures                                        | Frozen trace and driver prepared; separate allowance pending                                           |
+| Honest cost accounting        | Actual starts, provider VM usage, retained idle time, R2 bytes/requests and readiness; separate paid invoice effects from modeled quota-tier replay                 | Pending; do not deliberately exhaust free starts                                                       |
+| Staging adoption              | Pinned artifact, explicit new idle-policy admission, same-host reuse past one hour, durable save and source-deleted replacement, retained filesystem/session/output | Pinned client implementation published; opt-in activation/hosted check pending                         |
+| Publication and cleanup       | Main runtime/client CI, finite evidence report, positive absence for owned test hosts, retained checkpoint references and unchanged protected fixtures              | Pending                                                                                                |
 
 ## Execution order and stop rules
 
@@ -98,7 +98,15 @@ fences; unavailable pricing falls back without preventing reconciliation. The
 client's shared configuration now accepts an explicit lifecycle profile, with
 runtime admission and composition still to wire.
 
-Next: publish the coherent artifact, wire scoped client admission/scheduling and
-pricing, then freeze the matched trace. Keep source
-implementation ahead of hosted verification. Private receipts will live under the
-operator's local QA state, not in this public repository.
+Two matched replicas are prepared against the frozen prior/current artifacts:51
+sessions90 seconds apart crossing75 minutes, then25 unused minutes and a final
+restore. The driver checks the separate allowance before credentials or network,
+persists stable operations and allocation grants, counts real provider/storage
+requests and payloads, compares an independent filesystem oracle each cycle, and
+requires durable final save before owned retirement. Import/hash/approval guard
+checks pass without network or allocations. Its hosted behavior is not yet qualified.
+
+Next: finish client main CI, obtain the separately requested allowance, reconcile
+current inventory and queued work, then run the frozen comparison and scoped
+staging opt-in/reuse/source-deleted recovery. Do not repeat unchanged archive or
+interactive matrices. Private receipts remain in the operator's local QA state.
