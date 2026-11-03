@@ -51,6 +51,7 @@ MODULES = (
     "gvisor_native.py",
     "gvisor_oci.py",
     "gvisor_rootfs.py",
+    "gvisor_cgroup.py",
     "supervisor.py",
     "control.py",
     "commands.py",
@@ -238,14 +239,15 @@ def bootstrap(config):
     if policy["kind"] == "gvisor":
         from gvisor_environment import prepare_images
 
-        entry = pathlib.Path("/opt/jetski/gvisor_rootfs.py")
-        if entry.is_symlink():
-            raise ValueError("unsafe_gvisor_rootfs_entry")
-        with open(source / "gvisor_rootfs.py", "rb") as input_file, open(entry, "wb") as output:
-            shutil.copyfileobj(input_file, output)
-            os.fchmod(output.fileno(), 0o644)
-            output.flush()
-            os.fsync(output.fileno())
+        for helper in ("gvisor_rootfs.py", "gvisor_cgroup.py"):
+            entry = pathlib.Path("/opt/jetski") / helper
+            if entry.is_symlink():
+                raise ValueError("unsafe_gvisor_helper_entry")
+            with open(source / helper, "rb") as input_file, open(entry, "wb") as output:
+                shutil.copyfileobj(input_file, output)
+                os.fchmod(output.fileno(), 0o644)
+                output.flush()
+                os.fsync(output.fileno())
         prepare_images(account, config["images"], run)
     for name in ("command-supervisor", "tcp-relay"):
         native = source / "native" / f"{name}.c"

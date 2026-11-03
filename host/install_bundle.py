@@ -47,6 +47,7 @@ MODULES = {
     "gvisor_native.py",
     "gvisor_oci.py",
     "gvisor_rootfs.py",
+    "gvisor_cgroup.py",
     "runtime_service.py",
     "supervisor.py",
 }

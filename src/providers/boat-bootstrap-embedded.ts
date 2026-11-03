@@ -55,6 +55,7 @@ export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "gvisor_native.py",
   "gvisor_oci.py",
   "gvisor_rootfs.py",
+  "gvisor_cgroup.py",
   "runtime_service.py",
   "supervisor.py",
 ]);

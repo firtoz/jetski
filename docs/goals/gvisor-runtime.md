@@ -86,8 +86,11 @@ including lost seal/resume ACK, restart, uncertain-source retention, known memor
 failure and absent-source fallback. These are composition checks, not native proof.
 CI `85a5d52` passed all eight existing jobs. The new native job first found a real
 bootstrap bug under permissive umask: a newly created trusted parent inherited777.
-Explicit creation fixes it. Native bootstrap now passes but launch fails with
-`gvisor_effect_unconfirmed`; bounded synthetic-fixture diagnostics are being added.
+Explicit creation fixes it. Native bootstrap passes. Bounded native diagnostics identified two launch
+constraints: default overlay conflicts with shared files, and runsc configures
+cgroup controllers above the delegated subtree. Explicit overlay disable and
+trusted host-managed cgroup limits/entry address these without allowing workloads
+to change limits. Actual launch and new cleanup paths still need native proof.
 No Boat allocations, controller, native desktop execution or wallet spend.
 
 ## Next actions

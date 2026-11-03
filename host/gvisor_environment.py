@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import stat
 import tempfile
@@ -142,7 +143,24 @@ class RootlessEnvironment:
     def argv(self, arguments):
         if arguments[: len(self.commands.prefix())] != self.commands.prefix():
             raise ValueError("invalid_gvisor_native_command")
-        return runtime_argv(self.account) + ["unshare", *arguments]
+        prefix = runtime_argv(self.account)
+        action = arguments[len(self.commands.prefix())]
+        if action in ("run", "restore", "exec"):
+            name = arguments[-1]
+            if not re.fullmatch(r"jetski-[a-f0-9-]{36}-g[1-9][0-9]{0,15}", name):
+                raise ValueError("invalid_workload_cgroup_identity")
+            # Replace only the final fixed podman executable; env/runuser policy
+            # stays identical. The helper joins before runsc can fork Sentry/gofer.
+            return prefix[:-1] + [
+                "python3",
+                "-I",
+                "/opt/jetski/gvisor_cgroup.py",
+                str(cgroup_parent(self.account) / name),
+                "podman",
+                "unshare",
+                *arguments,
+            ]
+        return prefix + ["unshare", *arguments]
 
     def run(self, arguments):
         return bounded_command(self.argv(arguments), CONTROL_ROOT, timeout=120)
@@ -156,6 +174,18 @@ class RootlessEnvironment:
 
     def limits_path(self, lease):
         return cgroup_parent(self.account) / container_name(lease)
+
+    def prepare_limits(self, lease, memory_mb, cpus):
+        path = self.limits_path(lease)
+        if os.path.lexists(path):
+            raise ValueError("workload_cgroup_already_admitted")
+        path.mkdir(mode=0o755)
+        path.chmod(0o755)
+        (path / "memory.max").write_text(str(memory_mb * 1024**2))
+        (path / "memory.swap.max").write_text("0")
+        (path / "cpu.max").write_text(f"{cpus * 100000} 100000")
+        (path / "pids.max").write_text("256")
+        os.chown(path / "cgroup.procs", self.account.pw_uid, self.account.pw_gid)
 
     def prepare(self, lease, image, memory_mb, cpus):
         if image not in self.images:
@@ -176,6 +206,7 @@ class RootlessEnvironment:
                 or meta.st_gid != self.ownership["workloadGid"]
             ):
                 raise ValueError("gvisor_persistent_mapping_conflict")
+        self.prepare_limits(lease, memory_mb, cpus)
         spec = sandbox_spec(
             lease,
             image,
@@ -224,7 +255,9 @@ class RootlessEnvironment:
         return dict(
             runtimeSha256=ARCHIVE_SHA256,
             image=self.config(lease)["annotations"]["org.jetski.image"],
-            configurationSha256=specification_sha256(self.config(lease)),
+            configurationSha256=specification_sha256(
+                {"oci": self.config(lease), "runtime": self.commands.prefix()}
+            ),
             platform="systrap",
             kernelVersion=pathlib.Path("/proc/sys/kernel/osrelease").read_text().strip(),
             cpuFeaturesSha256=hashlib.sha256(json.dumps(cpu_features).encode()).hexdigest(),
@@ -253,6 +286,12 @@ class RootlessEnvironment:
         spec["annotations"]["org.jetski.generation"] = str(successor["generation"])
         spec["linux"]["cgroupsPath"] = str(self.limits_path(successor)).removeprefix(
             "/sys/fs/cgroup"
+        )
+        resources = spec["linux"]["resources"]
+        self.prepare_limits(
+            successor,
+            resources["memory"]["limit"] // 1024**2,
+            resources["cpu"]["quota"] // resources["cpu"]["period"],
         )
         directory = private_directory(self.bundle(successor), self.account, create=True)
         write_json(directory / "config.json", spec, self.account)

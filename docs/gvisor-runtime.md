@@ -10,6 +10,9 @@ the finite integration, benchmark and recovery gates.
 Machine allocation, runtime isolation and durable storage remain separate. The
 planned adapter uses native `runsc`, caller-managed unprivileged user namespaces,
 subordinate workload IDs, private network namespaces and enforced cgroup limits.
+The trusted host adapter preconfigures each delegated cgroup and enters it before
+launching Sentry/gofer. `runsc` does not configure the host-wide cgroup tree;
+actual CPU/memory/pid limits and the Sentry membership are independently checked.
 Image preparation can reuse the existing OCI image tooling; this does not make
 Podman's execution journal authoritative for a separately restored runsc process.
 Unsupported host capabilities must fail admission rather than weaken isolation.

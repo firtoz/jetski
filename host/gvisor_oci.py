@@ -226,6 +226,7 @@ class RunscCommands:
             "--network=sandbox",
             "--file-access=shared",
             "--overlay2=none",
+            "--ignore-cgroups=true",
         ]
 
     def command(self, action, lease, *, bundle=None, image=None, process=None):
