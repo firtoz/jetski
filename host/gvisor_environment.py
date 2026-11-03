@@ -184,8 +184,6 @@ class RootlessEnvironment:
             # write permission at the common ancestor of source and target.
             # The workload runtime never receives that host-wide permission.
             return [
-                "/usr/bin/python3",
-                "-I",
                 "/opt/jetski/gvisor_cgroup.py",
                 str(cgroup_parent(self.account) / name),
                 *prefix,

@@ -52,6 +52,7 @@ MODULES = (
     "gvisor_oci.py",
     "gvisor_rootfs.py",
     "gvisor_cgroup.py",
+    "gvisor_apparmor.py",
     "supervisor.py",
     "control.py",
     "commands.py",
@@ -245,9 +246,12 @@ def bootstrap(config):
                 raise ValueError("unsafe_gvisor_helper_entry")
             with open(source / helper, "rb") as input_file, open(entry, "wb") as output:
                 shutil.copyfileobj(input_file, output)
-                os.fchmod(output.fileno(), 0o644)
+                os.fchmod(output.fileno(), 0o755 if helper == "gvisor_cgroup.py" else 0o644)
                 output.flush()
                 os.fsync(output.fileno())
+        from gvisor_apparmor import configure as configure_namespace_policy
+
+        configure_namespace_policy()
         prepare_images(account, config["images"], run)
     for name in ("command-supervisor", "tcp-relay"):
         native = source / "native" / f"{name}.c"

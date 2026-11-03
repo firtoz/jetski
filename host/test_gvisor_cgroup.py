@@ -1,11 +1,12 @@
 """Launcher policy checks; no host cgroups are created or joined here."""
 
+import io
 import types
 import unittest
 from unittest.mock import patch
 
 from gvisor_cgroup import enter
-from gvisor_environment import RootlessEnvironment
+from gvisor_environment import RootlessEnvironment, native_namespace_arguments
 from gvisor_oci import RunscCommands
 
 
@@ -26,6 +27,31 @@ class CgroupPolicyTests(unittest.TestCase):
             ):
                 with self.assertRaises(ValueError):
                     enter(path, argv)
+
+    def test_native_namespace_requires_the_prepared_exact_subordinate_map(self):
+        account = types.SimpleNamespace(pw_uid=1234, pw_name="jetski-runtime")
+        ownership = dict(
+            uidMappings=[[0, 0, 1], [1, 1, 65536]],
+            gidMappings=[[0, 0, 1], [1, 1, 65536]],
+            workloadUid=100999,
+            workloadGid=100999,
+        )
+
+        def table(*args):
+            return io.StringIO("jetski-runtime:100000:65536\n")
+
+        with patch("builtins.open", side_effect=table):
+            argv = native_namespace_arguments(account, ownership)
+            self.assertIn("--map-users=1:100000:65536", argv)
+            self.assertIn("--map-groups=1:100000:65536", argv)
+            with self.assertRaisesRegex(ValueError, "mapping_conflict"):
+                native_namespace_arguments(account, {**ownership, "workloadUid": 101000})
+        with patch(
+            "builtins.open",
+            return_value=io.StringIO("jetski-runtime:100000:65536\njetski-runtime:300000:65536\n"),
+        ):
+            with self.assertRaisesRegex(ValueError, "single_subordinate_range"):
+                native_namespace_arguments(account, ownership)
 
     def test_only_launch_and_execution_enter_their_exact_workload_cgroup(self):
         environment = object.__new__(RootlessEnvironment)

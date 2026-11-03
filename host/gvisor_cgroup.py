@@ -1,3 +1,4 @@
+#!/usr/bin/python3 -I
 """Enter a preconfigured delegated cgroup before executing trusted runtime argv.
 
 Installed root-owned outside workloads; invoked by the root supervisor before
