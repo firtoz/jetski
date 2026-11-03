@@ -46,89 +46,77 @@ older historical time, for acceptance.
 
 ## Finite implementation and acceptance checklist
 
-| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                                                                                       |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                                                                                         |
-| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 256 KiB capture members and 8 MiB packs selected; legacy 4 MiB reads and adaptive gzip qualified.                                                                                            |
-| Save pipeline             | Bounded batching/concurrency and fewer control round trips without weaker publication or uncertain-outcome handling                            | Verified warm medians on qualification33; cold bootstrap remains the next implementation target.                                                                                             |
-| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Optional16 MiB raw import qualified locally and on fresh hosts; exact source-deleted recovery, progress and cleanup pass.                                                                    |
-| Fault qualification       | Corruption, partial transfer, lost ACK/restart, cancellation, stale generations, old-format restore and GC/publication races                   | 265 TypeScript/14 changed host-control tests and all seven current CI jobs pass; valid prior archive/storage fault evidence reused.                                                          |
-| Matched hosted comparison | Ten trials per arm across replicated equal-resource/image/workload hosts with independent filesystem checks                                    | Verified on qualification33: all20 exact; pooled save/readiness/cycle medians improve, both pair save/cycle medians win, second-pair readiness nearly tied.                                  |
-| Large restore/replacement | Larger generic fixture, source-deleted replacement and interrupted-transfer recovery                                                           | Qualification34 restores436 MB exactly, retains output and repeated saves, and meets observed cold target36.774 versus51.309 s in one pair.                                                  |
-| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved checkpoints, owned cleanup and exact-SHA CI                                 | Qualification32 real read/edit/PR and warm/replacement/session gates closed. Qualification34 final changed-cache/bootstrap adoption remains pending; reuse unchanged business-flow evidence. |
+| Gate                      | Work and required evidence                                                                                                                     | Status                                                                                                                                                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explain baseline          | Separate capture/compression, range transport, verification, publication, synchronization and removal costs; record request counts and overlap | Host phases, storage/provider counts and differing controller compositions measured.                                                                                                                        |
+| Incremental granularity   | Evaluate smaller independent frames and packing; preserve old archives and bounded reconstruction                                              | 256 KiB capture members and 8 MiB packs selected; legacy 4 MiB reads and adaptive gzip qualified.                                                                                                           |
+| Save pipeline             | Bounded batching/concurrency and fewer control round trips without weaker publication or uncertain-outcome handling                            | Verified warm medians on qualification33; qualification34 missing-only bootstrap meets the observed cold pair target.                                                                                       |
+| Cold import               | Evaluate larger/batched or streamed transfers with durable progress, bounded memory and exact idempotent replay after interruption             | Optional16 MiB raw import qualified locally and on fresh hosts; exact source-deleted recovery, progress and cleanup pass.                                                                                   |
+| Fault qualification       | Corruption, partial transfer, lost ACK/restart, cancellation, stale generations, old-format restore and GC/publication races                   | 265 TypeScript/14 changed host-control tests and all seven current CI jobs pass; valid prior archive/storage fault evidence reused.                                                                         |
+| Matched hosted comparison | Ten trials per arm across replicated equal-resource/image/workload hosts with independent filesystem checks                                    | Verified on qualification33: all20 exact; pooled save/readiness/cycle medians improve, both pair save/cycle medians win, second-pair readiness nearly tied.                                                 |
+| Large restore/replacement | Larger generic fixture, source-deleted replacement and interrupted-transfer recovery                                                           | Qualification34 restores436 MB exactly, retains output and repeated saves, and meets observed cold target36.774 versus51.309 s in one pair.                                                                 |
+| Downstream adoption       | Pinned artifact, scoped staging save/resume/replacement, preserved checkpoints, owned cleanup and exact-SHA CI                                 | Closed on qualification34: pinned client, exact warm/local-cache and source-deleted replacement, retained session/output, repeated saves, cleanup and exact-SHA CI. Earlier unchanged business flow reused. |
 
-## Current candidate and evidence
+## Qualified result
 
-Runtime `62eab00`, qualification33, adds a capability-negotiated combined cached
-resume. Claim, full cached import verification and create share one control call;
-the core holds a reader lease and validates checkpoint, assignment, image and
-resource identities. Misses never create a runtime and use ordinary import. Hosts
-without the advertised capability retain their existing path. Published archive
-formats, old4 MiB reads, fencing, synchronization and publication proof are unchanged.
+Qualification34 (`c6864d4`) is published and pinned by the staging client
+`f641ebe0`. All182 artifact files match both consumers. Runtime build/types/lint,
+265 TypeScript tests and all seven [artifact CI jobs](https://github.com/firtoz/jetski/actions/runs/41550708737)
+pass. Existing14 affected host-control checks and unchanged archive/storage fault,
+cancellation, old-format, GC-race and live R2 contract evidence are reused.
 
-Build, types,265 TypeScript tests (including missing-only prerequisites),14 affected host-control checks and all seven
-exact-SHA CI jobs pass. The artifact has180 files and both downstream consumers
-match it exactly. Previous archive/storage fault, cancellation, old-format, GC-race
-and live R2 consistency evidence is reused where those paths are unchanged.
+The implementation retains256 KiB independently compressed capture members in
+8 MiB immutable packs, bounded rolling uploads and native storage write/range
+proofs. Negotiated16 MiB raw import parts retain durable progress and bounded
+reconstruction. A capability-negotiated combined cached resume retains the ordinary
+claim/full import verification/create checks under a core reader lease; unsupported
+hosts and cache misses use ordinary import. Missing-only Boat package installation
+checks the existing compiler without asking to upgrade installed prerequisites.
+Archive compatibility, hashes, publication, synchronization and fencing are unchanged.
 
-The frozen warm comparison completed ten trials per arm on two fresh host pairs.
-All20 filesystem checks match and all four hosts/controllers have positive absence
-receipts. Candidate/reference median save is2.4985/4.9225 s, readiness1.1035/2.0175 s
-and complete cycle4.933/8.0335 s. Sample p95 cycle is6.119/10.271 s. Both pair save/
-cycle medians improve; second-pair readiness is nearly tied at1.054/1.042 s. Every
-candidate row uses the combined cache path. Provider calls are10.5 versus16,
-storage calls31 versus18 and changed upload0.263 versus1.042 MB. This closes the
-measured warm gate, with host variance and differing controller placement disclosed
-in [benchmarks](../benchmarks.md). Do not attribute all latency differences to the
-new call composition or repeat this unchanged matrix.
+The frozen warm comparison completed ten trials per arm on two fresh equal-resource
+host pairs. All20 independent filesystem checks match; all four hosts/controllers
+are absent. Candidate/reference median save is2.4985/4.9225 s, readiness1.1035/2.0175 s
+and complete cycle4.933/8.0335 s; sample p95 cycle6.119/10.271 s. Both pair save/cycle
+medians improve, while second-pair readiness is nearly tied at1.054/1.042 s. Every
+candidate row uses the combined cached path. Provider requests10.5/16 and upload
+0.263/1.042 MB improve, while storage requests31/18 remain higher. The warm matrix
+uses runtime `62eab00`; exact artifact comparison proves those files unchanged in34.
 
-Qualification34 (`c6864d4`) is published with all seven exact-SHA CI jobs passing.
-Its missing-only Boat prerequisite fix passes265 TypeScript checks. Exact artifact
-diff from qualification33 changes only embedded bootstrap and adds its prerequisite
-helper; host assets, checkpoint formats, core, transport and warm code are identical.
-Reuse the completed warm matrix instead of retesting unchanged paths.
+One changed cold pair restores436,207,724 logical bytes after source deletion with
+exact whole-filesystem bytes/modes/links, retained output and repeated saves.
+Candidate/reference readiness36.774/51.309 s meets the observed target. Prerequisite
+preparation takes8.787 s, installer/image preparation11.226 s, binary writes10.090 s,
+final import0.858 s and create0.261 s. This is one pair, not a population-median
+claim. The prior188.574/47.045 s result is preserved; its bootstrap lacked the phase
+breakdown needed to attribute the entire difference to the package fix. Controller
+placement, tails, failures and other measured limits remain in [benchmarks](../benchmarks.md).
 
-One changed cold pair restores the original436,207,724 logical-byte fixture after
-source deletion with exact whole-filesystem bytes/modes/links, saved-output
-continuity, repeated durable saves and owned cleanup. Latest metadata preserves
-all acknowledged roots; the historical root is selected without rewinding state.
-Candidate/reference readiness36.774/51.309 s meets the observed target. Package
-preparation is8.787 s, installer/image preparation11.226 s, binary writes10.090 s,
-final import0.858 s and create0.261 s. This is one pair with host/network variance,
-not a population-median guarantee. The prior188.574/47.045 s result and its150.893 s
-before status are preserved; without prior phase breakdown, do not attribute the
-entire difference to the package fix. Prior interruption/fault proofs remain valid.
+Final staging qualification uses the pinned artifact through the real client.
+A retained prior checkpoint resumes, saves durably and reuses its verified165,862,269-byte
+local archive on the same host. After another durable save and positive source-VM
+absence, a different physical host restores from retained remote storage. Both warm
+and replacement independent digests match158 entries and322,845,310 logical bytes,
+including persistent session files. Original acknowledged command output remains
+identical. The final repeated save retains the original archive SHA-256. Earlier
+unchanged read/edit/publication/session workflow evidence is reused without another
+workload job. Exact-SHA client CI, including staging deployment, passes.
 
-The qualification32 downstream read/edit/PR, warm/source-deleted full filesystem,
-saved output, three-turn session and fresh-task gates passed. Reuse that unchanged
-business-flow evidence. Qualification34 is being pinned in both downstream consumers. The qualification33 first deployment was rejected by the platform's startup CPU limit;
-a lazy bootstrap-assets import is now on main. The subsequent CI probe omitted
-its additional bundle chunks, so deployment was skipped. The probe now supplies
-all emitted modules and passes local workerd startup; actual platform acceptance
-and final qualification34 staging remain pending. Local profiling alone does not qualify deployment.
-Current changed-cache staging save/warm/physical recovery remains open.
+Both final staging hosts have positive absence receipts, inventory shows zero active
+hosts, and all89 accounted performance hosts are retired. Temporary controllers and
+proxies are removed. Acknowledged checkpoints remain retained; historical uncertain
+outcomes stay uncertain. The approved aggregate cap and separate recovery funds,
+fixtures, clocks, roots and generations are preserved. No snapshots, top-ups,
+operator-runtime changes, production cutover or npm publication were introduced.
+Private receipts preserve complete inputs, failures, operations and cleanup.
 
-All87 accounted performance hosts are retired, with temporary controllers removed.
-Completed earlier qualification reservations were reconciled against their verified
-one-hour owned allocations, preserving full maximum start/hour funding within the
-unchanged approved aggregate cap. Keep other recovery funds, clocks, roots and
-generations untouched. No production cutover or active immutable-bundle upgrade.
-Private receipts retain failures, frozen inputs, operation identities and cleanup.
+## Publication closure
 
-## Execution order
-
-1. Profile the unchanged paths and add targeted fault/performance instrumentation.
-   Separate observed counts from hypotheses about latency; do not assume abstraction
-   overhead is the cause or that extra I/O is inherently required for safety.
-2. Implement the smallest coherent optimizations in the shared layers. Screen
-   alternatives locally, including save granularity, batching, verification reuse
-   and durable import progress; run affected checks after each change.
-3. Reuse passed evidence and prioritize implementation, as requested. Run only
-   changed-path checks and the final client workflow; do not repeat broad warm or
-   fault matrices without a concrete new concern. Preserve failed attempts and clean
-   owned resources. Repeat only affected failed checks or justified comparisons.
-4. Integrate the winning reliable candidate in staging and publish measured results.
-   Do not promote a faster but less durable path or claim a universal speedup.
+Implementation, the finite matched comparison and final staging qualification are
+complete. The remaining publication condition is a green exact-SHA main workflow
+for this final documentation update; its attached GitHub checks are authoritative.
+Do not repeat the closed workload matrix. Record that workflow and the final audit
+in the private evidence before closing the goal.
 
 The original v1 real-grace gate passed independently; its evidence is in
-[implementation.md](../implementation.md). It does not close this performance goal.
+[implementation.md](../implementation.md). The separate protected fixture is unchanged.

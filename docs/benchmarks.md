@@ -49,7 +49,14 @@ median or isolate the package change from host/network variance. The preceding
 unchanged-format candidate measured188.574/47.045 s, including150.893 s before
 its first status call. That earlier bootstrap was not split into package/installer
 phases, so its entire difference cannot be attributed to package installation.
-See the [active goal](goals/checkpoint-performance.md) for final client adoption.
+The pinned downstream client completes the final staging save/local-cache warm/
+source-deleted physical replacement sequence. Its independent filesystem digest
+matches158 entries and322,845,310 logical bytes; prior command output and persistent
+session bytes remain exact. The final repeated save retains the original archive
+hash. Two owned hosts were used and retired with positive absence receipts; provider
+inventory reports zero active hosts. Exact-SHA client CI passes. Earlier unchanged
+business-flow evidence is reused. See the [goal](goals/checkpoint-performance.md)
+for the finite acceptance record.
 
 ## Previous candidate: qualification32
 
