@@ -207,3 +207,16 @@ resources; use explicit budgets and owned-resource cleanup. See
 [design](docs/design.md), [qualification](docs/qualification.md),
 [standalone configuration](docs/standalone.md), [implementation](docs/implementation.md)
 and [MIT license](LICENSE).
+
+## Optional gVisor runtime
+
+Keep the same host and storage adapters while selecting a gVisor user-space kernel
+instead of Podman execution. Opt-in memory suspension preserves application RAM
+on a compatible retained host; verified R2 checkpoints remain the independent
+filesystem recovery path. Podman stays the default.
+
+In a thirty-sample Boat comparison, median resume-to-response was **5.74s Podman**,
+**4.54s gVisor filesystem**, and **4.27s gVisor memory**. Memory continuity and both
+source-deleted R2 recoveries passed exact checks. Cold setup and memory overhead
+were higher; save results depend on shutdown policy. See [measurements and limits](docs/gvisor-benchmarks.md)
+and [configuration, API usage and recovery semantics](docs/gvisor-runtime.md).

@@ -315,6 +315,7 @@ export function createSshGateway(
             }
             starting = true;
             const target = match[1]!;
+            let lifetime: ReturnType<typeof setTimeout> | undefined;
             const task = (async () => {
               identifier(target);
               if (!(await backend.get(authorized)))
@@ -324,7 +325,7 @@ export function createSshGateway(
               terminal = target;
               channel = acceptCommand();
               clearTimeout(deadline);
-              const lifetime = setTimeout(close, 3600000);
+              lifetime = setTimeout(close, 3600000);
               channel.once("close", () => {
                 clearTimeout(lifetime);
                 abort.abort();
@@ -364,6 +365,9 @@ export function createSshGateway(
                 client.end();
               })
               .finally(async () => {
+                // Channel close can race listener registration or never arrive
+                // after transport loss. The owning task must retire its timer.
+                clearTimeout(lifetime);
                 await tail;
               });
             tasks.add(task);

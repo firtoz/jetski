@@ -33,15 +33,15 @@ main milestones; final exact-SHA CI and concise reporting are required.
 
 ## Finite acceptance matrix
 
-| Gate                       | Required evidence                                                                                                                      | State       |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| Contract/design            | Explicit runtime/bootstrap capabilities; suspend/stop distinction; memory/filesystem consistency and fallback contract                 | In progress |
-| Native runtime integration | Pinned runsc installation on owned execution hosts; lifecycle/exec/files/PTY/forwarding through trusted adapter                        | Partial     |
-| Memory integration         | Real process-memory continuity with exact files; verified R2 root before acknowledgement/release; fenced compatible resume             | Open        |
-| Targeted failure coverage  | Restart/lost ACK, stale/mismatched/missing/corrupt memory, output identity, uncertain source retention and cleanup                     | Open        |
-| Matched benchmark          | Podman filesystem / gVisor filesystem / gVisor memory; two reversed groups, five timed cycles per mode per group: thirty valid samples | Open        |
-| Durable recovery           | One source-deleted R2 replacement per runtime; exact files/modes/links/original output; explicit memory-loss fallback                  | Open        |
-| Report/publication/cleanup | Stage timing, CPU/RSS scope, bytes/requests, cold/warm readiness, costs and failures; owned absence and main CI                        | Open        |
+| Gate                       | Evidence                                                                                                | State            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------- |
+| Contract/design            | Runtime/bootstrap capabilities, stable suspend/stop and fallback contract                               | Complete         |
+| Native runtime integration | Owned-host pinned runsc; native lifecycle, binary execution, PTY, TCP and enforced resources            | Complete         |
+| Memory integration         | Full evolving 64 MiB heap continuity; exact files, fenced successor, verified R2 publication            | Complete         |
+| Targeted failure coverage  | Restart/lost ACK, stale/missing/incompatible/corrupt memory, uncertain-source retention                 | Complete         |
+| Matched benchmark          | Two reversed groups, five cycles per mode per group: thirty valid samples                               | Complete         |
+| Durable recovery           | Source-deleted Podman and gVisor R2 replacements; exact files/modes/links/output and explicit RAM loss  | Complete         |
+| Report/publication/cleanup | Consolidated report; fresh eight-host absence, empty inventory, stopped metadata, wallet reconciliation | Final CI pending |
 
 Implement coherently before broad hosted qualification. Complete affected checks,
 freeze sources/artifacts/workload, then run one finite matrix. No predetermined
@@ -57,52 +57,45 @@ at most ten small one-hour hosts: six matrix arms, two source-deleted replacemen
 two failure reserves. Capability preflight uses the first owned matrix host, not
 an extra connectivity VM. Worst-case reservation at $0.07/start plus $0.036/hour
 is $1.06; reconcile actual size-weighted compute, start quotes and wallet separately.
-Approval recorded in private `budget.json`; no allocation made yet. Local implementation proceeds first.
+Approval recorded in private `budget.json`. Eight starts were used; all eight
+are provider404, complete active inventory is empty, actual wallet debit is $0.00
+under included credits. Compute value is $0.01119–$0.01129; no additional hosts
+are needed. Prior budgets and retained histories remain untouched.
 
-Workspace `/home/frtn/work/2026/jetski`, main `b12800a`, clean at goal start.
-Prior stage-performance goal is complete; all ten owned hosts were provider404
-and final CI passed eight jobs. Its data/budget are read-only reference evidence.
-Private state: `/home/frtn/.local/state/jetski-qa/gvisor-20261103/`.
-No host or controller allocated for this goal yet. No runsc installed on desktop.
+## Current implementation and evidence
 
-## Current implementation
+The [runtime design and usage](../gvisor-runtime.md) records configuration,
+capabilities, memory/filesystem identity and fallback behavior. The
+[consolidated benchmark](../gvisor-benchmarks.md) records timings, stage breakdown,
+resources, requests, retained bytes, costs, failures and limitations.
 
-The [runtime design](../gvisor-runtime.md) records the contract. Native Python
-bootstrap/control/exec selection is implemented, including operator workload init
-for both runtimes without changing defaults. Private memory freeze/seal/resume
-bind physical inode/link identity, original native checksums, exact archive bytes
-and verified publication. Successful RAM resume retires only the derived old tar
-so subsequent changed saves can reuse the assignment safely.
+Local build/typecheck/lint and Ruff pass, with 297 TypeScript and 187 Python tests.
+Native CI covers binary execution, PTY/TCP, full-heap continuity, exact local
+recovery and cleanup. The frozen Boat candidate is `741759b`; its runtime bundle
+is identical to the qualified `d07f0b3`. All thirty hosted rows and both independent
+source-deleted R2 replacements pass. Six controller process restarts preserve
+operation identity. All six sandboxes finish stopped without leases, pending
+operations or checkpoint holds. Acknowledged R2 histories remain retained.
 
-Managed SDK/server suspend and resume use durable filesystem transfer/verification,
-exclusive physical successor reservation, separately fenced core generations and
-retained-root holds. Known pre-effect failures explicitly fall back to filesystem
-placement; uncertain native effects retain/quarantine source. Pool release and
-fallback transition commit together. SDK/HTTP/CLI and standalone Boat policy expose
-the optional path; per-sandbox runtime capability discovery is implemented.
+Two harness faults are preserved with original IDs and completed rows: a fixture
+root invocation before writes, and a usage query after successful source deletion.
+Neither required an extra start or repeating the completed matrix. Podman's
+ten-second shutdown grace materially affects the save comparison. Total network
+bytes are unavailable because signed host transfers bypass controller counters;
+retained frame bytes and request scope are reported separately.
 
-Local build/typecheck/lint and Ruff pass; 297 TypeScript and 187 Python tests pass,
-including lost seal/resume ACK, restart, uncertain-source retention, known memory
-failure and absent-source fallback. These are composition checks, not native proof.
-CI `85a5d52` passed all eight existing jobs. The new disposable native job caught
-and drove concrete bootstrap/namespace/cgroup fixes. Direct native namespaces now
-use the prepared exact subordinate maps; a scoped launcher AppArmor profile is
-loaded on restricted hosts without changing sysctls. Actual native binary I/O,
-PTY and Sentry cgroup/limits pass. Native TCP forwarding and real memory save/restore now pass the stateful RAM
-marker/counter and exact filesystem assertions. The final quiesce bookkeeping fix passes the full disposable native fixture,
-including source-tree deletion, exact local cold restore and owned cleanup
-(CI `cc80695`, native job126244381282). This is local-store native evidence, not
-R2 or a replacement physical host. Stop observes asynchronous termination before reporting success.
-The portable cache receipt now binds the full host lease instead of a runtime
-container-name convention; existing immutable Podman receipts retain their contract.
-No Boat allocations, controller, native desktop execution or wallet spend.
+## Recovery context and next actions
 
-## Next actions
+Workspace `/home/frtn/work/2026/jetski`, branch main. Private state:
+`/home/frtn/.local/state/jetski-qa/gvisor-20261103/`.
+Read `current.json`, `benchmark/completed.json`, `benchmark/report.json`,
+`benchmark/supplemental-metrics.json`, `benchmark/final-audit.json` and
+`benchmark/metadata-audit.json` selectively. Controllers are terminal; do not restart
+or allocate. No desktop runtime was installed and no client/default cutover occurred.
 
-1. Publish the portable cache lease receipt fix and check exact-SHA CI. Freeze
-   the artifact/workload; preserve the completed native evidence.
-2. Implement the private finite controller from persisted `benchmark/plan.json`,
-   then inspect inventory/limits/queued state before the first approved matrix
-   host. That host doubles as the Boat capability preflight; no extra VM.
-3. Complete the single matched comparison, both source-deleted recoveries, owned
-   cleanup, honest report and final exact-SHA publication. No repeated baseline matrix.
+Final CI diagnostics identified an SSH terminal lifetime timer surviving completed
+API cleanup. The owning task now clears it in `finally`; the fixture asserts no
+referenced timers remain after cleanup. Build/typecheck/lint and ten affected
+SSH/terminal tests pass. Final publication CI is pending; one unrelated browser
+startup timeout is preserved from the diagnostic run. Finish terminal exact-SHA
+CI without repeating hosted tests, then mark the existing goal complete.

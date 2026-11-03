@@ -1,14 +1,14 @@
 # Optional gVisor runtime
 
-This is active implementation work. The optional Python host path can be selected
-for qualification, but native operation is not yet qualified. Managed memory resume and explicit
-filesystem fallback are implemented with targeted restart/ACK-loss tests. Podman remains the supported default. The [goal](goals/gvisor-runtime.md) tracks
-the finite integration, benchmark and recovery gates.
+The optional Python host path is qualified on owned Boat hosts with R2 durable
+filesystem recovery, native execution/PTY/TCP and real process-memory continuity.
+Podman remains the default. See the [matched measurements and limits](gvisor-benchmarks.md)
+and the [implementation goal](goals/gvisor-runtime.md).
 
 ## Composition
 
 Machine allocation, runtime isolation and durable storage remain separate. The
-planned adapter uses native `runsc`, caller-managed unprivileged user namespaces,
+adapter uses native `runsc`, caller-managed unprivileged user namespaces,
 subordinate workload IDs, private network namespaces and enforced cgroup limits.
 The trusted host adapter preconfigures each delegated cgroup and enters it before
 launching Sentry/gofer. `runsc` does not configure the host-wide cgroup tree;
@@ -63,8 +63,9 @@ loss; it cannot claim that RAM, sockets or in-flight work survived.
 
 The experimental SDK/server `suspend` operation now uses the existing durable
 filesystem publication pipeline before acknowledging a sealed memory image. It
-retains exclusive host ownership. Public managed memory resume and fallback are
-still being implemented; ordinary `resume` retains its filesystem semantics.
+retains exclusive host ownership. Public managed `resumeMemory` uses the sealed image when compatible and explicitly
+falls back to verified filesystem recovery otherwise; ordinary `resume` retains
+its filesystem semantics.
 Optional operator `workloadInit` uses the same unprivileged policy on Podman and
 gVisor, allowing a stateful application to run while control I/O settles.
 
@@ -75,9 +76,9 @@ before effects; ordinary bootstrap configuration still selects Podman.
 
 Local tests exercise exec byte streams, cancellation/start identity, image-path
 isolation and journal transitions using local processes or driver doubles. They
-do not prove native gVisor operation or hosted performance. Managed memory resume/fallback
-integration, real process-memory continuity, native interactive qualification,
-matched timings and source-deleted R2 recovery remain separate gates.
+do not prove native gVisor operation or hosted performance. Native CI and the matched Boat/R2 qualification independently cover memory
+continuity, affected interactive paths and source-deleted filesystem recovery;
+see the linked measurements for boundaries and limits.
 
 ## Operator and client usage
 
@@ -114,4 +115,5 @@ HTTP equivalents are `POST .../suspend`, `POST .../resume-memory` with an
 `operationId`, and `GET .../capabilities`, under `/v1/sandboxes/{sandboxId}`.
 The CLI exposes `suspend` and `resume-memory` with `--operation`. Ordinary `resume`
 keeps its filesystem semantics. Memory artifacts are local and optional; durable
-recovery depends on the configured checkpoint store, with R2 qualification pending.
+recovery depends on the configured checkpoint store. R2 source-deleted recovery
+passed with exact persistent files and explicit process-state loss.
