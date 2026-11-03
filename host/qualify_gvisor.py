@@ -201,6 +201,7 @@ def main():
             before,
             after,
         )
+        assert before["checksum"] == after["beforeChecksum"], (before, after)
         assert snapshot == oracle(assignment)
         assert physical == frozen_identity(roots)
         assert original == command(

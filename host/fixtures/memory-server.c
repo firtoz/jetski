@@ -48,12 +48,14 @@ int main(int argc, char **argv) {
             if (strstr(request, "\r\n\r\n")) break;
         }
         if (!have) { close(fd); continue; }
+        uint64_t before_checksum = UINT64_C(1469598103934665603);
+        for (size_t i = 0; i < size; i++) before_checksum = (before_checksum ^ heap[i]) * UINT64_C(1099511628211);
         counter++;
         heap[counter % size] ^= 1;
         uint64_t checksum = UINT64_C(1469598103934665603);
         for (size_t i = 0; i < size; i++) checksum = (checksum ^ heap[i]) * UINT64_C(1099511628211);
         char body[256], header[256];
-        int bytes = snprintf(body, sizeof(body), "{\"token\":\"%s\",\"counter\":%" PRIu64 ",\"heapBytes\":%zu,\"checksum\":\"%016" PRIx64 "\"}\n", token, counter, size, checksum);
+        int bytes = snprintf(body, sizeof(body), "{\"token\":\"%s\",\"counter\":%" PRIu64 ",\"heapBytes\":%zu,\"beforeChecksum\":\"%016" PRIx64 "\",\"checksum\":\"%016" PRIx64 "\"}\n", token, counter, size, before_checksum, checksum);
         int headers = snprintf(header, sizeof(header), "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", bytes);
         if (bytes < 0 || (size_t)bytes >= sizeof(body) || headers < 0 || (size_t)headers >= sizeof(header)) return 7;
         if (send_all(fd, header, (size_t)headers) == 0) (void)send_all(fd, body, (size_t)bytes);
