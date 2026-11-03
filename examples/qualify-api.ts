@@ -1,5 +1,6 @@
 /** Real standalone API/SDK/CLI qualification on the disposable SSH CI host. */
 import assert from "node:assert/strict";
+import { createHook } from "node:async_hooks";
 import { execFile } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -30,6 +31,20 @@ const key = process.env.JETSKI_TEST_SSH_KEY,
   image = process.env.JETSKI_TEST_IMAGE;
 if (process.env.GITHUB_ACTIONS !== "true" || !key || !knownHosts || !image)
   throw new Error("Missing CI configuration");
+// Bound a completed fixture's shutdown and identify any timer still owning work.
+const timers = new Map<number, { timer: NodeJS.Timeout; stack: string }>();
+const timerHook = createHook({
+  init(id, type, _trigger, resource) {
+    if (type === "Timeout")
+      timers.set(id, {
+        timer: resource as NodeJS.Timeout,
+        stack: new Error().stack ?? "",
+      });
+  },
+  destroy(id) {
+    timers.delete(id);
+  },
+}).enable();
 const directory = await mkdtemp(join(tmpdir(), "jetski-api-ci-"));
 const state = new SqliteState(join(directory, "state.sqlite"));
 let clientJournal = new SqliteState(join(directory, "client-terminal.sqlite"));
@@ -1440,6 +1455,17 @@ try {
       cleanupStage,
       activeResources: process.getActiveResourcesInfo(),
     }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const retainedTimers = [...timers.values()].filter(({ timer }) =>
+    timer.hasRef(),
+  );
+  timerHook.disable();
+  assert.deepEqual(
+    retainedTimers.map(({ stack }) => stack),
+    [],
+    "Cleanup retained referenced timers",
   );
   if (cleanupError && qualificationError)
     throw new AggregateError(
