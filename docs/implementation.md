@@ -119,7 +119,9 @@ Python and separate capture remain defaults. [Completed scope](goals/host-stage-
 
 The [optional gVisor runtime goal](goals/gvisor-runtime.md) adds a separately
 selected runtime and coordinated memory resume, retaining R2 filesystem recovery
-and Podman defaults. Its finite matrix and separate allowance govern hosted work.
+and Podman defaults. Its thirty-sample comparison, real memory continuity and both source-deleted R2
+recoveries pass; see [measurements and limits](gvisor-benchmarks.md). All eight
+owned hosts are absent.
 
 ## Keeping this plan useful
 

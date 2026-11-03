@@ -33,15 +33,15 @@ main milestones; final exact-SHA CI and concise reporting are required.
 
 ## Finite acceptance matrix
 
-| Gate                       | Evidence                                                                                                | State            |
-| -------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------- |
-| Contract/design            | Runtime/bootstrap capabilities, stable suspend/stop and fallback contract                               | Complete         |
-| Native runtime integration | Owned-host pinned runsc; native lifecycle, binary execution, PTY, TCP and enforced resources            | Complete         |
-| Memory integration         | Full evolving 64 MiB heap continuity; exact files, fenced successor, verified R2 publication            | Complete         |
-| Targeted failure coverage  | Restart/lost ACK, stale/missing/incompatible/corrupt memory, uncertain-source retention                 | Complete         |
-| Matched benchmark          | Two reversed groups, five cycles per mode per group: thirty valid samples                               | Complete         |
-| Durable recovery           | Source-deleted Podman and gVisor R2 replacements; exact files/modes/links/output and explicit RAM loss  | Complete         |
-| Report/publication/cleanup | Consolidated report; fresh eight-host absence, empty inventory, stopped metadata, wallet reconciliation | Final CI pending |
+| Gate                       | Evidence                                                                                                | State    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- | -------- |
+| Contract/design            | Runtime/bootstrap capabilities, stable suspend/stop and fallback contract                               | Complete |
+| Native runtime integration | Owned-host pinned runsc; native lifecycle, binary execution, PTY, TCP and enforced resources            | Complete |
+| Memory integration         | Full evolving 64 MiB heap continuity; exact files, fenced successor, verified R2 publication            | Complete |
+| Targeted failure coverage  | Restart/lost ACK, stale/missing/incompatible/corrupt memory, uncertain-source retention                 | Complete |
+| Matched benchmark          | Two reversed groups, five cycles per mode per group: thirty valid samples                               | Complete |
+| Durable recovery           | Source-deleted Podman and gVisor R2 replacements; exact files/modes/links/output and explicit RAM loss  | Complete |
+| Report/publication/cleanup | Consolidated report; fresh eight-host absence, empty inventory, stopped metadata, wallet reconciliation | Complete |
 
 Implement coherently before broad hosted qualification. Complete affected checks,
 freeze sources/artifacts/workload, then run one finite matrix. No predetermined
@@ -93,9 +93,14 @@ Read `current.json`, `benchmark/completed.json`, `benchmark/report.json`,
 `benchmark/metadata-audit.json` selectively. Controllers are terminal; do not restart
 or allocate. No desktop runtime was installed and no client/default cutover occurred.
 
-Final CI diagnostics identified an SSH terminal lifetime timer surviving completed
-API cleanup. The owning task now clears it in `finally`; the fixture asserts no
-referenced timers remain after cleanup. Build/typecheck/lint and ten affected
-SSH/terminal tests pass. Final publication CI is pending; one unrelated browser
-startup timeout is preserved from the diagnostic run. Finish terminal exact-SHA
-CI without repeating hosted tests, then mark the existing goal complete.
+All acceptance gates pass. [CI for runtime/report revision `76f531b`](https://github.com/firtoz/jetski/actions/runs/41740138293)
+passed all nine jobs, including native gVisor, the installed API and its referenced-
+timer cleanup assertion, SSH/Boat compositions and browser previews. The final
+repair clears an SSH terminal lifetime timer in its owning task's `finally`;
+no benchmark or acknowledged checkpoint was changed. Build/typecheck/lint and
+ten affected SSH/terminal tests also pass locally.
+
+The implementation and qualification are complete. Podman remains default;
+there is no client cutover. All owned hosts are absent and retained R2 roots are
+preserved. No further hosted runs are planned. This closure record is documentation
+only; final main checks remain visible on the repository's current revision.
