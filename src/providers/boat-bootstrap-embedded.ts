@@ -9,6 +9,7 @@ import {
 } from "../core/contracts.js";
 import { BoatControlChannel } from "../transport/boat-channel.js";
 import type { BoatApi } from "./boat.js";
+import { BOAT_PREREQUISITES } from "./boat-prerequisites.js";
 
 export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "archive.py",
@@ -137,8 +138,7 @@ export class EmbeddedBoatBootstrap {
     if (complete) return;
     // Only install missing prerequisites on the allocated machine. Do not upgrade
     // unrelated system packages. This program never runs on the controller host.
-    const prepare =
-      'import shutil,subprocess; tools=("podman","newuidmap","newgidmap","runuser","useradd","loginctl","systemctl","slirp4netns","fuse-overlayfs","dbus-run-session","cc"); missing=any(shutil.which(t) is None for t in tools); subprocess.run(["apt-get","update","-qq"],check=True) if missing else None; subprocess.run(["apt-get","install","-y","--no-install-recommends","podman","uidmap","slirp4netns","fuse-overlayfs","dbus-user-session","gcc","libc6-dev"],check=True) if missing else None';
+    const prepare = BOAT_PREREQUISITES;
     const rootProgram = [
       "sudo",
       "-n",
