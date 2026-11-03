@@ -1,0 +1,9 @@
+{
+  "kind": "s3",
+  "bucket": "YOUR_PRIVATE_BUCKET",
+  "prefix": "jetski/v1",
+  "endpoint": "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com",
+  "region": "auto",
+  "accessKeyEnv": "R2_ACCESS_KEY_ID",
+  "secretKeyEnv": "R2_SECRET_ACCESS_KEY"
+}

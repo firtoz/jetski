@@ -10,7 +10,7 @@ before network dispatch. A replay uses the same body, including the originally
 chosen machine type and TTL. Configuration changes do not change an admitted
 request. The supported machine types are `small`, `default`, and `large`, with
 `small` as the default. Pool policy defaults to one hour and permits opt-in leases
-up to24 hours. The eight-hour policy is undergoing separate live qualification.
+up to24 hours. The eight-hour policy completed [live lifecycle qualification](host-lifecycle-benchmarks.md).
 Snapshots and provider
 monitoring are disabled, and no provider environment is inherited.
 
@@ -52,10 +52,11 @@ The core caches refreshes durably, fences old completions and falls back on erro
 
 Tests use an injected HTTP fixture plus real SQLite reopen. They cover committed
 creation acknowledgement loss, frozen request replay, expiry, owner fencing,
-readiness attestation, pending deletion and terminal replay. They do not establish
-real Boat provisioning, rootless runtime support, fresh-host recovery, or costs.
-No live allocation was made for this implementation. Hosted qualification requires
-an explicitly approved experiment allowance.
+readiness attestation, pending deletion and terminal replay. Live provisioning, rootless runtime, physical replacement and owned cleanup are
+separately qualified in [the hosted evidence](qualification.md). Measured costs
+and latency are in [the lifecycle comparison](host-lifecycle-benchmarks.md); HTTP
+fixtures alone do not establish those results. New hosted experiments require
+an explicitly approved allowance.
 
 Provider contracts were checked against the official
 [API overview](https://docs.boat.dev/api/v1),
@@ -83,7 +84,7 @@ Command responses allow an 8 MiB JSON envelope while enforcing the protocol's
 The host scripts have disposable Linux execution coverage. The corrected fixture
 runs provider commands as a non-root guest, matching Boat, with `sudo -n` only for
 the fixed privileged control program. Fresh bootstrap qualification is in CI;
-live-provider recovery remains unqualified.
+live-provider recovery is recorded in [the hosted evidence](qualification.md).
 
 Wire schemas: [execute command](https://docs.boat.dev/api/reference/agent/execute-sandbox-command)
 and [write file](https://docs.boat.dev/api/reference/agent/write-sandbox-file).
@@ -150,8 +151,8 @@ an outer-host shell through the sandbox API. Workload access still requires the
 normal generation-fenced stream reservation. Connections have bounded admission,
 framing and lifetime, and are never automatically replayed after interruption.
 The adapter accepts Boat's IPv4 forwarding endpoint or direct IPv4/IPv6 address.
-Provider registration currently runs per connection; live latency and provider
-compatibility remain qualification gates.
+Provider registration currently runs per connection; measured latency and
+qualified compatibility are scoped to [the recorded hosted runs](qualification.md).
 
 Wire contract: [Boat's versioned OpenAPI](https://docs.boat.dev/openapi/boat-v1.yaml),
 `POST /sandboxes/{sandboxId}/sshkey`.

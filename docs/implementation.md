@@ -104,7 +104,7 @@ Qualification 35 adds opt-in longer leases and cost-aware idle retention. The
 [matched lifecycle report](host-lifecycle-benchmarks.md) records fewer physical
 starts and lower idle compute alongside slower ordinary warm operations. Scoped
 staging beyond-hour use and source-deleted recovery passed with owned cleanup.
-The [lifecycle goal](goals/adaptive-host-lifecycle.md) tracks final publication;
+The [lifecycle goal](goals/adaptive-host-lifecycle.md) records the completed scope;
 existing checkpoint and real-grace fixtures remain preserved.
 
 ## Keeping this plan useful

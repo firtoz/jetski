@@ -782,5 +782,7 @@ that composition. Ordinary workload API callers cannot set prices. An admitted
 idle decision is not silently extended by later pricing. Warm minimum capacity
 remains zero.
 
-These opt-in lifecycle paths are undergoing the separate hosted qualification;
-existing checkpoint/transport qualification does not establish their live savings.
+These opt-in lifecycle paths completed a two-replica hosted comparison and
+beyond-hour/replacement staging qualification. See the [measured resource savings
+and warm-latency regressions](host-lifecycle-benchmarks.md); these measurements do
+not establish universal savings.
