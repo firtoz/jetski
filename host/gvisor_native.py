@@ -71,6 +71,10 @@ class RunscDriver:
         # A nonzero state request is not evidence of absence. Enumerate the
         # private runtime root; malformed/failed/incomplete observation fails closed.
         rows = json.loads(self._checked(self.env.commands.prefix() + ["list", "--format=json"]))
+        # Pinned runsc encodes an empty Go slice as JSON null. A successful
+        # complete inventory with null is its documented empty representation.
+        if rows is None:
+            rows = []
         if not isinstance(rows, list) or len(rows) > 64:
             raise ValueError("gvisor_inventory_unavailable")
         identifiers = []

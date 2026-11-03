@@ -50,3 +50,6 @@ class NativeJournalTests(unittest.TestCase):
             driver.absent(self.lease)
         env.result = dict(exitCode=0, stdout="[]")
         self.assertTrue(driver.absent(self.lease))
+
+        env.result = dict(exitCode=0, stdout="null")
+        self.assertTrue(driver.absent(self.lease))

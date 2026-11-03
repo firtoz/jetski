@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
     if (server < 0 || setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes))) return 4;
     struct sockaddr_in address = {.sin_family=AF_INET, .sin_port=htons(8080)};
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if (bind(server, (struct sockaddr *)&address, sizeof(address)) || listen(server, 8)) return 5;
+    if (bind(server, (struct sockaddr *)&address, sizeof(address)) || listen(server, 8)) { perror("memory-server listen"); return 5; }
     uint64_t counter = 0;
     for (;;) {
         int fd = accept(server, NULL, NULL);

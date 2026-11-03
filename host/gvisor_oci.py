@@ -223,7 +223,7 @@ class RunscCommands:
             "--root=" + self.root,
             "--platform=systrap",
             "--rootless=false",
-            "--network=sandbox",
+            "--network=none",
             "--file-access=shared",
             "--overlay2=none",
             "--ignore-cgroups=true",

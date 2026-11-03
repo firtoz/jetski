@@ -210,6 +210,11 @@ def main():
             if (limits / name).exists()
         }
         if state_result["exitCode"] == 0:
+            observed_state = json.loads(state_result["stdout"])
+            if observed_state.get("status") == "stopped":
+                diagnostics["exit"] = environment.run(
+                    environment.commands.prefix() + ["wait", runtime.container(current_lease)]
+                )
             pid = json.loads(state_result["stdout"]).get("pid")
             proc = pathlib.Path("/proc", str(pid), "cgroup")
             diagnostics["actualCgroup"] = proc.read_text() if proc.exists() else "process absent"
