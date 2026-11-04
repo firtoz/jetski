@@ -76,7 +76,32 @@ including a new host/bootstrap and remote verification/restore. Initial source
 readiness also took 270.77 s. These are qualification observations, not a repeated
 memory-performance comparison, and cold recovery remains expensive.
 
-The scoped downstream trial remains open. External TCP continuity is not promised;
-applications must reconnect. Existing runtime/network defaults remain unchanged.
+A scoped deployed embedded-controller trial also passed required gVisor admission,
+DNS/HTTPS, Git remote inspection, an integrity-verified package download, exact
+10-entry / 1,052,362-byte persistent filesystem comparison, original binary output
+and durable stop/same-host resume. This exercised the embedded API, rather than a
+full application UI workflow. The real ten-minute idle alarm retired the stopped host automatically;
+provider absence and deletion of the temporary control endpoint were verified. The disposable admission scope was removed afterward; its
+admitted policy and acknowledged checkpoints remain retained.
+
+External TCP continuity is not promised; applications must reconnect. Existing
+runtime/network defaults remain unchanged.
 See [network policy and configuration](networking.md) and the
 [finite task](goals/gvisor-egress.md).
+
+
+## Qualification cost
+
+The complete increment used eleven small one-hour-bounded hosts, including four
+failed setup attempts, the matched comparison, memory replacement and the scoped
+embedded trial. Every owned host is confirmed absent. Provider samples total
+2,493 weighted seconds (about 83.8 physical VM-minutes) and **$0.02493 compute
+value**; the bounded unsampled retirement tails bring the upper value to less
+than $0.0250. Small-host usage seconds have a 0.5 billing multiplier. This value
+consumed included compute credits and is distinct from a wallet charge.
+
+All eleven observed start quotes were $0, and the account wallet balance did not
+change at the provider's cent precision. These are qualification-period readings,
+not a promise of free starts or a retail pricing comparison. The separate $5
+allowance was not exceeded. Temporary transfer fixtures are deleted; acknowledged
+filesystem and memory checkpoint roots remain retained.

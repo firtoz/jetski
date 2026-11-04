@@ -15,15 +15,15 @@ or replay uncertain work to obtain a faster result.
 
 ## Finite gates
 
-| Gate                           | Required evidence                                                                                                                                   | State   |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Network design and capability  | Private caller-managed namespaces, pinned netstack, bounded lifecycle and effective resource enforcement                                            | Passed  |
-| Integration                    | Versioned operator policy; bootstrap, execution, namespace cleanup, SDK admission and required-capability checks                                    | Passed  |
-| Network behavior and isolation | DNS/HTTPS, Git/package-download/browser tasks; host/private/metadata denial; explicit IPv6 support or refusal                                       | Passed  |
-| Recovery                       | Same-host suspend/resume and source-deleted R2 memory/filesystem recovery with actual reconnect, original output and exact fixture                  | Passed  |
-| Fair comparison                | Two reversed host pairs, five cycles per runtime/source; same image/resources/network policy; request latency, throughput, CPU/memory and lifecycle | Passed  |
-| Scoped staging                 | New workspaces only, explicit gVisor preference, observed runtime/fallback reason, useful internet task and stopped recovery                        | Pending |
-| Closure                        | Consolidated evidence, source checks, cost reconciliation and positive owned cleanup                                                                | Pending |
+| Gate                           | Required evidence                                                                                                                                   | State  |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Network design and capability  | Private caller-managed namespaces, pinned netstack, bounded lifecycle and effective resource enforcement                                            | Passed |
+| Integration                    | Versioned operator policy; bootstrap, execution, namespace cleanup, SDK admission and required-capability checks                                    | Passed |
+| Network behavior and isolation | DNS/HTTPS, Git/package-download/browser tasks; host/private/metadata denial; explicit IPv6 support or refusal                                       | Passed |
+| Recovery                       | Same-host suspend/resume and source-deleted R2 memory/filesystem recovery with actual reconnect, original output and exact fixture                  | Passed |
+| Fair comparison                | Two reversed host pairs, five cycles per runtime/source; same image/resources/network policy; request latency, throughput, CPU/memory and lifecycle | Passed |
+| Scoped staging                 | Required gVisor, useful online workload, exact files/output and durable same-host stopped recovery                                                  | Passed |
+| Closure                        | Consolidated evidence, source checks, cost reconciliation and positive owned cleanup                                                                | Passed |
 
 Implement before broad qualification. The first matched source may double as a
 capability preflight. Preserve failures and original IDs; repeat only affected
@@ -50,14 +50,16 @@ scoped staging milestones. No npm publication or production cutover.
 
 ## Current state and next action
 
-Main base `63d33fd`; source/docs are uncommitted. Private evidence:
+Runtime main `7f02aa9` and immutable qualification 36 are published; exact-SHA
+CI passed. Private evidence:
 `/home/frtn/.local/state/jetski-qa/gvisor-egress-20261104/` (`budget.json`, `current.json`).
-Ten hosts have been used and positively retired, including four failed setup
-attempts. No further backend matrix is needed. The twenty exact network cycles,
-local Git/package/browser components, native packet denial, warm memory resume
-and source-deleted R2 memory/filesystem recovery all pass. See the
-[consolidated report](../network-benchmarks.md) for measurements and limitations.
-Temporary transfer fixtures are deleted; acknowledged checkpoint roots remain.
+All eleven hosts are positively retired, including four failed setup attempts.
+The twenty exact network cycles, local Git/package/browser components, native
+packet denial, warm memory resume, source-deleted R2 memory/filesystem recovery
+and scoped deployed API trial pass. Natural ten-minute idle retirement, retained
+checkpoint/output and temporary control endpoint absence are verified. Temporary
+transfer fixtures are deleted; acknowledged checkpoint roots remain. See the
+[consolidated report](../network-benchmarks.md) for measurements, cost and limits.
 
 The new explicit `public-egress` policy shares filtered IPv4 networking between
 Podman and gVisor. It verifies a trusted keeper, namespace identity/maps, kernel
@@ -73,15 +75,21 @@ its executed path is unchanged and the artifact boundary is explicit. Do not
 replay old failures or repeat passing matrices. Latest source checks are recorded
 in private receipts; repeat only affected tests and the final publication checks.
 
-Next: publish the qualified runtime milestone and pinned prerelease artifact,
-complete the new-scope client integration and one bounded staging trial, then
-consolidate exact-SHA CI, budget and cleanup. At most two host starts remain in
-the separately approved twelve-start / $5 allowance. Prefer one staging host with
-warm stopped recovery, leaving one failure reserve. Existing client controllers
-must keep their admitted policy; use a new disposable scope and fixed one-hour
-leases. The protected client GC document/reservation stays untouched.
+All functional and owned-cleanup gates are closed. Provider compute value is
+$0.02493 with less than $0.0250 including bounded retirement tails; all start
+quotes were zero and the wallet was unchanged at reported cent precision. The
+separate $5 cap is respected. Publish the final concise report and goal closure;
+hosted documentation CI is recorded separately under the user's wait bypass.
+No further paid runs or unchanged verification matrices are needed.
 
 The first client trial uses **gVisor-required**, rather than silently downgrading
 an uncertain host or workload. This refines the trial's admission strategy; it
 does not remove the general preferred/fallback API or enable automatic defaults.
 Public source remains generic; client details stay in the client repository.
+
+## Deployment adjustment
+
+On November 4 the user authorized bypassing hosted GitHub waits. Use passed local
+checks and a direct staging deployment, then verify the exact live source revision,
+scoped configuration and original finite API trial. Record hosted CI separately;
+its result is not presumed green. Do not duplicate an existing deployment.
