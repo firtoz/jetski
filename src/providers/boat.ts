@@ -285,10 +285,17 @@ export class BoatApi {
       throw Error("Boat limits is read-only");
     const maxBytes = options.maxBytes ?? 1024 * 1024;
     const timeoutMs = options.timeoutMs ?? 30_000;
+    // An eight-MiB private export reply is JSON-escaped inside Boat's command
+    // completion envelope. Other endpoints retain their existing eight-MiB cap.
+    const responseLimit = /^\/sandboxes\/bx_[a-zA-Z0-9_-]+\/commands$/.test(
+      path,
+    )
+      ? 17 * 1024 * 1024
+      : 8 * 1024 * 1024;
     if (
       !Number.isSafeInteger(maxBytes) ||
       maxBytes < 1 ||
-      maxBytes > 8 * 1024 * 1024 ||
+      maxBytes > responseLimit ||
       !Number.isSafeInteger(timeoutMs) ||
       timeoutMs < 1 ||
       timeoutMs > 665_000

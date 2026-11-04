@@ -573,3 +573,55 @@ test("cached resume requires an explicitly observed host capability", async (t) 
   );
   assert.equal(calls.length, 3);
 });
+
+test("portable export command envelope is admitted by the actual bounded API", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  await state.transaction((tx) => {
+    tx.put("boat-host/bx_export", "owned-export");
+    tx.put("owned-export", { id: "bx_export", retired: false });
+  });
+  let calls = 0;
+  const api = new BoatApi("fixture", async () => {
+    calls++;
+    return Response.json({
+      success: true,
+      exitCode: 0,
+      timedOut: false,
+      stderr: "",
+      stdout: JSON.stringify({
+        version: 1,
+        id: "export",
+        result: { files: [] },
+      }),
+    });
+  });
+  const transport = new BoatTransport(state, api);
+  assert.deepEqual(
+    (
+      await transport.request("bx_export", {
+        version: 1,
+        id: "export",
+        action: "memory-export",
+        payload: {},
+      })
+    ).result,
+    { files: [] },
+  );
+  assert.equal(calls, 1);
+  await assert.rejects(
+    api.call("/limits", "GET", undefined, {}, { maxBytes: 9 * 1024 * 1024 }),
+    /HTTP bounds/,
+  );
+  await assert.rejects(
+    api.call(
+      "/sandboxes/bx_export/commands",
+      "POST",
+      {},
+      {},
+      { maxBytes: 18 * 1024 * 1024 },
+    ),
+    /HTTP bounds/,
+  );
+  assert.equal(calls, 1);
+});
