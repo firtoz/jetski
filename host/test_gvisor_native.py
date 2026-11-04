@@ -10,6 +10,18 @@ from gvisor_oci import RunscCommands
 class NativeJournalTests(unittest.TestCase):
     setUp = fixture.MemoryLifecycleTests.setUp
 
+    def test_filesystem_import_cannot_start_a_process_when_memory_restore_is_required(self):
+        state = self.fence.read()
+        state["phase"] = "open"
+        state.pop("runtime", None)
+        state["import"] = {"phase": "ready", "portableMemoryRequired": True}
+        self.fence.write(state)
+        driver = Mock()
+        runtime = GvisorRuntime(self.fence, driver, self.binding["image"], [self.binding["image"]])
+        with self.assertRaisesRegex(ValueError, "portable_memory_restore_required"):
+            runtime.create(self.lease)
+        driver.create.assert_not_called()
+
     def test_failed_native_create_never_replays(self):
         state = self.fence.read()
         state.pop("runtime")

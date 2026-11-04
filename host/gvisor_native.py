@@ -23,8 +23,12 @@ class NativeEnvironment(Protocol):
     def run(self, arguments: list[str]) -> dict: ...
     def bundle(self, lease) -> str: ...
     def prepare(self, lease, image, memory_mb, cpus) -> None: ...
+    def prepare_imported(self, lease, image, memory_mb, cpus) -> None: ...
+    def prepare_imported_parent(self, lease, identifier) -> None: ...
+    def accept_imported_image(self, lease, identifier) -> None: ...
     def verify_resources(self, lease, memory_mb, cpus) -> bool: ...
     def compatibility(self, lease) -> dict: ...
+    def portable_compatibility(self, lease, identifier=None) -> dict: ...
     def memory_path(self, lease, checkpoint) -> str: ...
     def prepare_memory_path(self, lease, checkpoint) -> None: ...
     def memory_owner(self) -> int: ...
@@ -165,6 +169,20 @@ class RunscDriver:
             raise ValueError("gvisor_restore_unconfirmed")
         self.env.cleanup(previous)
 
+    def portable_compatibility(self, lease, identifier=None):
+        return self.env.portable_compatibility(lease, identifier)
+
+    def prepare_imported(self, lease, image, memory_mb, cpus):
+        if self.absent(lease) is not True:
+            raise ValueError("gvisor_import_requires_absent_runtime")
+        self.env.prepare_imported(lease, image, memory_mb, cpus)
+
+    def prepare_imported_parent(self, lease, identifier):
+        self.env.prepare_imported_parent(lease, identifier)
+
+    def accept_imported_image(self, lease, identifier):
+        self.env.accept_imported_image(lease, identifier)
+
     def restore_imported(self, lease, identifier, memory_mb, cpus):
         """One native effect on a prepared, exclusively fenced target.
 
@@ -214,6 +232,12 @@ class GvisorRuntime:
             self.fence.match(state, lease)
             if state["phase"] != "open":
                 raise ValueError("closed_lease")
+            imported = state.get("import", {})
+            if (
+                imported.get("portableMemoryRequired") is True
+                and state.get("portableImport", {}).get("phase") != "filesystem"
+            ):
+                raise ValueError("portable_memory_restore_required")
             existing = state.get("runtime")
             if existing:
                 if existing.get("configuration") != requested:

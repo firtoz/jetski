@@ -145,8 +145,10 @@ class CheckpointImport:
     def path(self, lease):
         return self.archives / (lease["assignmentId"] + ".upload")
 
-    def begin(self, raw, checkpoint, sha256, length):
+    def begin(self, raw, checkpoint, sha256, length, portable_memory_required=False):
         lease = identity(raw)
+        if type(portable_memory_required) is not bool:
+            raise ValueError("invalid_portable_import_policy")
         if not isinstance(checkpoint, str) or str(uuid.UUID(checkpoint)) != checkpoint:
             raise ValueError("invalid_checkpoint_id")
         if (
@@ -161,7 +163,10 @@ class CheckpointImport:
             state = self.state(lease)
             previous = state.get("import")
             if previous:
-                if any(previous[key] != value for key, value in expected.items()):
+                if (
+                    any(previous[key] != value for key, value in expected.items())
+                    or previous.get("portableMemoryRequired", False) != portable_memory_required
+                ):
                     raise ValueError("import_identity_conflict")
                 if previous["phase"] == "receiving" and previous["offset"] == 0:
                     return self.advertised(self.cached(lease, state, previous))
@@ -172,6 +177,7 @@ class CheckpointImport:
                 raise ValueError("import_destination_exists")
             receipt = {
                 **expected,
+                **({"portableMemoryRequired": True} if portable_memory_required else {}),
                 "offset": 0,
                 "phase": "receiving",
                 "chunkBytes": IMPORT_CHUNK_BYTES,

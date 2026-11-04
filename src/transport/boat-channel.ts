@@ -31,9 +31,11 @@ export class BoatControlChannel {
     program: string[],
     signal?: AbortSignal,
     inputLimit = 1024 * 1024,
+    outputLimit = 2 * 1024 * 1024,
   ): Promise<string> {
     identifier(host);
     if (
+      ![2 * 1024 * 1024, 8 * 1024 * 1024].includes(outputLimit) ||
       ![1024 * 1024, 6 * 1024 * 1024].includes(inputLimit) ||
       input.length > inputLimit
     )
@@ -64,7 +66,7 @@ export class BoatControlChannel {
         },
         {},
         {
-          maxBytes: 8 * 1024 * 1024,
+          maxBytes: Math.max(8 * 1024 * 1024, outputLimit * 2 + 1024 * 1024),
           timeoutMs: (this.timeoutSeconds + 65) * 1000,
           ...(commandSignal ? { signal: commandSignal } : {}),
         },
@@ -82,7 +84,7 @@ export class BoatControlChannel {
         value.stderrTruncated === true ||
         typeof value.stdout !== "string" ||
         typeof value.stderr !== "string" ||
-        Buffer.byteLength(value.stdout) > 2 * 1024 * 1024 ||
+        Buffer.byteLength(value.stdout) > outputLimit ||
         Buffer.byteLength(value.stderr) > 64 * 1024
       )
         throw Error("Invalid command completion");

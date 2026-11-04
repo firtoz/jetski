@@ -265,14 +265,8 @@ def capture_chunks(
         os.close(root_fd)
 
 
-def reconstruct_chunks(files, directories, scope, target, read_chunk):
-    """Create a new private image tree; caller owns any later atomic admission.
-
-    read_chunk receives one validated immutable object descriptor and must return
-    its complete bounded stored bytes. Partial output remains unpublished on error.
-    The root and all files stay mode0700/0600 until the trusted host hands them to
-    the runtime. No existing directory or file is ever replaced on retry.
-    """
+def validate_memory_layout(files, directories, scope):
+    """Detach and bound the complete image layout before any filesystem effect."""
     files, directories, scope = copy.deepcopy((files, directories, scope))
     if (
         not isinstance(files, list)
@@ -348,6 +342,18 @@ def reconstruct_chunks(files, directories, scope, target, read_chunk):
             raise ValueError("invalid_memory_reconstruction_extent")
     if not 1 <= total <= MAX_BYTES or count > MAX_CHUNKS:
         raise ValueError("memory_reconstruction_bound")
+    return files, directories, scope, total
+
+
+def reconstruct_chunks(files, directories, scope, target, read_chunk):
+    """Create a new private image tree; caller owns any later atomic admission.
+
+    read_chunk receives one validated immutable object descriptor and must return
+    its complete bounded stored bytes. Partial output remains unpublished on error.
+    The root and all files stay mode0700/0600 until the trusted host hands them to
+    the runtime. No existing directory or file is ever replaced on retry.
+    """
+    files, directories, scope, total = validate_memory_layout(files, directories, scope)
     target = pathlib.Path(target)
     os.mkdir(target, 0o700)
     root = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)

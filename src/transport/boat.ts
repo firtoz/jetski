@@ -17,6 +17,7 @@ import {
   type HostTransport,
   HostTransportError,
   hostRequestByteLimit,
+  hostResponseByteLimit,
 } from "../core/transport.js";
 import type { BoatApi } from "../providers/boat.js";
 import { BoatControlChannel } from "./boat-channel.js";
@@ -268,6 +269,7 @@ export class BoatTransport implements HostTransport {
         ["sudo", "-n", ...hostControlArguments(this.backend, !!this.timings)],
         signal,
         hostRequestByteLimit(request.action),
+        hostResponseByteLimit(request.action),
       ),
     );
     try {

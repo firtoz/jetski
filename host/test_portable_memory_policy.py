@@ -3,7 +3,7 @@ import unittest
 import uuid
 
 from gvisor_oci import RunscCommands, sandbox_spec
-from portable_memory_policy import configuration_sha256, cpu_features
+from portable_memory_policy import configuration_sha256, cpu_features, verify_compatibility
 
 
 class PortablePolicyTests(unittest.TestCase):
@@ -74,6 +74,27 @@ class PortablePolicyTests(unittest.TestCase):
         for invalid in ([], ["sse2", "sse"], ["sse", "sse"], ["x,y"], "sse"):
             with self.assertRaises(ValueError):
                 cpu_features(invalid)
+
+    def test_target_requires_all_exposed_cpu_features_and_identical_other_abi(self):
+        original = dict(
+            runtimeSha256="a" * 64,
+            hostAbiSha256="b" * 64,
+            image=self.image,
+            configurationSha256="c" * 64,
+            platform="systrap",
+            kernelVersion="6.14.0",
+            cpuFeatures=["sse", "sse2"],
+        )
+        target = {**original, "cpuFeatures": ["avx", "sse", "sse2"]}
+        self.assertTrue(verify_compatibility(original, target))
+        for change in (
+            dict(cpuFeatures=["sse"]),
+            dict(hostAbiSha256="d" * 64),
+            dict(kernelVersion="other"),
+            dict(unknown="field"),
+        ):
+            with self.assertRaises(ValueError):
+                verify_compatibility(original, {**target, **change})
 
 
 if __name__ == "__main__":

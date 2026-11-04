@@ -84,58 +84,65 @@ milestones and final publication; do not import product code/history.
 
 ## Current state and recovery
 
-Workspace `/home/frtn/work/2026/jetski`, main `47122bd`, clean before this goal.
-The previous optional-runtime goal is complete; its thirty samples, two filesystem
-replacements and CI remain valid read-only baseline evidence. Its R2 memory image
-was NOT portable or uploaded. Local memory seals deliberately bind physical inode/
-lease identity and exact host CPU/kernel hashes; portable import needs a distinct
-protocol, not weakening that check. Native restore currently waits for all pages.
+Workspace `/home/frtn/work/2026/jetski`, main `d65c3d0` with intended integration
+changes uncommitted. Private state:
+`/home/frtn/.local/state/jetski-qa/portable-memory-20261104/`; read `current.json`
+for exact dirty files, receipts and next actions. No hosted controllers or VMs;
+zero paid starts. Separate $3/max10small1h allowance is approved. Do not allocate
+until a coherent implementation, frozen workload and finite plan exist.
 
-Private state will be `/home/frtn/.local/state/jetski-qa/portable-memory-20261104/`.
-No controllers, jobs or VMs have been launched for this goal. Do not allocate until a frozen implementation/plan exists. Inspect actual private
-process/provider/operation state before any resumed hosted work.
+The [portable design](../portable-memory.md) records the format and guarantees.
+Foundation CI 41790770471 passed all nine jobs. Its real native mechanism fixture
+preserves the 64 MiB changing heap/process, open-file offset/content and exact
+filesystem after deleting original image/tree and using fresh inodes/a different
+assignment. This is same-machine CI evidence, not R2 or physical-host replacement.
+Prior runtime/store/GC qualification and independent fixtures remain read-only.
 
-The [portable design](../portable-memory.md) records the current contract.
-The first source milestone adds a pure TypeScript bounded portable manifest parser,
-replaceable identity/gzip chunk codecs with stored/decoded integrity checks and
-bounded streaming decompression, and a composite filesystem-memory retained root.
-Registry publication verifies all memory objects before committing the combined
-root; complete memory reachability survives retirement of an older shared-chunk
-root. Filesystem copy intentionally projects files only, preserving its API scope.
-The modules remain internal foundations, not exposed portable runtime support.
-Host-side capture now reads a sealed image once, verifies whole native-file hashes,
-encodes bounded independent chunks, round-trip checks compression and fsyncs a
-create-only pack. Reconstruction verifies stored/decoded/file hashes into a new
-private staging tree. Short reads, corrupted transfers, changed source trees,
-unsafe links, expansion and partial-output replay are covered. Build/typecheck/lint
-and 318 TypeScript / 198 Python tests pass; Ruff passes affected files.
+Implemented: bounded portable manifests/codecs, source capture/reconstruction,
+complete composite retained roots and filesystem-copy projection. The new upload
+journal uses a stable input hash and separate per-chunk durable object records
+instead of repeatedly rewriting a growing manifest. It recovers lost PUT ACKs and
+SQLite restarts, verifies reuse, rotates failed create-only IDs and rejects corrupt
+source bytes. The publication extension for frame/packed FS transfer keeps one
+writer and acknowledges no FS-only intermediate root. Targeted failure cases pass.
 
-A discrete disposable native fixture now tests a real restored process against
-fresh persistent-file inodes and a different assignment. It deletes original image
-and filesystem trees, reconstructs chunks, compares logical policy/CPU support,
-then checks full heap and persistent open-file offset/content continuity. This
-fixture is CI mechanism evidence only, not R2 or a physical replacement host.
-The generic workload adds explicit low/high change profiles and an open persistent
-file; default arguments remain compatible. No desktop C compilation/runtime occurs.
-The native effect primitive accepts only a prepared absent target; lifecycle intent
-and admission remain the coordinator's responsibility and are not yet integrated.
+Host export now checks frozen lease/runtime/filesystem, persists capture intent,
+replays ready receipts and permits rebuilding only an owned unpublished temporary
+pack. The private control protocol supports export and bounded reads; the export
+manifest has a selectively increased response bound. Local memory sealing checks
+the exported image identity; native resume/release cleans derived packs. Portable
+compatibility pins actual native helper bytes and logical policy; CPU requirements
+come from runsc's saved image, with target CPU-superset validation. Old local seals
+and Podman/default paths remain unchanged. These changes are not portable public
+lifecycle support yet.
 
-No hosted runs or paid starts have been made; the separate $3 allowance is approved.
-This source milestone is ready for main publication and native CI. Do not advertise
-portable recovery until its lifecycle and physical R2 replacement gates pass.
+Latest full local pass: 323 TypeScript / 211 Python tests, build/typecheck/lint/Ruff.
+The host now has target import/status/chunk/finish/abort operations. It requires
+an already verified filesystem with an explicit memory-required barrier, closes
+the target fence, validates compatibility, receives immutable encoded objects,
+reconstructs and checks complete native files, then records `restoring` before
+the one native effect. Lost ACKs are observed; unknown effects stay quarantined.
+Only pre-effect abort can authorize an explicit filesystem fallback. Seven new
+import tests cover these branches. Derived cache purge is bound to released
+assignment ownership; source memory sealing/native resume behavior stays intact.
 
-Key native integration findings: current compatibility hashes include physical OCI
-paths, lease annotations and cgroup location; portable policy hashing must replace
-only those host-specific identities while retaining security/resource/image policy.
-Existing archive timestamps are normalized to zero (outside its filesystem
-contract). Native open-file restore needs a fresh-filesystem compatibility proof,
-not a weakened same-host inode check. Pinned upstream gofer restore reopens saved
-filesystem handles and can restore deleted-open files; this is source evidence,
-not qualification. Do not advertise portable memory until the real test passes.
+Native CI is updated to use the production host import journal and compatibility
+helper instead of calling the restore primitive directly. Its run is pending this
+milestone. No physical/R2 replacement or public portable lifecycle is qualified yet.
 
-Next: inspect the single disposable native fresh-inode fixture result, repairing
-only a concrete failure. Then integrate the portable host export/import and durable
-save/resume protocol with
-the composite root and stable effects journal. Only then freeze/run the approved
-finite hosted comparison and source-deleted R2 replacements. Preserve old local
-memory seals and old acknowledged roots.
+Next actions, in order:
+
+1. Inspect the one native import-journal CI result; repair only a concrete failure.
+   Implement the durable control-plane restore journal and retained reader spanning
+   filesystem import, memory transfer and observed native restore.
+2. Connect portable save options/capabilities through manager, shutdown, resume,
+   SDK/server/CLI. Use the publication callback to upload memory before the one
+   combined commit. Preserve ordinary local memory and filesystem behavior.
+3. Add optional binary memory export/import bindings to avoid routing large images
+   through JSON; instrument actual host-direct bytes/requests. Qualify affected
+   restart/ACK/corruption/fencing paths, then freeze the artifact/workload.
+4. Run the one finite approved comparison, both physical R2 memory replacements,
+   exact recovery/another save, owned cleanup, honest report and final main CI.
+
+Do not call portable memory complete based on the independent native mechanism or
+unit tests. All remaining full-goal gates above still apply.

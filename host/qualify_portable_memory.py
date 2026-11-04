@@ -5,6 +5,7 @@ It is not R2, source-host deletion or lifecycle-publication qualification.
 """
 
 import hashlib
+import base64
 import json
 import os
 import pathlib
@@ -19,9 +20,10 @@ from gvisor_environment import RootlessEnvironment
 from gvisor_exec import ExecApi
 from gvisor_memory import image_manifest
 from gvisor_native import GvisorRuntime, RunscDriver
-from memory_chunks import capture_chunks, reconstruct_chunks
+from memory_chunks import capture_chunks
 from memory_filesystem import frozen_identity
-from portable_memory_policy import configuration_sha256, cpu_features
+from portable_memory_import import PortableMemoryImport
+from portable_memory_format import manifest_sha256, manifest_objects
 from stream_protocol import Decoder
 from supervisor import CONTROL_ROOT, DATA_ROOT, configuration, runtime_account
 from test_archive import oracle
@@ -95,22 +97,6 @@ def main():
         assert api.inspect(session)["ExitCode"] == 0
         return json.loads(bytes(response).split(b"\r\n\r\n", 1)[1])
 
-    def policy(candidate):
-        spec = env.config(candidate)
-        return configuration_sha256(
-            spec,
-            candidate,
-            image_root=spec["root"]["path"],
-            assignment=str(DATA_ROOT / candidate["assignmentId"]),
-            cgroup_path=str(env.limits_path(candidate)).removeprefix("/sys/fs/cgroup"),
-            runtime=env.commands.prefix(),
-        )
-
-    def checked(args):
-        result = env.run(args)
-        assert result["exitCode"] == 0, result
-        return result["stdout"].strip()
-
     def owned_cleanup(candidate):
         if not driver.absent(candidate):
             driver.stop(candidate)
@@ -130,20 +116,9 @@ def main():
                 time.sleep(0.1)
         checkpoint = str(uuid.uuid4())
         driver.checkpoint(lease, checkpoint)
-        logical_policy = policy(lease)
         native_path = pathlib.Path(driver.memory_path(lease, checkpoint))
-        exposed = cpu_features(
-            sorted(
-                checked(
-                    env.commands.prefix()
-                    + ["statefile", "--get", "cpu_features", str(native_path / "checkpoint.img")]
-                ).split(",")
-            )
-        )
-        supported = set(
-            cpu_features(sorted(checked(env.commands.prefix() + ["cpu-features"]).split(",")))
-        )
-        assert set(exposed).issubset(supported)
+        portable_compatibility = driver.portable_compatibility(lease, checkpoint)
+        exposed = portable_compatibility["cpuFeatures"]
         filesystem = CONTROL_ROOT / ("portable-fs-" + checkpoint + ".tgz")
         roots = {name: source / name for name in ("workspace", "home")}
         receipt = capture(roots, filesystem)
@@ -178,9 +153,6 @@ def main():
         assert physical != frozen_identity(
             {name: destination / name for name in ("workspace", "home")}
         )
-        env.prepare(target, image, 512, 1)
-        assert policy(target) == logical_policy
-        assert set(exposed).issubset(supported)
         parts, objects = [], {}
         for file in exported["files"]:
             item = {**file, "chunks": []}
@@ -206,24 +178,51 @@ def main():
                     )
                 )
             parts.append(item)
-        target_path = pathlib.Path(driver.memory_path(target, checkpoint))
-        target_path.parent.mkdir(mode=0o700)
-        os.chown(target_path.parent, account.pw_uid, account.pw_gid)
-        reconstruct_chunks(
-            parts,
-            exported["directories"],
-            dict(owner=lease["owner"], sandbox=lease["sandboxId"]),
-            target_path,
-            lambda obj: objects[obj["id"]],
+        manifest = dict(
+            kind="portable-memory",
+            version=1,
+            owner=lease["owner"],
+            sandbox=lease["sandboxId"],
+            checkpointId=checkpoint,
+            generation=1,
+            filesystemSha256=receipt["sha256"],
+            compatibility=portable_compatibility,
+            directories=exported["directories"],
+            files=parts,
         )
-        for path in target_path.rglob("*"):
-            os.chown(path, account.pw_uid, account.pw_gid)
-        os.chown(target_path, account.pw_uid, account.pw_gid)
-        assert (
-            image_manifest(target_path, binding, owner_uid=account.pw_uid)["files"]
-            == native["files"]
+        target_fence = Fence(CONTROL_ROOT / "portable-target-qualification")
+        target_fence.claim(target)
+        target_fence.write(
+            dict(
+                lease=target,
+                phase="open",
+                **{
+                    "import": dict(
+                        id=checkpoint,
+                        phase="ready",
+                        sha256=receipt["sha256"],
+                        portableMemoryRequired=True,
+                    )
+                },
+            )
         )
-        driver.restore_imported(target, checkpoint, 512, 1)
+        importer = PortableMemoryImport(
+            target_fence, driver, CONTROL_ROOT / "portable-target-imports", DATA_ROOT
+        )
+        checksum = manifest_sha256(manifest)
+        assert importer.begin(target, manifest, checksum, image, 512, 1)["phase"] == "receiving"
+        for obj in manifest_objects(manifest).values():
+            assert importer.chunk(
+                target,
+                checkpoint,
+                obj["id"],
+                0,
+                base64.b64encode(objects[obj["id"]]).decode(),
+                obj["sha256"],
+            )["complete"]
+        imported = importer.finish(target, checkpoint, checksum)
+        assert imported["phase"] == "restored" and imported["memoryPreserved"] is True
+        assert importer.finish(target, checkpoint, checksum)["phase"] == "restored"
         after = query(target)
         assert before["token"] == after["token"] and after["counter"] == before["counter"] + 1, (
             before,
@@ -243,6 +242,7 @@ def main():
             json.dumps(
                 dict(
                     nativePortableMechanism=True,
+                    fencedTargetImport=True,
                     freshFilesystemInodes=True,
                     memoryContinuity=True,
                     fullHeapChecksum=True,

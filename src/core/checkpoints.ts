@@ -333,6 +333,21 @@ export class CheckpointRegistry {
     state.accesses.push({ id, kind, root, generation: fence.generation });
     tx.put(this.key(fence), state);
   }
+  /** Additional payload journals share an already admitted filesystem writer.
+   * This guard must run in their durable planning transaction before object I/O. */
+  requireWriterIn(tx: Transaction, fence: Fence, id: string): void {
+    const state = this.load(tx, fence);
+    if (
+      state.collection ||
+      !state.accesses.some(
+        (access) =>
+          access.id === id &&
+          access.kind === "writer" &&
+          access.generation === fence.generation,
+      )
+    )
+      throw Error("Checkpoint writer unavailable");
+  }
   async close(fence: Fence, id: string): Promise<void> {
     await this.state.transaction((tx) => this.closeIn(tx, fence, id));
   }

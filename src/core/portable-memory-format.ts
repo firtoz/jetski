@@ -8,6 +8,7 @@ import {
 /** Limits are format acceptance bounds, independent of capture tuning. */
 export const PORTABLE_MEMORY_FORMAT = Object.freeze({
   version: 1,
+  maxManifestBytes: 4 * 1024 ** 2,
   maxFiles: 256,
   maxChunks: 8192,
   maxBytes: 8 * 1024 ** 3,
@@ -76,6 +77,11 @@ export function parsePortableMemory(
   value: unknown,
   scope: Scope,
 ): PortableMemoryManifest {
+  if (
+    new TextEncoder().encode(JSON.stringify(value)).byteLength >
+    PORTABLE_MEMORY_FORMAT.maxManifestBytes
+  )
+    throw Error("Portable memory manifest exceeds byte bound");
   identifier(scope.owner);
   identifier(scope.sandbox);
   fields(

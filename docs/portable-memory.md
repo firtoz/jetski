@@ -70,6 +70,11 @@ Publish and restore effects use persisted stable intents and generation fences.
 An unknown native effect is reconciled, not replayed. A known incompatible or
 unavailable memory image can use verified filesystem recovery only with explicit
 process-state loss. An uncertain original writer must not gain a competing target.
-Host capture/reconstruction and the discrete native mechanism fixture are
-implemented; neither grants public portable lifecycle support yet. The final
-portable lifecycle protocol remains under implementation.
+Host capture/reconstruction and target import journals are implemented. Target
+import begins only after verified filesystem import with an explicit memory-required
+barrier; it closes the target fence. Every encoded chunk and reconstructed file is
+checked, including after ownership handoff. A durable `restoring` state precedes
+native execution. An uncertain effect is observed and quarantined, never replayed;
+only known pre-effect stages permit explicit filesystem fallback. These internal
+components do not yet grant public portable lifecycle support. Control-plane/API
+integration and physical R2 qualification remain under implementation.

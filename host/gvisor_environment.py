@@ -251,6 +251,69 @@ class RootlessEnvironment:
         private_directory(directory, self.account, create=True)
         write_json(directory / "config.json", spec, self.account)
 
+    def prepare_imported(self, lease, image, memory_mb, cpus):
+        # This is a replayable data-only preparation BEFORE native restore intent.
+        # The caller proves native absence and holds the closed host fence.
+        limits = self.limits_path(lease)
+        if limits.exists() and (limits / "cgroup.procs").read_text().strip():
+            raise ValueError("portable_preparation_has_processes")
+        directory = pathlib.Path(self.bundle(lease))
+        if os.path.lexists(directory):
+            private_directory(directory, self.account)
+            if any(name != "config.json" for name in os.listdir(directory)):
+                raise ValueError("unexpected_imported_bundle_member")
+            config = directory / "config.json"
+            if os.path.lexists(config):
+                meta = config.lstat()
+                if (
+                    not stat.S_ISREG(meta.st_mode)
+                    or meta.st_uid != self.account.pw_uid
+                    or meta.st_nlink != 1
+                ):
+                    raise ValueError("unsafe_imported_bundle")
+                config.unlink()
+            directory.rmdir()
+            sync_dir(directory.parent)
+        self.prepare(lease, image, memory_mb, cpus)
+
+    def prepare_imported_parent(self, lease, identifier):
+        private_directory(
+            pathlib.Path(self.memory_path(lease, identifier)).parent, self.account, create=True
+        )
+
+    def accept_imported_image(self, lease, identifier):
+        root = pathlib.Path(self.memory_path(lease, identifier))
+        count = 0
+
+        def adopt(path, depth):
+            nonlocal count
+            count += 1
+            meta = path.lstat()
+            if count > 257 or depth > 5 or meta.st_uid not in (0, self.account.pw_uid):
+                raise ValueError("unsafe_imported_memory_image")
+            directory = stat.S_ISDIR(meta.st_mode)
+            if not directory and (not stat.S_ISREG(meta.st_mode) or meta.st_nlink != 1):
+                raise ValueError("unsafe_imported_memory_image")
+            fd = os.open(
+                path,
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_DIRECTORY if directory else 0),
+            )
+            try:
+                if (os.fstat(fd).st_ino, os.fstat(fd).st_dev) != (meta.st_ino, meta.st_dev):
+                    raise ValueError("imported_memory_image_changed")
+                if directory:
+                    for child in sorted(path.iterdir()):
+                        adopt(child, depth + 1)
+                os.fchown(fd, self.account.pw_uid, self.account.pw_gid)
+                os.fchmod(fd, 0o700 if directory else 0o600)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+
+        adopt(root, 0)
+        normalize_permissions(root, owner_uid=self.account.pw_uid)
+        sync_dir(root.parent)
+
     def verify_resources(self, lease, memory_mb, cpus):
         path = self.limits_path(lease)
         if not path.is_dir() or path.is_symlink():
@@ -289,6 +352,45 @@ class RootlessEnvironment:
             platform="systrap",
             kernelVersion=pathlib.Path("/proc/sys/kernel/osrelease").read_text().strip(),
             cpuFeaturesSha256=hashlib.sha256(json.dumps(cpu_features).encode()).hexdigest(),
+        )
+
+    def portable_compatibility(self, lease, identifier=None):
+        from portable_memory_policy import configuration_sha256, cpu_features, native_abi_sha256
+
+        spec = self.config(lease)
+        image = spec["annotations"]["org.jetski.image"]
+        if image not in self.images:
+            raise ValueError("image_not_approved")
+        expected = self.root / "images" / hashlib.sha256(image.encode()).hexdigest() / "rootfs"
+        if self.prepared["images"].get(image) != str(expected):
+            raise ValueError("gvisor_prepared_image_identity_conflict")
+        arguments = self.commands.prefix() + ["cpu-features"]
+        if identifier is not None:
+            arguments = self.commands.prefix() + [
+                "statefile",
+                "--get",
+                "cpu_features",
+                str(pathlib.Path(self.memory_path(lease, identifier)) / "checkpoint.img"),
+            ]
+        result = self.run(arguments)
+        if result["exitCode"] != 0:
+            raise ValueError("portable_cpu_features_unconfirmed")
+        features = cpu_features(sorted(result["stdout"].strip().split(",")))
+        return dict(
+            runtimeSha256=ARCHIVE_SHA256,
+            hostAbiSha256=native_abi_sha256(),
+            image=image,
+            configurationSha256=configuration_sha256(
+                spec,
+                lease,
+                image_root=str(expected),
+                assignment=str(DATA_ROOT / lease["assignmentId"]),
+                cgroup_path=str(self.limits_path(lease)).removeprefix("/sys/fs/cgroup"),
+                runtime=self.commands.prefix(),
+            ),
+            platform="systrap",
+            kernelVersion=pathlib.Path("/proc/sys/kernel/osrelease").read_text().strip(),
+            cpuFeatures=features,
         )
 
     def memory_path(self, lease, identifier):

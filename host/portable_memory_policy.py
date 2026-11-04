@@ -73,3 +73,104 @@ def cpu_features(value):
     ):
         raise ValueError("invalid_portable_cpu_features")
     return list(value)
+
+
+def native_abi_sha256():
+    """Byte-pin the native helpers referenced by restored process state.
+
+    The protocol ABI version is independent of physical installation paths.
+    Host code must bump it if native import semantics become incompatible.
+    """
+    import hashlib
+    import os
+    import stat
+
+    proofs = {}
+    for name in ("command-supervisor", "tcp-relay"):
+        path = "/opt/jetski/" + name
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            before = os.fstat(fd)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != 0
+                or before.st_mode & 0o022
+                or before.st_nlink != 1
+                or not 1 <= before.st_size <= 4 * 1024**2
+            ):
+                raise ValueError("unsafe_portable_native_helper")
+            digest = hashlib.sha256()
+            remaining = before.st_size
+            while remaining:
+                part = os.read(fd, min(remaining, 256 * 1024))
+                if not part:
+                    raise ValueError("portable_native_helper_changed")
+                digest.update(part)
+                remaining -= len(part)
+
+            def token(meta):
+                return (
+                    meta.st_dev,
+                    meta.st_ino,
+                    meta.st_size,
+                    meta.st_mode,
+                    meta.st_uid,
+                    meta.st_gid,
+                    meta.st_nlink,
+                    meta.st_mtime_ns,
+                    meta.st_ctime_ns,
+                )
+
+            if (
+                os.read(fd, 1)
+                or token(before) != token(os.fstat(fd))
+                or token(before) != token(os.stat(path, follow_symlinks=False))
+            ):
+                raise ValueError("portable_native_helper_changed")
+            proofs[name] = digest.hexdigest()
+        finally:
+            os.close(fd)
+    return specification_sha256(dict(version=1, helpers=proofs))
+
+
+def verify_compatibility(required, available):
+    """A CPU superset is sufficient; all other declared native ABI fields match.
+
+    Both inputs are detached/validated before comparison. This function proves
+    compatibility only, never source absence, publication or execution authority.
+    """
+    fields = {
+        "runtimeSha256",
+        "hostAbiSha256",
+        "image",
+        "configurationSha256",
+        "platform",
+        "kernelVersion",
+        "cpuFeatures",
+    }
+    values = []
+    for value in (required, available):
+        if not isinstance(value, dict) or set(value) != fields:
+            raise ValueError("invalid_portable_compatibility")
+        checked = copy.deepcopy(value)
+        for key in ("runtimeSha256", "hostAbiSha256", "configurationSha256"):
+            if not isinstance(checked[key], str) or not re.fullmatch(r"[a-f0-9]{64}", checked[key]):
+                raise ValueError("invalid_portable_compatibility")
+        if (
+            not isinstance(checked["image"], str)
+            or len(checked["image"]) > 1024
+            or not re.fullmatch(
+                r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", checked["image"]
+            )
+            or checked["platform"] != "systrap"
+            or not isinstance(checked["kernelVersion"], str)
+            or not re.fullmatch(r"[\x21-\x7e]{1,256}", checked["kernelVersion"])
+        ):
+            raise ValueError("invalid_portable_compatibility")
+        checked["cpuFeatures"] = cpu_features(checked["cpuFeatures"])
+        values.append(checked)
+    old, new = values
+    required_cpu, available_cpu = old.pop("cpuFeatures"), new.pop("cpuFeatures")
+    if old != new or not set(required_cpu).issubset(available_cpu):
+        raise ValueError("portable_memory_runtime_incompatible")
+    return True

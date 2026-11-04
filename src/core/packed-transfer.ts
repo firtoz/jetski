@@ -9,6 +9,10 @@ import {
   checkpointLayout,
   type PackedArchive,
 } from "./checkpoint-layout.js";
+import {
+  type CheckpointPublication,
+  publishCheckpoint,
+} from "./checkpoint-publication.js";
 import type { CheckpointRegistry, CheckpointRoot } from "./checkpoints.js";
 import {
   type CheckpointStore,
@@ -48,6 +52,7 @@ export class PackedCheckpointTransfer {
     source: ArchiveSource,
     previousRoot: string | undefined,
     targetBytes: number,
+    publication?: CheckpointPublication,
   ): Promise<{
     root: CheckpointRoot;
     uploadedBytes: number;
@@ -74,6 +79,7 @@ export class PackedCheckpointTransfer {
         canonical(archive as unknown as Json)
       )
         throw Error("Checkpoint operation identity conflict");
+      publication?.validate(existing);
       return { root: existing, uploadedBytes: 0, reusedBytes: archive.bytes };
     }
     let record = await this.registry.packedSaves.begin(fence, id, archive);
@@ -325,12 +331,15 @@ export class PackedCheckpointTransfer {
       archive,
       segments: layout.segments,
     };
-    await this.registry.publish(
+    await publishCheckpoint(
+      this.registry,
       fence,
       id,
-      id,
-      physical as ObjectInfo[],
-      metadata as unknown as Json,
+      {
+        frames: physical as ObjectInfo[],
+        metadata: metadata as unknown as Json,
+      },
+      publication,
     );
     const root = await this.registry.root(fence, id);
     if (!root) throw Error("Checkpoint publication missing");

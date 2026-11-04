@@ -142,6 +142,66 @@ def dispatch(
             ready=ready,
             runtime=runtime,
         )
+    if action in ("memory-export", "memory-export-read"):
+        if payload.get("image") not in config["images"] or not hasattr(backend, "memory_driver"):
+            raise ValueError("portable_memory_runtime_unavailable")
+        from portable_memory_export import PortableMemoryExport
+
+        exporter = PortableMemoryExport(
+            fence, backend.memory_driver(), CONTROL_ROOT / "portable-memory-exports", DATA_ROOT
+        )
+        if action == "memory-export":
+            return exporter.prepare(
+                lease,
+                payload.get("checkpointId"),
+                payload.get("filesystemSha256"),
+                codec=payload.get("codec", "gzip"),
+                chunk_bytes=payload.get("chunkBytes", 1024 * 1024),
+            )
+        return exporter.read(
+            lease, payload.get("checkpointId"), payload.get("offset"), payload.get("bytes")
+        )
+    if action in (
+        "memory-import-begin",
+        "memory-import-status",
+        "memory-import-chunk",
+        "memory-import-finish",
+        "memory-import-abort",
+    ):
+        if payload.get("image") not in config["images"] or not hasattr(backend, "memory_driver"):
+            raise ValueError("portable_memory_runtime_unavailable")
+        from portable_memory_import import PortableMemoryImport
+
+        memory_import = PortableMemoryImport(
+            fence, backend.memory_driver(), CONTROL_ROOT / "portable-memory-imports", DATA_ROOT
+        )
+        if action == "memory-import-begin":
+            return memory_import.begin(
+                lease,
+                payload.get("manifest"),
+                payload.get("manifestSha256"),
+                payload["image"],
+                payload.get("memoryMb", 512),
+                payload.get("cpus", 1),
+            )
+        if action == "memory-import-status":
+            return memory_import.status(lease, payload.get("checkpointId"), payload.get("objectId"))
+        if action == "memory-import-chunk":
+            return memory_import.chunk(
+                lease,
+                payload.get("checkpointId"),
+                payload.get("objectId"),
+                payload.get("offset"),
+                payload.get("base64"),
+                payload.get("sha256"),
+            )
+        if action == "memory-import-abort":
+            return memory_import.abort(
+                lease, payload.get("checkpointId"), payload.get("manifestSha256")
+            )
+        return memory_import.finish(
+            lease, payload.get("checkpointId"), payload.get("manifestSha256")
+        )
     from memory_control import MEMORY_ACTIONS, handle as memory_action
 
     if action in MEMORY_ACTIONS:
@@ -198,7 +258,11 @@ def dispatch(
         return importer.file_close(lease)
     if action == "import-begin":
         return importer.begin(
-            lease, payload.get("checkpointId"), payload.get("sha256"), payload.get("bytes")
+            lease,
+            payload.get("checkpointId"),
+            payload.get("sha256"),
+            payload.get("bytes"),
+            payload.get("portableMemoryRequired", False),
         )
     if action == "import-chunk":
         return importer.chunk(
@@ -416,6 +480,31 @@ def dispatch(
             fence.match(state, lease)
             if state["phase"] != "released" or not state.get("releaseReceipt"):
                 raise ValueError("source_not_durably_released")
+            if state.get("portableImport"):
+                from portable_memory_import import PortableMemoryImport
+
+                PortableMemoryImport(
+                    fence,
+                    backend.memory_driver(),
+                    CONTROL_ROOT / "portable-memory-imports",
+                    DATA_ROOT,
+                ).purge_locked(lease)
+            memory = state.get("memory", {})
+            if "portableExport" in memory:
+                from portable_memory_export import PortableMemoryExport
+
+                origin = identity(memory.get("manifest", {}).get("binding", {}).get("lease", lease))
+                if (
+                    any(origin[key] != lease[key] for key in lease if key != "generation")
+                    or origin["generation"] > lease["generation"]
+                ):
+                    raise ValueError("portable_export_release_identity_conflict")
+                PortableMemoryExport(
+                    fence,
+                    backend.memory_driver(),
+                    CONTROL_ROOT / "portable-memory-exports",
+                    DATA_ROOT,
+                ).remove_pack(origin, memory["id"])
             # Only unpublished staging for this released assignment is disposable.
             # IDs came from validated immutable upload receipts, never workload input.
             for receipt in state.get("uploads", {}).values():
@@ -528,7 +617,10 @@ def decode_request(raw):
     request = json.loads(raw)
     if not isinstance(request, dict):
         raise ValueError("invalid_protocol_request")
-    if request.get("action") != "import-chunk" and len(raw) > 1024 * 1024:
+    if (
+        request.get("action") not in ("import-chunk", "memory-import-begin", "memory-import-chunk")
+        and len(raw) > 1024 * 1024
+    ):
         raise ValueError("host_request_limit")
     return request
 
@@ -602,7 +694,8 @@ def main():
         gid_mappings=ownership["gidMappings"],
     )
     output = json.dumps(dict(version=1, id=request["id"], result=result), separators=(",", ":"))
-    if len(output.encode("utf8")) > 2 * 1024 * 1024:
+    output_limit = (8 if request["action"] == "memory-export" else 2) * 1024 * 1024
+    if len(output.encode("utf8")) > output_limit:
         raise ValueError("host_response_limit")
     print(output)
 

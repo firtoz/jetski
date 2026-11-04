@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { gzipSync } from "node:zlib";
+import type { CapturedArchive } from "../src/core/archive-format.js";
 import { checkpointArchive } from "../src/core/checkpoint-layout.js";
+import type { CheckpointPublication } from "../src/core/checkpoint-publication.js";
 import {
   CheckpointRegistry,
   type CheckpointRoot,
@@ -16,6 +18,7 @@ import {
   composePortableMemoryRoot,
   portableMemoryRoot,
 } from "../src/core/portable-memory-root.js";
+import { CheckpointTransfer } from "../src/core/transfer.js";
 import { SqliteState } from "../src/state/sqlite.js";
 import { LocalCheckpointStore } from "../src/storage/local.js";
 
@@ -166,3 +169,105 @@ test("atomic publication refuses a missing memory object and reused chunks survi
   assert(await store.head(fsObject));
   assert(await registry.root(fence, next.id));
 });
+
+for (const packBytes of [0, 4 * 1024 * 1024])
+  test(`memory extends atomic filesystem transfer and recovers publication ACK loss; pack=${packBytes}`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "jetski-memory-transfer-"));
+    const state = new SqliteState(join(directory, "state.sqlite"));
+    t.after(async () => {
+      state.close();
+      await rm(directory, { recursive: true, force: true });
+    });
+    const store = new LocalCheckpointStore(join(directory, "objects"));
+    const registry = new CheckpointRegistry(state, store);
+    await registry.initialize(fence);
+    const transfer = new CheckpointTransfer(
+      store,
+      registry,
+      () => "filesystem",
+      { packBytes },
+    );
+    const description = fixture();
+    const original = portableMemoryRoot(description)!;
+    let prepares = 0,
+      reads = 0;
+    const extension: CheckpointPublication = {
+      async prepare(base) {
+        prepares++;
+        return composePortableMemoryRoot(base, original.memory);
+      },
+      validate(root) {
+        assert.equal(
+          portableMemoryRoot(root)?.memory.checkpointId,
+          description.id,
+        );
+      },
+    };
+    const source = {
+      async read(offset: number, bytes: number) {
+        reads++;
+        return fsBytes.subarray(offset, offset + bytes);
+      },
+    };
+    await assert.rejects(
+      transfer.save(
+        fence,
+        description.id,
+        original.filesystem.metadata,
+        source,
+        undefined,
+        extension,
+      ),
+      /integrity/,
+    );
+    assert.equal(await registry.root(fence, description.id), undefined);
+    await assert.rejects(registry.collect(fence, "during-upload"), /Active/);
+    await store.put(
+      memoryObject,
+      (async function* () {
+        yield memoryBytes;
+      })(),
+      memoryObject,
+    );
+    const publish = registry.publish.bind(registry);
+    let loseAck = true;
+    registry.publish = async (...args) => {
+      await publish(...args);
+      if (loseAck) {
+        loseAck = false;
+        throw Error("Lost complete publication ACK");
+      }
+    };
+    await assert.rejects(
+      transfer.save(
+        fence,
+        description.id,
+        original.filesystem.metadata,
+        source,
+        undefined,
+        extension,
+      ),
+      /Lost/,
+    );
+    const readCount = reads;
+    const result = await transfer.save(
+      fence,
+      description.id,
+      original.filesystem.metadata,
+      {
+        async read() {
+          throw Error("Published save must not read the source again");
+        },
+      },
+      undefined,
+      extension,
+    );
+    assert.equal(prepares, 2);
+    assert.equal(reads, readCount);
+    assert.equal(result.root.frames.length, 2);
+    assert(portableMemoryRoot(result.root));
+    assert.equal(
+      checkpointArchive(result.root).sha256,
+      (original.filesystem.metadata as unknown as CapturedArchive).sha256,
+    );
+  });

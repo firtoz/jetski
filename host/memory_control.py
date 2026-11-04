@@ -199,6 +199,9 @@ def handle(action, payload, fence, backend, archives, data):
 
     if action == "memory-seal":
         sealed = life.seal(lease, identifier, binding, published)
+        exported = sealed.get("portableExport")
+        if exported and exported.get("nativeSha256") != sealed["manifest"]["sha256"]:
+            raise ValueError("portable_memory_seal_mismatch")
         return dict(
             checkpointId=identifier,
             phase="sealed",
@@ -242,6 +245,12 @@ def handle(action, payload, fence, backend, archives, data):
                 raise ValueError("unsafe_memory_source_archive")
             source.unlink()
             sync_dir(source.parent)
+        if current["memory"].get("portableExport"):
+            from portable_memory_export import PortableMemoryExport
+
+            PortableMemoryExport(
+                fence, driver, fence.root.parent / "portable-memory-exports", data
+            ).remove_pack(lease, identifier)
         current.pop("checkpoint", None)
         fence.write(current)
     return dict(

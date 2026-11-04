@@ -214,6 +214,17 @@ class ImportTests(unittest.TestCase):
             self.importer.finish(self.lease)
         self.assertFalse((self.data / self.lease["assignmentId"]).exists())
 
+    def test_portable_requirement_is_retained_and_cannot_be_downgraded_on_replay(self):
+        lease = {**self.lease, "assignmentId": str(uuid.uuid4())}
+        fence = Fence(self.base / "portable-control")
+        fence.claim(lease)
+        importer = CheckpointImport(fence, self.archives, self.data, self.importer.account)
+        checkpoint = str(uuid.uuid4())
+        begin = importer.begin(lease, checkpoint, self.receipt["sha256"], len(self.raw), True)
+        self.assertTrue(begin["portableMemoryRequired"])
+        with self.assertRaisesRegex(ValueError, "identity_conflict"):
+            importer.begin(lease, checkpoint, self.receipt["sha256"], len(self.raw))
+
 
 if __name__ == "__main__":
     unittest.main()

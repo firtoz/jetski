@@ -3,6 +3,10 @@ import {
   archiveChunks,
   archiveReadConcurrency,
 } from "./archive-source.js";
+import {
+  type CheckpointPublication,
+  publishCheckpoint,
+} from "./checkpoint-publication.js";
 import { PackedCheckpointTransfer } from "./packed-transfer.js";
 
 export type { ArchiveSource } from "./archive-source.js";
@@ -42,6 +46,7 @@ export class CheckpointTransfer {
     input: unknown,
     source: ArchiveSource,
     previousRoot?: string,
+    publication?: CheckpointPublication,
   ): Promise<{
     root: CheckpointRoot;
     uploadedBytes: number;
@@ -68,6 +73,7 @@ export class CheckpointTransfer {
         source,
         previousRoot,
         target || DEFAULTS.maxObjectBytes,
+        publication,
       );
     const readConcurrency = archiveReadConcurrency(source);
     const storeConcurrency = this.objects.transferConcurrency ?? 1;
@@ -89,6 +95,7 @@ export class CheckpointTransfer {
     if (existing) {
       if (canonical(checkpointArchive(existing)) !== canonical(archive))
         throw new Error("Checkpoint operation identity conflict");
+      publication?.validate(existing);
       return { root: existing, uploadedBytes: 0, reusedBytes: archive.bytes };
     }
     const pending = await this.registry.beginFrameSave(
@@ -186,7 +193,13 @@ export class CheckpointTransfer {
         else uploadedBytes += result.value.object.bytes;
       }
     }
-    await this.registry.publish(fence, id, id, frames, archive as Json);
+    await publishCheckpoint(
+      this.registry,
+      fence,
+      id,
+      { frames, metadata: archive as Json },
+      publication,
+    );
     const root = await this.registry.root(fence, id);
     if (!root) throw new Error("Checkpoint publication missing");
     return { root, uploadedBytes, reusedBytes };

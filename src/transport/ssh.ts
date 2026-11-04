@@ -16,6 +16,7 @@ import {
   type HostTransport,
   HostTransportError,
   hostRequestByteLimit,
+  hostResponseByteLimit,
 } from "../core/transport.js";
 import {
   type HostBackend,
@@ -200,7 +201,10 @@ export class SshTransport implements HostTransport, HostStreamTransport {
       child.on("error", () => fail("SSH transport failed"));
       child.stdin.on("error", () => fail("SSH request delivery failed"));
       child.stdout.on("data", (chunk: Buffer) => {
-        if (output.length + chunk.length > 2 * 1024 * 1024) {
+        if (
+          output.length + chunk.length >
+          hostResponseByteLimit(request.action)
+        ) {
           fail("Host response bound exceeded");
           return;
         }

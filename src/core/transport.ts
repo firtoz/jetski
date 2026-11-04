@@ -26,7 +26,18 @@ export type CheckpointImportSink = {
 /** Negotiated control chunks; ordinary control requests keep their smaller bound. */
 export const HOST_IMPORT_CHUNK_BYTES = 4 * 1024 * 1024;
 export function hostRequestByteLimit(action: string): number {
-  return action === "import-chunk" ? 6 * 1024 * 1024 : 1024 * 1024;
+  return [
+    "import-chunk",
+    "memory-import-begin",
+    "memory-import-chunk",
+  ].includes(action)
+    ? 6 * 1024 * 1024
+    : 1024 * 1024;
+}
+/** Native export manifests may describe thousands of chunks; data reads retain
+ * their existing independent bound. Only this private action gets more room. */
+export function hostResponseByteLimit(action: string): number {
+  return (action === "memory-export" ? 8 : 2) * 1024 * 1024;
 }
 /** Leave room for two bounded 120-second runtime calls plus receipt/cleanup I/O.
  * A shorter outer deadline can terminate control before its outcome is recorded.
