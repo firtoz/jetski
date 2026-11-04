@@ -60,7 +60,7 @@ placement; the selector does not implement or authorize that migration.
 
 The qualified baseline gVisor profile is Python host / Linux x86-64 / systrap /
 network `none`. The experimental [public-egress profile](networking.md) adds a
-shared filtered IPv4 path for both runtimes; hosted qualification is in progress.
+shared filtered IPv4 path for both runtimes; the [matched online qualification](network-benchmarks.md) is complete.
 An admission adapter must supply evidence for that exact profile. It must never
 treat support for legacy Podman `egress` as support for `public-egress`.
 
@@ -82,16 +82,38 @@ laptop remaining available. It does not replace remote durable storage or backup
 
 ## Choosing an operating policy
 
-| Workload                                                     | Suggested policy                                     | Tradeoff                                                              |
-| ------------------------------------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| Untrusted code requiring the application-kernel boundary     | `gvisor-required`                                    | Refuses incompatible hosts/workloads; no security downgrade           |
-| Known compatible offline workloads, with approved exceptions | `gvisor-preferred`                                   | Better coverage, but callers must observe which runtime was selected  |
-| Trusted builds with many subprocesses or metadata calls      | Benchmark first; Podman-only remains reasonable      | Native syscall compatibility may outweigh process-continuity benefits |
-| Outbound-internet workloads on today's adapters              | Podman-only or an explicit `network-policy` fallback | Current gVisor adapter does not qualify egress                        |
-| Portable RAM required                                        | gVisor capability required                           | Filesystem-only recovery is not an equivalent substitute              |
+| Workload                                                     | Suggested policy                                        | Tradeoff                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------- | --------------------------------------------------------------------- |
+| Untrusted code requiring the application-kernel boundary     | `gvisor-required`                                       | Refuses incompatible hosts/workloads; no security downgrade           |
+| Known compatible offline workloads, with approved exceptions | `gvisor-preferred`                                      | Better coverage, but callers must observe which runtime was selected  |
+| Trusted builds with many subprocesses or metadata calls      | Benchmark first; Podman-only remains reasonable         | Native syscall compatibility may outweigh process-continuity benefits |
+| Qualified outbound-internet workloads                        | Explicit `public-egress` with required/preferred gVisor | Both runtimes use the same filtered IPv4 policy                       |
+| Portable RAM required                                        | gVisor capability required                              | Filesystem-only recovery is not an equivalent substitute              |
 
 Admission facts and fallback permissions belong to trusted operator policy, not
 workload-controlled request fields. A malicious workload must not be able to
 trigger a weaker backend by deliberately failing a command or preflight. Emit the
 selected runtime and fallback reason to your existing observability sink; a
 heterogeneous fleet should not conceal its different isolation guarantees.
+
+
+## Fresh-host prerequisite selection
+
+`PreparingRuntimeBootstrap` accepts `RuntimeEligibility` instead of claiming that
+prerequisite inspection has verified a running runtime. It freezes an immutable
+candidate before bootstrap. Only successful runtime bootstrap publishes the
+verified selection. Bootstrap must verify native isolation, effective limits and
+pinned runtime/image policy before permitting execution; its failures propagate
+without fallback. Restart retains the candidate even when bootstrap's response
+was lost. Inspect `decision(host)` for the verified selection; null means it has
+not completed. Existing `SelectingRuntimeBootstrap` remains available for adapters
+that already have fully verified admission evidence.
+
+`BoatRuntimeEligibility` from `jetski/providers/boat-runtime-selection` performs a
+bounded read-only check on a positively owned Linux x86-64 host, covering namespace
+prerequisites and required cgroup controllers. The operator supplies `qualified`
+only for an independently qualified image/runtime/network combination; `excluded`
+represents an intentional gVisor workload exclusion and can select Podman only if
+`workload-compatibility` fallback is allowed. It does not pretend that the physical
+machine lacks gVisor. Missing/malformed/failed probes throw, never imply exclusion.
+The native bootstrap remains the final isolation and resource-enforcement gate.

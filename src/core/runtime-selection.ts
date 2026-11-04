@@ -54,6 +54,38 @@ export type RuntimeDecision = {
   fallbackReason: RuntimeFallbackReason | null;
 };
 
+/** Prerequisites and operator workload qualification only. Eligibility is not
+ * proof of effective isolation: a runtime bootstrap must still verify that
+ * before allowing workload execution. Unknown never authorizes fallback. */
+export type RuntimeEligibility =
+  | (Omit<Extract<RuntimeAdmission, { status: "supported" }>, "status"> & {
+      status: "eligible";
+    })
+  | Exclude<RuntimeAdmission, { status: "supported" }>;
+
+export function selectRuntimeCandidate(
+  preference: RuntimePreference,
+  requirements: RuntimeRequirements,
+  eligibility: RuntimeEligibility[],
+): RuntimeDecision {
+  if (
+    !Array.isArray(eligibility) ||
+    eligibility.some(
+      (entry) =>
+        !entry ||
+        !["eligible", "unsupported", "unknown"].includes(entry.status),
+    )
+  )
+    throw Error("Invalid runtime prerequisite eligibility");
+  return selectRuntime(
+    preference,
+    requirements,
+    eligibility.map((entry) =>
+      entry.status === "eligible" ? { ...entry, status: "supported" } : entry,
+    ),
+  );
+}
+
 function validate(
   preference: RuntimePreference,
   requirements: RuntimeRequirements,

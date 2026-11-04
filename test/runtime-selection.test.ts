@@ -10,7 +10,10 @@ import {
   type RuntimePreference,
   selectRuntime,
 } from "../src/core/runtime-selection.js";
-import { SelectingRuntimeBootstrap } from "../src/providers/runtime-selection.js";
+import {
+  PreparingRuntimeBootstrap,
+  SelectingRuntimeBootstrap,
+} from "../src/providers/runtime-selection.js";
 import { SqliteState } from "../src/state/sqlite.js";
 
 const requirements = { networkMode: "none" as const, portableMemory: false };
@@ -253,4 +256,124 @@ test("public egress needs explicit evidence on both preferred and fallback runti
   const fallback = selectRuntime(preference, required, proof);
   assert.equal(fallback.runtime.kind, "podman");
   assert.equal(fallback.fallbackReason, "network-policy");
+});
+
+test("preparing bootstrap freezes eligibility before effects and publishes readiness only after verification", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  let excluded = false,
+    fail = true;
+  const calls: string[] = [];
+  const evidence = async () =>
+    admissions().map((a) => {
+      if (a.runtime.kind === "gvisor" && excluded)
+        return {
+          runtime: a.runtime,
+          evidenceId: "operator-exclusion",
+          status: "unsupported" as const,
+          reason: "workload-compatibility" as const,
+        };
+      return a.status === "supported"
+        ? { ...a, status: "eligible" as const }
+        : a;
+    });
+  const preferred: RuntimePreference = {
+    mode: "gvisor-preferred",
+    allowPodmanFallbackFor: ["workload-compatibility"],
+  };
+  const make = () =>
+    new PreparingRuntimeBootstrap(
+      state,
+      preferred,
+      requirements,
+      evidence,
+      (runtime) => ({
+        ensure: async () => {
+          calls.push(runtime.kind);
+          if (fail) throw Error("lost bootstrap acknowledgement");
+        },
+      }),
+    );
+  const first = make();
+  await assert.rejects(first.ensure("fresh-host"), /lost bootstrap/);
+  assert.equal(await first.decision("fresh-host"), null);
+  excluded = true;
+  await assert.rejects(make().ensure("fresh-host"), /not permitted/);
+  assert.deepEqual(calls, ["gvisor"]);
+  excluded = false;
+  fail = false;
+  await make().ensure("fresh-host");
+  assert.equal((await first.decision("fresh-host"))?.runtime.kind, "gvisor");
+});
+
+test("preparing bootstrap allows only approved exclusions, keeps Podman fixed, and rejects RAM downgrade", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const evidence = async () =>
+    admissions().map((a) =>
+      a.runtime.kind === "gvisor"
+        ? {
+            runtime: a.runtime,
+            evidenceId: "operator-exclusion",
+            status: "unsupported" as const,
+            reason: "workload-compatibility" as const,
+          }
+        : a.status === "supported"
+          ? { ...a, status: "eligible" as const }
+          : a,
+    );
+  const preference: RuntimePreference = {
+    mode: "gvisor-preferred",
+    allowPodmanFallbackFor: ["workload-compatibility"],
+  };
+  let calls = 0;
+  const bootstrap = new PreparingRuntimeBootstrap(
+    state,
+    preference,
+    requirements,
+    evidence,
+    (runtime) => ({
+      ensure: async () => {
+        assert.equal(runtime.kind, "podman");
+        calls++;
+      },
+    }),
+  );
+  await bootstrap.ensure("fallback-host");
+  assert.equal(
+    (await bootstrap.decision("fallback-host"))?.fallbackReason,
+    "workload-compatibility",
+  );
+  await assert.rejects(
+    new PreparingRuntimeBootstrap(
+      state,
+      preference,
+      { ...requirements, portableMemory: true },
+      evidence,
+      () => ({
+        ensure: async () => {
+          calls++;
+        },
+      }),
+    ).ensure("ram-host"),
+    /cannot meet/,
+  );
+  await assert.rejects(
+    new PreparingRuntimeBootstrap(
+      state,
+      preference,
+      requirements,
+      async () => [
+        { runtime: GVISOR_RUNTIME, evidenceId: "uncertain", status: "unknown" },
+        (await evidence())[1]!,
+      ],
+      () => ({
+        ensure: async () => {
+          calls++;
+        },
+      }),
+    ).ensure("unknown-host"),
+    /uncertain/,
+  );
+  assert.equal(calls, 1);
 });
