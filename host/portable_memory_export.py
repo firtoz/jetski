@@ -11,6 +11,7 @@ import os
 import pathlib
 import stat
 
+from timing import stage
 from archive import sync_dir
 from fence import identity
 from gvisor_lifecycle import checkpoint_id
@@ -89,11 +90,12 @@ class PortableMemoryExport:
                 filesystemIdentitySha256=memory["filesystemIdentitySha256"],
                 **memory["compatibility"],
             )
-            native = image_manifest(
-                self.driver.memory_path(lease, identifier),
-                binding,
-                owner_uid=self.driver.memory_owner(),
-            )
+            with stage("memory.source_verify"):
+                native = image_manifest(
+                    self.driver.memory_path(lease, identifier),
+                    binding,
+                    owner_uid=self.driver.memory_owner(),
+                )
             if prior and prior.get("nativeSha256") != native["sha256"]:
                 raise ValueError("portable_memory_image_changed")
             compatibility = self.driver.portable_compatibility(lease, identifier)
@@ -115,14 +117,15 @@ class PortableMemoryExport:
                 sync_dir(path.parent)
             attempt = dict(input=expected, phase="capturing", nativeSha256=native["sha256"])
             self.fence.write({**state, "memory": {**memory, "portableExport": attempt}})
-            capture = capture_chunks(
-                self.driver.memory_path(lease, identifier),
-                native["files"],
-                path,
-                codec=codec,
-                chunk_bytes=chunk_bytes,
-                owner_uid=self.driver.memory_owner(),
-            )
+            with stage("memory.encode_chunks"):
+                capture = capture_chunks(
+                    self.driver.memory_path(lease, identifier),
+                    native["files"],
+                    path,
+                    codec=codec,
+                    chunk_bytes=chunk_bytes,
+                    owner_uid=self.driver.memory_owner(),
+                )
             capture["compatibility"] = compatibility
             # Source identity is checked on both sides of the read-only capture.
             current = self.frozen(lease, identifier, filesystem_sha256)

@@ -15,6 +15,7 @@ import shutil
 import stat
 import tempfile
 
+from timing import stage
 from archive import sync_dir
 from fence import identity
 from gvisor_lifecycle import checkpoint_id, settled
@@ -261,6 +262,18 @@ class PortableMemoryImport:
         data = base64.b64decode(encoded, validate=True)
         if not 1 <= len(data) <= CHUNK_BYTES or hashlib.sha256(data).hexdigest() != sha256:
             raise ValueError("portable_import_chunk_integrity")
+        return self.commit(lease, identifier, object_id, offset, data, sha256)
+
+    def commit(self, raw, identifier, object_id, offset, data, sha256):
+        lease, identifier = copy.deepcopy(identity(raw)), checkpoint_id(identifier)
+        if (
+            type(offset) is not int
+            or offset < 0
+            or not isinstance(data, bytes)
+            or not 1 <= len(data) <= CHUNK_BYTES
+            or hashlib.sha256(data).hexdigest() != sha256
+        ):
+            raise ValueError("portable_import_chunk_integrity")
         with self.fence.locked():
             state, record = self.state(lease, identifier)
             if state["phase"] != "closed" or record["phase"] != "receiving":
@@ -380,13 +393,14 @@ class PortableMemoryImport:
                 with os.fdopen(fd, "rb") as source:
                     return source.read(obj["bytes"] + 1)
 
-            reconstruct_chunks(
-                manifest["files"],
-                manifest["directories"],
-                dict(owner=lease["owner"], sandbox=lease["sandboxId"]),
-                target,
-                read_object,
-            )
+            with stage("memory.reconstruct"):
+                reconstruct_chunks(
+                    manifest["files"],
+                    manifest["directories"],
+                    dict(owner=lease["owner"], sandbox=lease["sandboxId"]),
+                    target,
+                    read_object,
+                )
             self.driver.accept_imported_image(lease, identifier)
             binding = dict(
                 version=1,
@@ -396,7 +410,8 @@ class PortableMemoryImport:
                 filesystemIdentitySha256=record["filesystemIdentitySha256"],
                 **self.driver.compatibility(lease),
             )
-            proof = image_manifest(target, binding, owner_uid=self.driver.memory_owner())
+            with stage("memory.target_verify"):
+                proof = image_manifest(target, binding, owner_uid=self.driver.memory_owner())
             # Construction checked every native file digest; seal its exact tree
             # again before the persisted point of no blind native replay.
             expected_files = [(f["path"], f["bytes"], f["sha256"]) for f in manifest["files"]]
@@ -424,7 +439,10 @@ class PortableMemoryImport:
                 }
             )
             try:
-                self.driver.restore_imported(lease, identifier, record["memoryMb"], record["cpus"])
+                with stage("memory.native_restore"):
+                    self.driver.restore_imported(
+                        lease, identifier, record["memoryMb"], record["cpus"]
+                    )
             except BaseException:
                 observed = self.status_locked(lease, identifier)
                 if observed["phase"] == "restored":

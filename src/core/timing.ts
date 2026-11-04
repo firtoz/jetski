@@ -116,6 +116,11 @@ export function observeHostTimings(
           "archive.sync_publish",
           "runtime.create",
           "cache.publish",
+          "memory.source_verify",
+          "memory.encode_chunks",
+          "memory.reconstruct",
+          "memory.target_verify",
+          "memory.native_restore",
         ].includes(value?.stage) ||
         typeof value.elapsedMs !== "number" ||
         !Number.isFinite(value.elapsedMs) ||

@@ -1,6 +1,7 @@
 import type { CapturedArchive } from "./archive-format.js";
 import type { ArchiveSource } from "./archive-source.js";
 import type { Json } from "./contracts.js";
+import type { CapturedMemory } from "./memory-capture.js";
 import type { HostLease } from "./pool.js";
 import type { WorkloadResources } from "./resources.js";
 export type CachedResumeRequest = {
@@ -54,7 +55,31 @@ export type HostResponse = {
   id: string;
   result: Json;
 };
+export type MemoryImportSink = {
+  chunkBytes: number;
+  write(
+    objectId: string,
+    offset: number,
+    bytes: Uint8Array<ArrayBuffer>,
+    sha256: string,
+  ): Promise<Json>;
+  close(): Promise<void>;
+};
 export interface HostTransport {
+  memorySource?(
+    host: string,
+    lease: HostLease,
+    checkpointId: string,
+    capture: CapturedMemory,
+    image: string,
+  ): Promise<ArchiveSource | undefined>;
+  memoryImport?(
+    host: string,
+    lease: HostLease,
+    checkpointId: string,
+    image: string,
+  ): Promise<MemoryImportSink | undefined>;
+
   /** Optional composition of fenced claim, verified cache import and create.
    * A miss must not create a runtime. The core validates the returned identity. */
   resumeCached?(host: string, input: CachedResumeRequest): Promise<Json>;

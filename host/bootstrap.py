@@ -51,6 +51,7 @@ MODULES = (
     "memory_chunks.py",
     "portable_memory_policy.py",
     "portable_memory_export.py",
+    "portable_memory_files.py",
     "portable_memory_import.py",
     "portable_memory_format.py",
     "gvisor_native.py",

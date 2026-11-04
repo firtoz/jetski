@@ -58,6 +58,15 @@ export class BoatApi {
       throw Error("Invalid checkpoint upload path");
     return this.uploadBoundedFile(host, path, data, HOST_IMPORT_FILE_BYTES);
   }
+  async uploadMemoryPart(host: string, path: string, data: Uint8Array) {
+    if (
+      !/^\/tmp\/jetski-memory-imports\/[a-f0-9-]{36}-g[1-9][0-9]*\/[a-f0-9-]{36}\/chunk.bin$/.test(
+        path,
+      )
+    )
+      throw Error("Invalid memory upload path");
+    return this.uploadBoundedFile(host, path, data, 4 * 1024 * 1024);
+  }
   private async uploadBoundedFile(
     host: string,
     path: string,

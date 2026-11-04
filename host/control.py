@@ -146,7 +146,7 @@ def dispatch(
             ready=ready,
             runtime=runtime,
         )
-    if action in ("memory-export", "memory-export-read"):
+    if action in ("memory-export", "memory-export-read", "memory-source", "memory-source-close"):
         if payload.get("image") not in config["images"] or not hasattr(backend, "memory_driver"):
             raise ValueError("portable_memory_runtime_unavailable")
         from portable_memory_export import PortableMemoryExport
@@ -154,6 +154,22 @@ def dispatch(
         exporter = PortableMemoryExport(
             fence, backend.memory_driver(), CONTROL_ROOT / "portable-memory-exports", DATA_ROOT
         )
+        if action in ("memory-source", "memory-source-close"):
+            name = config.get("archiveTransferUser")
+            if name is None:
+                return dict(supported=False)
+            from portable_memory_files import PortableMemoryFiles
+
+            files = PortableMemoryFiles(fence, pwd.getpwnam(name))
+            if action == "memory-source-close":
+                return files.close_export(lease, payload.get("checkpointId"), exporter)
+            return files.export(
+                lease,
+                payload.get("checkpointId"),
+                exporter,
+                payload.get("sha256"),
+                payload.get("bytes"),
+            )
         if action == "memory-export":
             return exporter.prepare(
                 lease,
@@ -171,6 +187,9 @@ def dispatch(
         "memory-import-chunk",
         "memory-import-finish",
         "memory-import-abort",
+        "memory-import-file-begin",
+        "memory-import-file-chunk",
+        "memory-import-file-close",
     ):
         if payload.get("image") not in config["images"] or not hasattr(backend, "memory_driver"):
             raise ValueError("portable_memory_runtime_unavailable")
@@ -179,6 +198,27 @@ def dispatch(
         memory_import = PortableMemoryImport(
             fence, backend.memory_driver(), CONTROL_ROOT / "portable-memory-imports", DATA_ROOT
         )
+        if action.startswith("memory-import-file-"):
+            name = config.get("archiveTransferUser")
+            if name is None:
+                return dict(supported=False)
+            from portable_memory_files import PortableMemoryFiles
+
+            files = PortableMemoryFiles(fence, pwd.getpwnam(name))
+            identifier = payload.get("checkpointId")
+            if action == "memory-import-file-begin":
+                return files.import_begin(lease, identifier, memory_import)
+            if action == "memory-import-file-close":
+                return files.import_close(lease, identifier, memory_import)
+            return files.import_chunk(
+                lease,
+                identifier,
+                memory_import,
+                payload.get("objectId"),
+                payload.get("offset"),
+                payload.get("bytes"),
+                payload.get("sha256"),
+            )
         if action == "memory-import-begin":
             return memory_import.begin(
                 lease,

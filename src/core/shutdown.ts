@@ -126,6 +126,12 @@ export function missingSourceRecovery(value: unknown): MissingSourceRecovery {
 }
 type Dependencies = {
   memoryTransfer?: PortableMemoryTransfer;
+  memorySource?: (
+    lease: HostLease,
+    checkpointId: string,
+    capture: CapturedMemory,
+    image: string,
+  ) => Promise<ArchiveSource | undefined>;
   captureFrameBytes: number;
   timings?: StageTimingSink;
   eagerCapture?: boolean;
@@ -506,13 +512,21 @@ export class ShutdownCoordinator {
             capture,
           );
         }
+        const boundMemory = record.memoryCapture
+          ? await this.deps.memorySource?.(
+              record.lease,
+              record.id,
+              record.memoryCapture,
+              record.image,
+            )
+          : undefined;
         const publication = record.portable
           ? this.deps.memoryTransfer!.publication(
               fence,
               record.id,
               record.archive!.sha256,
               record.memoryCapture,
-              {
+              boundMemory ?? {
                 readChunkBytes: 1024 * 1024,
                 read: async (offset, bytes) => {
                   const value = await request(
@@ -580,7 +594,19 @@ export class ShutdownCoordinator {
           throw reason;
         } finally {
           try {
-            await boundSource?.close?.();
+            const cleanup = await Promise.allSettled([
+              boundSource?.close?.(),
+              boundMemory?.close?.(),
+            ]);
+            const failed = cleanup.filter(
+              (result): result is PromiseRejectedResult =>
+                result.status === "rejected",
+            );
+            if (failed.length)
+              throw new AggregateError(
+                failed.map((result) => result.reason),
+                "Checkpoint source cleanup failed",
+              );
           } catch (reason) {
             if (failure)
               throw new AggregateError(

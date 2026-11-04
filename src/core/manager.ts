@@ -362,6 +362,23 @@ export class SandboxManager {
       )
         throw Error("Invalid memory codec adapter");
     this.shutdown = new ShutdownCoordinator({
+      ...(transport.memorySource
+        ? {
+            memorySource: (
+              lease: HostLease,
+              id: string,
+              capture: import("./memory-capture.js").CapturedMemory,
+              image: string,
+            ) =>
+              transport.memorySource!(
+                lease.machineId,
+                lease,
+                id,
+                capture,
+                image,
+              ),
+          }
+        : {}),
       memoryTransfer: new PortableMemoryTransfer(
         state,
         this.checkpoints,
@@ -788,6 +805,15 @@ export class SandboxManager {
             this.transport.checkpointImport!(
               lease.machineId,
               lease,
+              sandbox.image,
+            )
+        : undefined,
+      this.transport.memoryImport
+        ? () =>
+            this.transport.memoryImport!(
+              lease.machineId,
+              lease,
+              sandbox.portableRestore!,
               sandbox.image,
             )
         : undefined,

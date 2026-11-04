@@ -84,8 +84,8 @@ milestones and final publication; do not import product code/history.
 
 ## Current state and recovery
 
-Workspace `/home/frtn/work/2026/jetski`, main `06c1124` with intended lifecycle
-integration changes ready for the next coherent milestone. Private state:
+Workspace `/home/frtn/work/2026/jetski`, main `2564d64` with intended binary-transfer
+changes ready for the next coherent milestone. Private state:
 `/home/frtn/.local/state/jetski-qa/portable-memory-20261104/`; read `current.json`
 for exact dirty files, receipts and next actions. No hosted controllers or VMs;
 zero paid starts. Separate $3/max10small1h allowance is approved. Do not allocate
@@ -116,7 +116,7 @@ come from runsc's saved image, with target CPU-superset validation. Old local se
 and Podman/default paths remain unchanged. These changes are not portable public
 lifecycle support yet.
 
-Latest full local pass: 330 TypeScript / 211 Python tests, build/typecheck/lint/Ruff.
+Latest full local pass: 333 TypeScript / 213 Python tests, build/typecheck/lint/Ruff.
 The host now has target import/status/chunk/finish/abort operations. It requires
 an already verified filesystem with an explicit memory-required barrier, closes
 the target fence, validates compatibility, receives immutable encoded objects,
@@ -128,8 +128,9 @@ assignment ownership; source memory sealing/native resume behavior stays intact.
 
 Native CI 41799356913 passes the production host import journal and compatibility
 helper, preserving full heap/process/open-file state after source image/tree deletion
-on one CI machine. Eight jobs pass; the general test job has a browser startup
-timeout, preserved after one affected retry. No physical/R2 replacement is proved.
+on one CI machine. The latest lifecycle CI 41801985255 passes eight jobs, including native gVisor
+and general tests; SSH default has a browser startup timeout. Prior timeout evidence
+is preserved. No physical/R2 replacement is proved.
 
 The portable control-plane restore journal holds a durable reader across filesystem
 and memory transfer, controller restart and native uncertainty. Target offsets and
@@ -141,14 +142,19 @@ before ordinary create/cache paths, and reports actual process preservation. SDK
 HTTP/OpenAPI and CLI expose opt-in portable saves with injectable codecs. Existing
 local RAM and Podman/default behavior remain unchanged. Two lifecycle replacement
 fixtures and five journal interruption/fallback cases pass; these use mocked hosts,
-not physical RAM recovery. Binary bindings and hosted qualification remain open.
+not physical RAM recovery. Optional binary bindings now use generation/checkpoint-scoped outer-host paths,
+lazy range downloads that skip reused chunks, and hash-checked binary input through
+the same journal. Controller cleanup reconciles old export links after lost ACKs.
+Boat opts into these bindings with binary archive transfers; other transports retain
+bounded JSON fallback. Three transport and two host confinement tests pass; final
+checks pass. Optional diagnostics separate source verification, chunk encoding,
+reconstruction, target verification and native restore. Hosted qualification remains open.
 
 Next actions, in order:
 
-1. Add optional binary memory export/import bindings to avoid routing large images
-   through JSON; instrument actual host-direct bytes/requests. Preserve fallback
-   control transport and owner/generation confinement.
-2. Qualify only affected binary/restart/ACK/fencing paths, then freeze the artifact,
+1. Publish the coherent binary milestone and observe its exact-SHA CI; preserve
+   prior browser timeout evidence and repair only concrete failures.
+2. Freeze the artifact,
    workload, finite matrix and owned-resource ledger. Do not allocate before this.
 3. Run the one finite approved comparison, both physical R2 memory replacements,
    exact recovery/another save, owned cleanup, honest report and final main CI.

@@ -4,8 +4,10 @@ import { MAX_CHECKPOINT_READ_BYTES } from "../core/archive-source.js";
 import { decodeBase64 } from "../core/command-output.js";
 import type { Json, StateStore } from "../core/contracts.js";
 import { identifier } from "../core/contracts.js";
+import type { CapturedMemory } from "../core/memory-capture.js";
 import type { HostLease } from "../core/pool.js";
 import { type StageTimingSink, timeStage } from "../core/timing.js";
+import type { MemoryImportSink } from "../core/transport.js";
 import {
   type CachedResumeRequest,
   type CheckpointImportSink,
@@ -29,6 +31,7 @@ import {
   validateHostBackend,
   verifyBackendStatus,
 } from "./host-backend.js";
+import { boatMemoryImport, boatMemorySource } from "./memory-binary.js";
 
 /** Fixed privileged control program; workload bytes enter only through stdin. */
 export class BoatTransport implements HostTransport {
@@ -53,6 +56,19 @@ export class BoatTransport implements HostTransport {
   private readonly channel: BoatControlChannel;
   private readonly timings: StageTimingSink | undefined;
   private readonly backend: HostBackend;
+  readonly memorySource?: (
+    host: string,
+    lease: HostLease,
+    id: string,
+    capture: CapturedMemory,
+    image: string,
+  ) => Promise<ArchiveSource | undefined>;
+  readonly memoryImport?: (
+    host: string,
+    lease: HostLease,
+    id: string,
+    image: string,
+  ) => Promise<MemoryImportSink | undefined>;
   readonly checkpointImport?: (
     host: string,
     lease: HostLease,
@@ -95,6 +111,34 @@ export class BoatTransport implements HostTransport {
       typeof options.archiveWrites !== "boolean"
     )
       throw Error("Invalid binary archive write policy");
+    const memoryRequest =
+      (host: string, lease: HostLease, image: string) =>
+      (action: string, payload: Record<string, Json>) =>
+        this.request(host, {
+          version: HOST_PROTOCOL_VERSION,
+          id: crypto.randomUUID(),
+          action,
+          payload: { ...payload, lease, image },
+        }).then((reply) => reply.result);
+    if (options.archiveReads)
+      this.memorySource = async (host, lease, id, capture, image) =>
+        boatMemorySource(
+          api,
+          host,
+          lease,
+          id,
+          capture,
+          memoryRequest(host, lease, image),
+        );
+    if (options.archiveWrites)
+      this.memoryImport = (host, lease, id, image) =>
+        boatMemoryImport(
+          api,
+          host,
+          lease,
+          id,
+          memoryRequest(host, lease, image),
+        );
     if (options.archiveWrites)
       this.checkpointImport = (host, lease, image) =>
         this.openImport(host, lease, image);

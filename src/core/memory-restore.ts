@@ -23,6 +23,7 @@ import {
   type CheckpointImportSink,
   HOST_IMPORT_CHUNK_BYTES,
   HostTransportError,
+  type MemoryImportSink,
 } from "./transport.js";
 
 type RestoreRecord = Fence & {
@@ -110,6 +111,7 @@ export class PortableMemoryRestore {
     resources: WorkloadResources,
     request: (action: string, payload: Json) => Promise<Json>,
     openFilesystemImport?: () => Promise<CheckpointImportSink>,
+    openMemoryImport?: () => Promise<MemoryImportSink | undefined>,
   ): Promise<PortableRestoreResult> {
     fence = {
       owner: fence.owner,
@@ -241,92 +243,106 @@ export class PortableMemoryRestore {
       else if (begin.phase !== "receiving")
         throw Error("Portable target not receiving");
       if (record.stage === "memory") {
-        for (const source of portableMemoryObjects(manifest)) {
-          let reply = validate(
-            await request("memory-import-status", {
-              checkpointId,
-              objectId: source.id,
-            }),
-          );
-          const receipt = (value: Record<string, Json>) => {
-            const part = value.object;
-            if (
-              !object(part) ||
-              part.id !== source.id ||
-              typeof part.offset !== "number" ||
-              !Number.isSafeInteger(part.offset) ||
-              part.offset < 0 ||
-              part.offset > source.bytes ||
-              part.complete !== (part.offset === source.bytes)
-            )
-              throw Error("Invalid portable object cursor");
-            return part.offset;
-          };
-          let offset = receipt(reply);
-          if (offset === source.bytes) continue;
-          const bytes = new Uint8Array(source.bytes);
-          let count = 0;
-          try {
-            for await (const part of this.objects.read(source)) {
-              if (count + part.length > bytes.length)
-                throw Error("Portable stored object exceeds bound");
-              bytes.set(part, count);
-              count += part.length;
-            }
-          } catch (error) {
-            if ((await this.objects.head(source)) === undefined) {
-              record = await this.advance(record, {
-                stage: "fallback",
-                reason: "memory-object-missing",
-              });
-              break;
-            }
-            throw error;
-          }
-          if (
-            count !== source.bytes ||
-            (await digest(bytes)) !== source.sha256
-          ) {
-            record = await this.advance(record, {
-              stage: "fallback",
-              reason: "memory-object-integrity",
-            });
-            break;
-          }
-          while (offset < bytes.length) {
-            const chunk = bytes.subarray(
-              offset,
-              Math.min(bytes.length, offset + HOST_IMPORT_CHUNK_BYTES),
-            );
-            const expected = offset + chunk.length;
-            try {
-              const part = await request("memory-import-chunk", {
+        const sink = await openMemoryImport?.();
+        try {
+          if (sink && sink.chunkBytes !== HOST_IMPORT_CHUNK_BYTES)
+            throw Error("Invalid memory import bound");
+          for (const source of portableMemoryObjects(manifest)) {
+            let reply = validate(
+              await request("memory-import-status", {
                 checkpointId,
                 objectId: source.id,
-                offset,
-                base64: encodeBase64(chunk),
-                sha256: await digest(chunk),
-              });
+              }),
+            );
+            const receipt = (value: Record<string, Json>) => {
+              const part = value.object;
               if (
                 !object(part) ||
                 part.id !== source.id ||
-                part.offset !== expected ||
-                part.complete !== (expected === source.bytes)
+                typeof part.offset !== "number" ||
+                !Number.isSafeInteger(part.offset) ||
+                part.offset < 0 ||
+                part.offset > source.bytes ||
+                part.complete !== (part.offset === source.bytes)
               )
-                throw Error("Portable import acknowledgement mismatch");
-              offset = expected;
+                throw Error("Invalid portable object cursor");
+              return part.offset;
+            };
+            let offset = receipt(reply);
+            if (offset === source.bytes) continue;
+            const bytes = new Uint8Array(source.bytes);
+            let count = 0;
+            try {
+              for await (const part of this.objects.read(source)) {
+                if (count + part.length > bytes.length)
+                  throw Error("Portable stored object exceeds bound");
+                bytes.set(part, count);
+                count += part.length;
+              }
             } catch (error) {
-              reply = validate(
-                await request("memory-import-status", {
-                  checkpointId,
-                  objectId: source.id,
-                }),
+              if ((await this.objects.head(source)) === undefined) {
+                record = await this.advance(record, {
+                  stage: "fallback",
+                  reason: "memory-object-missing",
+                });
+                break;
+              }
+              throw error;
+            }
+            if (
+              count !== source.bytes ||
+              (await digest(bytes)) !== source.sha256
+            ) {
+              record = await this.advance(record, {
+                stage: "fallback",
+                reason: "memory-object-integrity",
+              });
+              break;
+            }
+            while (offset < bytes.length) {
+              const chunk = bytes.subarray(
+                offset,
+                Math.min(bytes.length, offset + HOST_IMPORT_CHUNK_BYTES),
               );
-              const observed = receipt(reply);
-              if (observed !== expected) throw error;
-              offset = observed;
+              const expected = offset + chunk.length;
+              try {
+                const part = sink
+                  ? await sink.write(
+                      source.id,
+                      offset,
+                      chunk,
+                      await digest(chunk),
+                    )
+                  : await request("memory-import-chunk", {
+                      checkpointId,
+                      objectId: source.id,
+                      offset,
+                      base64: encodeBase64(chunk),
+                      sha256: await digest(chunk),
+                    });
+                if (
+                  !object(part) ||
+                  part.id !== source.id ||
+                  part.offset !== expected ||
+                  part.complete !== (expected === source.bytes)
+                )
+                  throw Error("Portable import acknowledgement mismatch");
+                offset = expected;
+              } catch (error) {
+                reply = validate(
+                  await request("memory-import-status", {
+                    checkpointId,
+                    objectId: source.id,
+                  }),
+                );
+                const observed = receipt(reply);
+                if (observed !== expected) throw error;
+                offset = observed;
+              }
             }
           }
+        } finally {
+          await sink?.close();
         }
         if (record.stage === "memory")
           record = await this.advance(record, { stage: "native" });

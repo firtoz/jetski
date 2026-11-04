@@ -1,8 +1,8 @@
 # Portable process-memory checkpoint design
 
-Implementation is in progress. This format foundation does not yet enable remote
-process-memory recovery; [the finite goal](goals/portable-memory-checkpoints.md)
-tracks host/lifecycle integration and hosted qualification. Podman stays default.
+Implementation is experimental. Core, host and API integration are present;
+[the finite goal](goals/portable-memory-checkpoints.md) tracks physical-host R2
+qualification and comparative measurements. Podman stays default.
 
 ## Independent boundaries
 
@@ -97,3 +97,11 @@ Inspect `memoryPreserved` and `fallbackReason`; filesystem-only fallback explici
 reports process-state loss. Unknown native effects retain their reader and target
 quarantine for observation. This integration is experimental: physical-host R2
 qualification and comparative measurements remain pending.
+
+The optional Boat binary archive bindings also transfer memory through scoped
+outer-host files. Exports are read-only links; imports are bounded disposable
+parts checked by the same durable object journal. Range reads skip reused chunks.
+Other transports retain bounded control transfers. Transfer links and upload files
+never grant execution authority or enter workload mounts. Diagnostics optionally
+separate source verification, encoding, reconstruction, target verification and
+native restore; timings are observations, not publication receipts.
