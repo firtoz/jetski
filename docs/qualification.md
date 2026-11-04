@@ -119,3 +119,14 @@ failures remain excluded from successful performance trials.
 preserves individual failures, CI links and historical evidence boundaries. It is
 not the current acceptance checklist. Routine receipts, private configuration and
 process handles remain outside the public repository.
+
+### Native exec PID view
+
+A hosted application exposed a mismatch between nested exec PID namespaces and
+the sandbox-mounted `/proc`: a process reported PID2 while `/proc/self` reported
+197. This broke descendant cleanup. Native exec now shares the sandbox PID
+namespace, as ordinary container exec does. A targeted live test observed matching
+PIDs252/252 and authenticated supervisor cancellation with descendant reaping.
+Per-sandbox isolation, owner placement, lease fencing and cgroups are unchanged;
+commands in the same sandbox are not separate security principals. CI also checks
+the PID/proc agreement during native qualification.

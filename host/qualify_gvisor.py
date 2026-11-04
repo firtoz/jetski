@@ -145,6 +145,9 @@ def main():
             ["/bin/sh", "-c", "test $(id -u) = 1000; printf 'a\\000b'; printf 'err\\377' >&2"]
         )
         assert result == {"stdout": b"a\0b", "stderr": b"err\xff"}, result
+        # /proc must expose the same PID namespace used by exec and signals.
+        # A nested exec namespace leaves /proc pointing at unrelated outer PIDs.
+        command(["/bin/sh", "-c", 'read proc_pid rest < /proc/self/stat; test "$$" = "$proc_pid"'])
         terminal = command(["/bin/sh", "-c", "test -t 0; stty size; printf pty-ok"], pty=True)
         assert b"31 91" in terminal["stdout"] and b"pty-ok" in terminal["stdout"], terminal
         original = result

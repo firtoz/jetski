@@ -167,9 +167,10 @@ class ExecApi:
             if state["phase"] != "created":
                 raise ValueError("native_exec_start_already_dispatched")
             self.save(path, {**state, "phase": "starting"})
+        # Use the sandbox PID namespace: its mounted /proc and signal targets must
+        # agree for workload tools and the trusted subreaper to clean descendants.
         arguments = self.env.commands.prefix() + [
             "exec",
-            "--new-pidns",
             "--process=" + state["process"],
             state["container"],
         ]

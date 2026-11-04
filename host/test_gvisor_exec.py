@@ -22,11 +22,17 @@ class ExecTests(unittest.TestCase):
         runtime.mkdir(mode=0o700)
         (runtime / "exec").mkdir(mode=0o700)
         script = 'import os,sys; nonce=sys.stdin.buffer.read(4); sys.stdout.buffer.write(nonce+b"\\x00\\xff"); sys.stdout.buffer.flush(); sys.stdin.buffer.read(); sys.stderr.buffer.write(b"closed"); sys.stderr.buffer.flush()'
+        self.arguments = []
+
+        def argv(args):
+            self.arguments.append(args)
+            return [sys.executable, "-c", script]
+
         self.environment = types.SimpleNamespace(
             root=runtime,
             account=types.SimpleNamespace(pw_uid=os.geteuid(), pw_gid=os.getegid()),
             commands=RunscCommands("/unexecuted/runsc", "/unexecuted/state"),
-            argv=lambda args: [sys.executable, "-c", script],
+            argv=argv,
         )
         self.api = ExecApi(self.environment, self.root)
         self.container = "jetski-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-g1"
@@ -44,6 +50,8 @@ class ExecTests(unittest.TestCase):
         self.assertEqual(
             b"".join(data for channel, data in chunks if channel == "stderr"), b"closed"
         )
+        self.assertNotIn("--new-pidns", self.arguments[0])
+        self.assertIn("exec", self.arguments[0])
         self.assertEqual(self.api.inspect(session), {"Running": False, "ExitCode": 0})
         self.api.remove(session)
         with self.assertRaisesRegex(ValueError, "already_dispatched"):
