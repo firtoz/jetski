@@ -74,3 +74,32 @@ an endpoint; host-only provider ports are not sandbox previews.
   with no execution host or cloud account.
 - `qualify-*.ts` / `qualify-tty.py`: operator/CI conformance harnesses, not quickstart
   workloads. Some require disposable Linux privileges or separate paid-host approval.
+
+## Compare runtime costs inside a sandbox
+
+Upload [runtime-workload.mjs](runtime-workload.mjs) to a disposable approved Node
+workload and execute `node /workspace/runtime-workload.mjs /workspace`. It checks
+and times hashing, metadata, write/fsync, subprocess and sandbox-loopback HTTP
+work, then removes its own temporary files. Use identical images, limits and
+storage when comparing runtimes. Its CPU counters cover the Node process rather
+than all child/runtime processes; tmpfs sync timings are not disk durability.
+
+## A browser on its own private desktop
+
+[browser-desktop.mjs](browser-desktop.mjs) needs a reviewed image containing Node
+with WebSocket, Chromium under `/ms-playwright` and Xvfb. Inside an independently
+isolated container, run:
+
+```sh
+node /tools/browser-desktop.mjs /workspace/desktop.png --outer-sandbox-only
+```
+
+It creates its own virtual display and trusted local web page, sends a mouse click
+and text through browser control, verifies the resulting DOM and saves a PNG.
+The explicit flag disables Chromium's nested sandbox for this controlled demo;
+it does not qualify untrusted browsing. Keep the outer runtime's isolation and
+verified CPU/memory/PID limits. Mount only the demo code read-only, without host
+display sockets, profiles, credentials or devices. Fetch output through the
+runtime's file/exec interface; host-side copying need not see a user-space
+kernel's virtual filesystem. See [selection and boundaries](../docs/runtime-selection.md)
+and the [measured comparison](../docs/runtime-fair-benchmarks.md).

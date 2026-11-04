@@ -100,9 +100,18 @@ class RunscDriver:
             raise ValueError("gvisor_running_limits_unconfirmed")
 
     def stop(self, lease):
-        if not self.stopped(lease):
-            self._checked(self.env.commands.command("kill", lease))
-        self.wait_stopped(lease)
+        if self.stopped(lease):
+            return
+        # Give init the same graceful flush opportunity as Podman stop. Do not
+        # signal every process: init owns shutdown ordering during this window.
+        self._checked(self.env.commands.command("terminate", lease))
+        deadline = time.monotonic() + 10
+        while self.stopped(lease) is not True:
+            if time.monotonic() >= deadline:
+                self._checked(self.env.commands.command("kill", lease))
+                self.wait_stopped(lease)
+                return
+            time.sleep(0.05)
 
     def wait_stopped(self, lease):
         deadline = time.monotonic() + 5

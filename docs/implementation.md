@@ -123,6 +123,11 @@ and Podman defaults. Its thirty-sample comparison, real memory continuity and bo
 recoveries pass; see [measurements and limits](gvisor-benchmarks.md). All eight
 owned hosts are absent.
 
+The [fair runtime comparison](runtime-fair-benchmarks.md) adds graceful-stop parity,
+twenty hosted and twenty local application samples, both physical filesystem
+replacements and private-browser demonstrations. [Runtime selection](runtime-selection.md)
+remains opt-in; it does not change existing host or deployment defaults.
+
 The [portable memory checkpoint goal](goals/portable-memory-checkpoints.md) extends
 optional process recovery to remote memory artifacts, compression/chunk reuse and
 source-deleted host replacement. See its [dedicated report](portable-memory-benchmarks.md)

@@ -40,7 +40,8 @@
     "./host-assets": "./dist/host-assets.js",
     "./transport/http": "./dist/transport/http-forward.js",
     "./transport/websocket": "./dist/transport/websocket.js",
-    "./server/preview-fetch": "./dist/server/preview-fetch.js"
+    "./server/preview-fetch": "./dist/server/preview-fetch.js",
+    "./providers/runtime-selection": "./dist/providers/runtime-selection.js"
   },
   "files": [
     "dist",

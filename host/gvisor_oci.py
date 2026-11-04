@@ -236,6 +236,9 @@ class RunscCommands:
             args = ["run", "--detach", "--bundle=" + absolute_path(bundle), name]
         elif action in ("state", "delete"):
             args = [action, name]
+        elif action == "terminate":
+            # Match Podman stop: signal init first, then bound its flush window.
+            args = ["kill", name, "TERM"]
         elif action == "kill":
             args = ["kill", "--all", name, "KILL"]
         elif action == "checkpoint":

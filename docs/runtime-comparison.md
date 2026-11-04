@@ -1,7 +1,10 @@
 # Choosing the Podman or gVisor backend
 
-Refreshed November 4, 2026. This is a selection guide using completed measurements,
-not a new hosted benchmark. Podman remains the default; gVisor is opt-in.
+Refreshed November 4, 2026 with a [new fairer comparison](runtime-fair-benchmarks.md):
+twenty Boat/R2 cycles, twenty local application samples and both private-browser
+demos. Podman remains the deployment default; [explicit preference and fallback](runtime-selection.md)
+is opt-in. The older lifecycle results below are historical and retain their
+shutdown-policy confound. Use the newer report for current matched measurements.
 
 ## Where each component fits
 

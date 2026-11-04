@@ -46,14 +46,45 @@ class NativeJournalTests(unittest.TestCase):
         self.assertEqual(driver.creates, 1)
         self.assertEqual(self.fence.read()["phase"], "quarantined")
 
-    def test_stop_observes_asynchronous_termination_without_replaying_kill(self):
-        driver = RunscDriver(Mock())
+    def test_stop_observes_graceful_termination_without_sending_kill(self):
+        environment = Mock()
+        environment.commands = RunscCommands("/opt/runsc", "/state")
+        driver = RunscDriver(environment)
         driver.stopped = Mock(side_effect=[False, False, True])
         driver._checked = Mock(return_value="")
         with patch("gvisor_native.time.sleep") as sleep:
             driver.stop(self.lease)
-        self.assertEqual(driver._checked.call_count, 1)
+        driver._checked.assert_called_once_with(
+            environment.commands.command("terminate", self.lease)
+        )
         sleep.assert_called_once_with(0.05)
+
+    def test_stop_escalates_only_after_grace_and_proves_quiescence(self):
+        environment = Mock()
+        environment.commands = RunscCommands("/opt/runsc", "/state")
+        driver = RunscDriver(environment)
+        driver.stopped = Mock(side_effect=[False, False, False, True])
+        driver._checked = Mock(return_value="")
+        with (
+            patch("gvisor_native.time.monotonic", side_effect=[0, 10, 10, 10]),
+            patch("gvisor_native.time.sleep"),
+        ):
+            driver.stop(self.lease)
+        self.assertEqual(
+            [call.args[0] for call in driver._checked.call_args_list],
+            [
+                environment.commands.command("terminate", self.lease),
+                environment.commands.command("kill", self.lease),
+            ],
+        )
+
+    def test_failed_graceful_signal_does_not_trigger_an_isolation_fallback(self):
+        driver = RunscDriver(Mock())
+        driver.stopped = Mock(return_value=False)
+        driver._checked = Mock(side_effect=ConnectionError("lost signal acknowledgement"))
+        with self.assertRaises(ConnectionError):
+            driver.stop(self.lease)
+        self.assertEqual(driver._checked.call_count, 1)
 
     def test_verified_quiescence_cancels_streams_without_claiming_delivery(self):
         state = self.fence.read()

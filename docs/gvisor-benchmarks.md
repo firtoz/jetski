@@ -8,6 +8,10 @@ subsequent [November 4 portable-memory comparison](portable-memory-benchmarks.md
 qualifies R2 RAM recovery separately; it is not a rerun of these runtime timings.
 See [runtime selection](runtime-comparison.md) for the current capability boundary.
 
+The subsequent [fairer runtime comparison](runtime-fair-benchmarks.md) corrects the
+shutdown policy and measures syscall-heavy application work. Use it for the latest
+Podman/gVisor deltas; retain this report as the original qualification evidence.
+
 ## Measured latency
 
 Frozen candidate `741759b35c79097c0e0a50e92cd970a049e4ac64`, Linux x86-64,

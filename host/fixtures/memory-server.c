@@ -12,6 +12,12 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+static volatile sig_atomic_t shutdown_requested = 0;
+static void request_shutdown(int signal_number) {
+    (void)signal_number;
+    shutdown_requested = 1;
+}
+
 static int send_all(int fd, const char *data, size_t bytes) {
     while (bytes) {
         ssize_t n = send(fd, data, bytes, MSG_NOSIGNAL);
@@ -38,6 +44,11 @@ int main(int argc, char **argv) {
         if (high_change) { entropy ^= entropy << 13; entropy ^= entropy >> 7; entropy ^= entropy << 17; heap[i] = (unsigned char)entropy; }
         else heap[i] = (unsigned char)(i ^ nonce[i % sizeof(nonce)]);
     }
+    struct sigaction shutdown_action = {0};
+    shutdown_action.sa_handler = request_shutdown;
+    sigemptyset(&shutdown_action.sa_mask);
+    if (sigaction(SIGTERM, &shutdown_action, NULL) ||
+        sigaction(SIGINT, &shutdown_action, NULL)) return 10;
     signal(SIGPIPE, SIG_IGN);
     int server = socket(AF_INET, SOCK_STREAM, 0), yes = 1;
     if (server < 0 || setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes))) return 4;
@@ -51,11 +62,11 @@ int main(int argc, char **argv) {
     if (pwrite(state_file, file_bytes, sizeof(file_bytes), 0) != (ssize_t)sizeof(file_bytes) ||
         fsync(state_file) || lseek(state_file, 17, SEEK_SET) != 17) return 8;
     uint64_t counter = 0;
-    for (;;) {
+    while (!shutdown_requested) {
         int fd = accept(server, NULL, NULL);
         if (fd < 0) { if (errno == EINTR) continue; return 6; }
         char request[16385]; size_t have = 0;
-        while (have < sizeof(request) - 1) {
+        while (!shutdown_requested && have < sizeof(request) - 1) {
             ssize_t n = recv(fd, request + have, sizeof(request) - 1 - have, 0);
             if (n < 0 && errno == EINTR) continue;
             if (n <= 0) break;
@@ -84,4 +95,9 @@ int main(int argc, char **argv) {
         if (send_all(fd, header, (size_t)headers) == 0) (void)send_all(fd, body, (size_t)bytes);
         close(fd);
     }
+    int synced = fsync(state_file);
+    close(state_file);
+    close(server);
+    free(heap);
+    return synced == 0 ? 0 : 11;
 }

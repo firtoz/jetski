@@ -32,7 +32,9 @@ an unsupported host implementation/runtime pair must be rejected explicitly.
 ## Filesystem stop and memory suspend
 
 Ordinary checkpoint/stop preserves declared filesystem paths and terminates
-processes. Memory suspend is a distinct, capability-gated operation:
+processes. Both backends now offer init SIGTERM and a ten-second grace period
+before forced termination; an application must handle the signal to flush its own
+work. See the [fair comparison](runtime-fair-benchmarks.md). Memory suspend is a distinct, capability-gated operation:
 
 1. Refuse unresolved commands, open terminal/forwarding streams and file uploads.
    Background workload processes can remain inside the isolated runtime.

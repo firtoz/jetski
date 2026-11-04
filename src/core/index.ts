@@ -43,6 +43,7 @@ export {
   validateRuntimePolicy,
   validateWorkloadInit,
 } from "./runtime-policy.js";
+export * from "./runtime-selection.js";
 export {
   type MissingSourceRecovery,
   missingSourceRecovery,

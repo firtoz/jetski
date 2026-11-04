@@ -209,14 +209,30 @@ verified filesystem publication and checkpoint storage.
 | Runtime compatibility                       | Host Linux syscall interface, subject to container policy | gVisor's implemented Linux interface |
 | Host implementation                         | Python or opt-in Rust                                     | Python; Linux x86-64, systrap        |
 
-In the **November 3** comparison (ten samples per mode), median resume-to-useful
-response was **5.74s Podman filesystem**, **4.54s gVisor filesystem**, and
-**4.27s gVisor same-host memory**. Durable saves were 19.28s / 7.92s / 6.84s,
-but Podman spent 11.26s in quiescence versus 0.48s / 1.66s for gVisor: the test's
-PID 1 ignored SIGTERM, triggering Podman's ten-second grace period. That gap is
-**not a fair measure of intrinsic runtime or upload speed**. Warm-controller
-response medians were much closer: 4.62s / 4.54s / 4.16s.
-[Runtime measurements](docs/gvisor-benchmarks.md).
+The **November 4 fairer comparison** used ten filesystem cycles per runtime,
+two physical host pairs in reversed order, equal resources and working graceful
+shutdown on both runtimes:
+
+| Median                      |    Podman |    gVisor |
+| --------------------------- | --------: | --------: |
+| Resume to useful response   |    4.577s |    4.365s |
+| Durable filesystem save     |    8.551s |    7.411s |
+| New R2 body bytes per cycle | 1,880,957 | 1,880,957 |
+
+Both source-deleted replacements matched exactly. Combined medians favored
+gVisor, but the winning runtime changed between host pairs. Application stages
+tell a different story: hashing and disk sync were close; gVisor metadata,
+subprocess and loopback HTTP stages took about **4.6× / 9.7× / 3.0×** as long.
+These are stage ratios, not whole-session multipliers. The older save comparison
+was confounded by Podman's ten-second shutdown wait; both now offer a graceful
+flush window. [Full fair comparison, local tests and limits](docs/runtime-fair-benchmarks.md).
+
+Both runtimes also passed a local headed-Chromium/private-Xvfb demo with mouse
+input, typed text and an identical screenshot. It used a trusted local page and
+explicitly disabled Chromium's nested sandbox; it did not access the real desktop
+or qualify arbitrary browsing. The [runtime-selection guide](docs/runtime-selection.md)
+describes the opt-in gVisor-preferred bootstrap component and explicit fallback
+permissions. Existing defaults remain unchanged.
 
 Why keep Podman as default? It avoids making every workload depend on gVisor's
 syscall compatibility and extra bootstrap/restore requirements. gVisor adds kernel
