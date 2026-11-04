@@ -123,6 +123,10 @@ and Podman defaults. Its thirty-sample comparison, real memory continuity and bo
 recoveries pass; see [measurements and limits](gvisor-benchmarks.md). All eight
 owned hosts are absent.
 
+The [portable memory checkpoint goal](goals/portable-memory-checkpoints.md) extends
+optional process recovery to remote memory artifacts, compression/chunk reuse and
+source-deleted host replacement. Implementation precedes its finite comparison.
+
 ## Keeping this plan useful
 
 Keep this file short (roughly 100 lines). Replace current status; do not prepend

@@ -1,6 +1,7 @@
 import { type CapturedArchive, parseArchive } from "./archive-format.js";
 import type { CheckpointRoot } from "./checkpoints.js";
 import { CHECKPOINT_FORMAT, DEFAULTS, type ObjectRange } from "./contracts.js";
+import { portableMemoryRoot } from "./portable-memory-root.js";
 
 export type ArchiveSegment = { object: number; offset: number };
 export type PackedArchive = {
@@ -18,6 +19,13 @@ export type CheckpointLayout = {
 /** Logical archive members and physical objects have separate identities. A root
  * retains entire physical objects even when only some of their ranges are used. */
 export function checkpointLayout(root: CheckpointRoot): CheckpointLayout {
+  const portable = portableMemoryRoot(root);
+  if (portable) {
+    const layout = checkpointLayout(portable.filesystem);
+    if (layout.archive.sha256 !== portable.memory.filesystemSha256)
+      throw Error("Portable memory filesystem digest mismatch");
+    return layout;
+  }
   const metadata = root.metadata;
   if (
     metadata &&

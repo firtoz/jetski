@@ -28,7 +28,9 @@ jobs:
           # Keep a stalled runner setup diagnosable without weakening runtime checks.
           sudo timeout --kill-after=10s 480s python3 -c "import faulthandler,runpy,sys; faulthandler.dump_traceback_later(60,repeat=True); sys.path.insert(0,'host'); runpy.run_path('host/bootstrap.py',run_name='__main__')" --config /tmp/jetski-gvisor.json
       - name: Qualify native execution, PTY, TCP, RAM and exact local recovery
-        run: sudo env GITHUB_ACTIONS=true JETSKI_TEST_MEMORY_SERVER=/tmp/jetski-memory-server python3 host/qualify_gvisor.py
+        run: |
+          sudo env GITHUB_ACTIONS=true JETSKI_TEST_MEMORY_SERVER=/tmp/jetski-memory-server python3 host/qualify_gvisor.py
+          sudo env GITHUB_ACTIONS=true JETSKI_TEST_MEMORY_SERVER=/tmp/jetski-memory-server python3 host/qualify_portable_memory.py
       - name: Preserve bounded native diagnostics
         if: failure()
         run: |

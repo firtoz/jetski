@@ -10,6 +10,7 @@ import {
   scopeKey,
   type Transaction,
 } from "./contracts.js";
+import { portableMemoryRoot } from "./portable-memory-root.js";
 import { validateRootPayload } from "./root-payload.js";
 
 export type CheckpointCopyRecord = {
@@ -71,12 +72,14 @@ export class CheckpointCopy {
           throw Error("Checkpoint copy identity conflict");
         return prior;
       }
-      const root = this.registry
+      const retained = this.registry
         .rootsIn(tx, source)
         .find((root) => root.id === rootId && root.retiredAt === null);
-      if (!root) throw Error("Copy source checkpoint unavailable");
-      validateRootPayload(root);
-      checkpointArchive(root);
+      if (!retained) throw Error("Copy source checkpoint unavailable");
+      validateRootPayload(retained);
+      checkpointArchive(retained);
+      // This API copies files, not process identity or memory into a new scope.
+      const root = portableMemoryRoot(retained)?.filesystem ?? retained;
       if (
         root.frames.some(
           (frame) =>

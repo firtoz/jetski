@@ -165,6 +165,26 @@ class RunscDriver:
             raise ValueError("gvisor_restore_unconfirmed")
         self.env.cleanup(previous)
 
+    def restore_imported(self, lease, identifier, memory_mb, cpus):
+        """One native effect on a prepared, exclusively fenced target.
+
+        The portable coordinator must persist its restoring intent and verify
+        files, memory and policy before this call. An interrupted call is never
+        retried: observe running/absent state under that same intent instead.
+        """
+        if not self.absent(lease):
+            raise ValueError("gvisor_import_requires_absent_runtime")
+        self._checked(
+            self.env.commands.command(
+                "restore",
+                lease,
+                bundle=self.env.bundle(lease),
+                image=self.memory_path(lease, identifier),
+            )
+        )
+        if not self.running(lease) or self.env.verify_resources(lease, memory_mb, cpus) is not True:
+            raise ValueError("gvisor_import_restore_unconfirmed")
+
 
 class GvisorRuntime:
     """Lifecycle journal; memory suspension uses MemoryLifecycle separately."""

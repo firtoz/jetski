@@ -52,6 +52,8 @@ export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "gvisor_memory.py",
   "memory_filesystem.py",
   "memory_control.py",
+  "memory_chunks.py",
+  "portable_memory_policy.py",
   "gvisor_native.py",
   "gvisor_oci.py",
   "gvisor_rootfs.py",
