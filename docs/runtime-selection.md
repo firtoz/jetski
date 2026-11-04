@@ -117,3 +117,72 @@ represents an intentional gVisor workload exclusion and can select Podman only i
 `workload-compatibility` fallback is allowed. It does not pretend that the physical
 machine lacks gVisor. Missing/malformed/failed probes throw, never imply exclusion.
 The native bootstrap remains the final isolation and resource-enforcement gate.
+
+
+For an independently qualified public-egress workload, compose the fresh-host path
+with the existing embedded Boat bootstrap (the caller supplies its state, owned
+provider API, pool, approved image list and immutable host assets):
+
+```ts
+const eligibility = new BoatRuntimeEligibility(state, api, "qualified");
+const bootstrap = new PreparingRuntimeBootstrap(
+  state,
+  {
+    mode: "gvisor-preferred",
+    allowPodmanFallbackFor: ["workload-compatibility"],
+  },
+  { networkMode: "public-egress", portableMemory: false },
+  (host) => eligibility.inspect(host),
+  (runtime) =>
+    new EmbeddedBoatBootstrap(
+      state,
+      api,
+      poolId,
+      approvedImages,
+      loadAssets,
+      "public-egress",
+      "default",
+      undefined,
+      runtime,
+    ),
+);
+```
+
+An operator can explicitly exclude that workload from gVisor by supplying
+`"excluded"`; a missing qualification record is **unknown**, not an exclusion.
+For RAM-required work use `portableMemory: true` and a compatible gVisor workload:
+Podman cannot satisfy that requirement, even when fallback is generally allowed.
+A deliberately requested filesystem-only recovery remains a separate operation;
+it cannot claim process continuity.
+
+
+## Scoped hosted qualification
+
+November 4, 2026, qualification 37: two separate owned Boat hosts, one CPU and
+512 MiB workloads, the same pinned Node image and `public-egress` policy.
+
+| Operator policy                                        | Observed runtime | Recorded fallback reason |
+| ------------------------------------------------------ | ---------------- | ------------------------ |
+| Qualified workload, gVisor preferred                   | gVisor           | none                     |
+| Explicit gVisor workload exclusion, permitted fallback | Podman           | `workload-compatibility` |
+
+Both deployed embedded API cases passed DNS/HTTPS, Git remote inspection, a
+verified package download, exact 10-entry / 1,052,362-byte filesystem comparison,
+original binary command output, durable stop and same-physical-host resume. The
+runtime decision survived resume and remained inspectable after retirement.
+The exclusion is a controlled policy case, not evidence of missing physical-host
+capabilities. RAM-required downgrade refusal is covered by the selector tests;
+these hosted cases exercise filesystem checkpoints. The native file/memory engine
+is byte-identical to qualification 36, whose recovery evidence remains applicable.
+
+Both hosts retired on their real ten-minute idle clocks. Both temporary control
+endpoints are confirmed deleted; acknowledged checkpoints remain retained. A
+single read-only status HTTP 500 interrupted cleanup observation; its cause was
+not established. The failure is retained, and bounded read-only retries completed
+observation without replaying commands or allocations.
+
+Provider samples total **$0.00679 compute value**, with a conservative upper bound
+below **$0.00745** including unsampled retirement tails. Both start quotes were $0;
+the account wallet was unchanged at provider cent precision while included compute
+credits were consumed. This is not a retail price quote or a performance matrix.
+Existing deployments and standalone defaults remain unchanged.

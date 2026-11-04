@@ -241,6 +241,14 @@ CPU and memory and had slower DNS/first-request latency. [Full measurements and
 qualification boundaries](docs/network-benchmarks.md) include the cold-start cost
 and the passed source-deleted memory recovery and scoped deployed API trial. This does not change deployment defaults.
 
+Embeddings can explicitly choose `gvisor-preferred`, with a permitted fallback
+reason list, or require either runtime. Fresh-host selection freezes a candidate
+before bootstrap and reports readiness only after native verification; errors
+never trigger a weaker retry. A scoped deployed trial passed both normal gVisor
+selection and operator-excluded Podman fallback, including durable warm recovery.
+[Selection setup and qualification](docs/runtime-selection.md) explain the policy
+and memory-required boundary. Existing deployment defaults remain unchanged.
+
 Why keep Podman as default? It avoids making every workload depend on gVisor's
 syscall compatibility and extra bootstrap/restore requirements. gVisor adds kernel
 isolation, but can add syscall, filesystem/network and memory overhead. Our small
