@@ -217,6 +217,32 @@ filesystem recovery path. Podman stays the default.
 
 In a thirty-sample Boat comparison, median resume-to-response was **5.74s Podman**,
 **4.54s gVisor filesystem**, and **4.27s gVisor memory**. Memory continuity and both
-source-deleted R2 recoveries passed exact checks. Cold setup and memory overhead
+source-deleted **filesystem** R2 recoveries passed exact checks. Cold setup and memory overhead
 were higher; save results depend on shutdown policy. See [measurements and limits](docs/gvisor-benchmarks.md)
 and [configuration, API usage and recovery semantics](docs/gvisor-runtime.md).
+
+
+### Portable memory checkpoints
+
+Opt-in memory saves can also survive loss of the original Boat: store verified
+RAM chunks with the matching filesystem checkpoint, then restore on a compatible
+host. Both compressed-full and incremental source-deleted recoveries preserved the
+changing 64 MiB heap, process token/counter, open-file cursor/content, exact files
+and retained command output, then saved again. The first recovery exposed a parent
+permissions bug and needed a guarded repair; the second passed automatically.
+
+In the low-change workload, median durable saves were **65.8s raw full**, **42.7s
+compressed full** and **12.1s compressed incremental** (three cycles per arm).
+High-change entropy offers little compression/reuse benefit. See the
+[comparison and limits](docs/portable-memory-benchmarks.md) and
+[configuration/API guide](docs/portable-memory.md).
+
+```sh
+node dist/cli.js suspend SANDBOX_ID --operation OPERATION_UUID --memory-codec gzip
+node dist/cli.js resume-memory SANDBOX_ID --operation ANOTHER_OPERATION_UUID
+```
+
+Observe each persisted operation to completion. Compatible runtime/image/helper
+ABI, kernel and CPU features are required; keep the transactional metadata as well
+as the checkpoint objects. This preserves declared process/filesystem state rather
+than an entire host or external network sessions. Podman remains the default.

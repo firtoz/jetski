@@ -125,7 +125,8 @@ owned hosts are absent.
 
 The [portable memory checkpoint goal](goals/portable-memory-checkpoints.md) extends
 optional process recovery to remote memory artifacts, compression/chunk reuse and
-source-deleted host replacement. Implementation precedes its finite comparison.
+source-deleted host replacement. See its [dedicated report](portable-memory-benchmarks.md)
+for the finite comparison, recovery evidence and documented limitations.
 
 ## Keeping this plan useful
 

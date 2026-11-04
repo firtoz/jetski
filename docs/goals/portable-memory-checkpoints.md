@@ -34,16 +34,16 @@ corrupt, truncated, stale or incompatible artifacts fail closed.
 
 ## Finite implementation and acceptance
 
-| Gate                   | Required evidence                                                                                                                                                                 | Status                 |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| Portable format/design | Versioned bounded manifest, file/chunk hashes and lengths, codec/layout/compatibility identity, matching FS root and fencing/publication contract                                 | Foundation implemented |
-| Upload/reconstruction  | Immutable chunks, verified reconstruction, full and compressed modes, unchanged-chunk reuse with bounded self-contained manifests (no unbounded patch chains)                     | Open                   |
-| Lifecycle integration  | Core/host/SDK/server capability-gated portable save/resume; durable publication, cross-host filesystem/process restore and honest fallback                                        | Open                   |
-| Targeted failures      | Partial upload/lost ACK/controller restart; malformed/corrupt/missing/stale/incompatible images; no dual writers; retained root/GC reachability                                   | Open                   |
-| Native portability     | Actual runtime accepts a freshly reconstructed filesystem on another owned compatible host; full heap/process state and open-file offset/content continuity                       | Open                   |
-| Frozen comparison      | Same images/resources/durable boundary; raw full, compressed full and independently compressed incremental chunks; small-change and high-change fixtures                          | Open                   |
-| R2 replacement         | Delete source before restore; at least full-compressed and incremental retained-history restore on fresh hosts, exact heap/files/links/original output; repeat save after restore | Open                   |
-| Closure                | Honest speed/CPU/bytes/requests/retention/cost report, owned resource absence, main publication and terminal exact-SHA CI                                                         | Open                   |
+| Gate                   | Required evidence                                                                                                                                                                 | Status                                                     |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Portable format/design | Versioned bounded manifest, file/chunk hashes and lengths, codec/layout/compatibility identity, matching FS root and fencing/publication contract                                 | Passed: bounded format/compatibility tests                 |
+| Upload/reconstruction  | Immutable chunks, verified reconstruction, full and compressed modes, unchanged-chunk reuse with bounded self-contained manifests (no unbounded patch chains)                     | Passed: local + live R2 immutable transfer                 |
+| Lifecycle integration  | Core/host/SDK/server capability-gated portable save/resume; durable publication, cross-host filesystem/process restore and honest fallback                                        | Passed: optional API + both RAM recoveries                 |
+| Targeted failures      | Partial upload/lost ACK/controller restart; malformed/corrupt/missing/stale/incompatible images; no dual writers; retained root/GC reachability                                   | Passed: changed-path restart/ACK/corruption/fencing suites |
+| Native portability     | Actual runtime accepts a freshly reconstructed filesystem on another owned compatible host; full heap/process state and open-file offset/content continuity                       | Passed: both compatible physical replacements              |
+| Frozen comparison      | Same images/resources/durable boundary; raw full, compressed full and independently compressed incremental chunks; small-change and high-change fixtures                          | Passed: 30 local + 18 hosted samples                       |
+| R2 replacement         | Delete source before restore; at least full-compressed and incremental retained-history restore on fresh hosts, exact heap/files/links/original output; repeat save after restore | Passed: both variants + another save                       |
+| Closure                | Honest speed/CPU/bytes/requests/retention/cost report, owned resource absence, main publication and terminal exact-SHA CI                                                         | Owned cleanup/report passed; final SHA receipt required    |
 
 Implement coherently with affected tests first; then freeze artifact/config/workload.
 One local byte-codec matrix: three modes × two change profiles × five cycles =
@@ -82,82 +82,46 @@ purchases or wallet top-ups. Public source/docs/fixtures stay generic; credentia
 raw memory and receipts stay private. Session authorization covers coherent main
 milestones and final publication; do not import product code/history.
 
-## Current state and recovery
+## Final evidence and recovery context
 
-Workspace `/home/frtn/work/2026/jetski`, main `2564d64` with intended binary-transfer
-changes ready for the next coherent milestone. Private state:
-`/home/frtn/.local/state/jetski-qa/portable-memory-20261104/`; read `current.json`
-for exact dirty files, receipts and next actions. No hosted controllers or VMs;
-zero paid starts. Separate $3/max10small1h allowance is approved. Do not allocate
-until a coherent implementation, frozen workload and finite plan exist.
+Runtime source `d68c811` on main; first-nine-cycle artifact `940273d` differs only
+in the pre-effect parent handoff fix. Codec, storage and warm paths are unchanged.
+[The consolidated report](../portable-memory-benchmarks.md) records all measured
+results, preserved failures, artifact boundary and compatibility limits.
+[API/design guidance](../portable-memory.md) covers explicit opt-in use.
 
-The [portable design](../portable-memory.md) records the format and guarantees.
-Foundation CI 41790770471 passed all nine jobs. Its real native mechanism fixture
-preserves the 64 MiB changing heap/process, open-file offset/content and exact
-filesystem after deleting original image/tree and using fresh inodes/a different
-assignment. This is same-machine CI evidence, not R2 or physical-host replacement.
-Prior runtime/store/GC qualification and independent fixtures remain read-only.
+Private completion evidence and exact publication-SHA CI status are maintained at
+`/home/frtn/.local/state/jetski-qa/portable-memory-20261104/current.json`.
+Its `benchmark/final-audit.json`, `report.json`, `retention.json` and independent
+oracles prove eighteen exact hosted cycles, both source-deleted R2 RAM recoveries,
+another portable save after each, eight fresh provider 404 checks, no active owned
+hosts and no remaining reader/writer admissions. Thirty local codec samples also
+matched exactly. Do not rerun these matrices. Check the external exact-SHA receipt
+before treating final publication acceptance as complete.
 
-Implemented: bounded portable manifests/codecs, source capture/reconstruction,
-complete composite retained roots and filesystem-copy projection. The new upload
-journal uses a stable input hash and separate per-chunk durable object records
-instead of repeatedly rewriting a growing manifest. It recovers lost PUT ACKs and
-SQLite restarts, verifies reuse, rotates failed create-only IDs and rejects corrupt
-source bytes. The publication extension for frame/packed FS transfer keeps one
-writer and acknowledges no FS-only intermediate root. Targeted failure cases pass.
+The first incremental replacement required guarded normalization of only the outer
+assignment parent under a closed fence and positive native absence. Its complete
+persistent filesystem fingerprint stayed unchanged; no host code was hot-patched.
+The second full-compressed replacement exercised the automatic fixed path. Both
+preserved the full changing 64 MiB heap, process token/counter, open-file cursor
+and bytes, files/modes/links and acknowledged original output. The first elapsed
+recovery includes diagnosis and is not a clean performance sample.
 
-Host export now checks frozen lease/runtime/filesystem, persists capture intent,
-replays ready receipts and permits rebuilding only an owned unpublished temporary
-pack. The private control protocol supports export and bounded reads; the export
-manifest has a selectively increased response bound. Local memory sealing checks
-the exported image identity; native resume/release cleans derived packs. Portable
-compatibility pins actual native helper bytes and logical policy; CPU requirements
-come from runsc's saved image, with target CPU-superset validation. Old local seals
-and Podman/default paths remain unchanged. These changes are not portable public
-lifecycle support yet.
+The response-envelope mismatch and the initial-oracle ordering bug are retained
+with original IDs and receipts. The source stayed frozen after the pre-effect
+export failure. No unverified native effect was replayed. Native CI now tests the
+real parent handoff without its old manual adjustment; source validation passes
+334 TypeScript / 215 Python tests, build/typecheck/lint/Ruff and native qualification.
+One source CI attempt had an unrelated browser startup timeout; final publication
+CI is checked separately, without expanding the functional matrix.
 
-Latest full local pass: 333 TypeScript / 213 Python tests, build/typecheck/lint/Ruff.
-The host now has target import/status/chunk/finish/abort operations. It requires
-an already verified filesystem with an explicit memory-required barrier, closes
-the target fence, validates compatibility, receives immutable encoded objects,
-reconstructs and checks complete native files, then records `restoring` before
-the one native effect. Lost ACKs are observed; unknown effects stay quarantined.
-Only pre-effect abort can authorize an explicit filesystem fallback. Seven new
-import tests cover these branches. Derived cache purge is bound to released
-assignment ownership; source memory sealing/native resume behavior stays intact.
+Accounting: eight starts, 2,093 provider-weighted seconds, $0.02093 of included
+compute-credit value and $0 observed wallet debit. Reserved $0.848 remains below
+the separate $3 allowance; the unsampled compute-value tail is below $0.000008.
+No top-up, provider snapshot, production/client cutover or old fixture/budget change.
+Acknowledged objects and manifests remain intentionally retained. There are no
+remaining runtime experiments or paid allocations planned for this goal.
 
-Native CI 41799356913 passes the production host import journal and compatibility
-helper, preserving full heap/process/open-file state after source image/tree deletion
-on one CI machine. The latest lifecycle CI 41801985255 passes eight jobs, including native gVisor
-and general tests; SSH default has a browser startup timeout. Prior timeout evidence
-is preserved. No physical/R2 replacement is proved.
-
-The portable control-plane restore journal holds a durable reader across filesystem
-and memory transfer, controller restart and native uncertainty. Target offsets and
-receipts recover lost chunk/native acknowledgements without repeating native effects;
-pre-effect missing/incompatible memory permits only explicit verified FS fallback.
-Core suspend options are stable operation inputs; source capture metadata is persisted
-before atomic FS+RAM publication. Replacement placement uses the import coordinator
-before ordinary create/cache paths, and reports actual process preservation. SDK,
-HTTP/OpenAPI and CLI expose opt-in portable saves with injectable codecs. Existing
-local RAM and Podman/default behavior remain unchanged. Two lifecycle replacement
-fixtures and five journal interruption/fallback cases pass; these use mocked hosts,
-not physical RAM recovery. Optional binary bindings now use generation/checkpoint-scoped outer-host paths,
-lazy range downloads that skip reused chunks, and hash-checked binary input through
-the same journal. Controller cleanup reconciles old export links after lost ACKs.
-Boat opts into these bindings with binary archive transfers; other transports retain
-bounded JSON fallback. Three transport and two host confinement tests pass; final
-checks pass. Optional diagnostics separate source verification, chunk encoding,
-reconstruction, target verification and native restore. Hosted qualification remains open.
-
-Next actions, in order:
-
-1. Publish the coherent binary milestone and observe its exact-SHA CI; preserve
-   prior browser timeout evidence and repair only concrete failures.
-2. Freeze the artifact,
-   workload, finite matrix and owned-resource ledger. Do not allocate before this.
-3. Run the one finite approved comparison, both physical R2 memory replacements,
-   exact recovery/another save, owned cleanup, honest report and final main CI.
-
-Do not call portable memory complete based on native same-machine evidence or unit
-tests. All remaining full-goal gates above still apply.
+Final publication checklist: publish the report, usage guidance and concise README
+summary; confirm terminal exact-SHA CI and the completion receipt; then close the
+existing goal. Do not create a replacement goal or repeat completed qualification.

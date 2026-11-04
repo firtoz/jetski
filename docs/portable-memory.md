@@ -1,8 +1,9 @@
 # Portable process-memory checkpoint design
 
-Implementation is experimental. Core, host and API integration are present;
-[the finite goal](goals/portable-memory-checkpoints.md) tracks physical-host R2
-qualification and comparative measurements. Podman stays default.
+Opt-in portable process recovery is implemented and qualified on compatible Boat
+hosts with R2. The [finite comparison](portable-memory-benchmarks.md) records all
+thirty local samples, eighteen hosted cycles, both physical replacements and the
+limits of that evidence. Podman stays default.
 
 ## Independent boundaries
 
@@ -75,9 +76,7 @@ import begins only after verified filesystem import with an explicit memory-requ
 barrier; it closes the target fence. Every encoded chunk and reconstructed file is
 checked, including after ownership handoff. A durable `restoring` state precedes
 native execution. An uncertain effect is observed and quarantined, never replayed;
-only known pre-effect stages permit explicit filesystem fallback. These internal
-components do not yet grant public portable lifecycle support. Control-plane/API
-integration and physical R2 qualification remain under implementation.
+only known pre-effect stages permit explicit filesystem fallback. The core, SDK, standalone server and CLI use these same journals and guards.
 
 ## Experimental API integration
 
@@ -95,8 +94,9 @@ remains the warm path. When that source is definitively unavailable or safely
 released, a portable root can reconstruct memory on a compatible replacement.
 Inspect `memoryPreserved` and `fallbackReason`; filesystem-only fallback explicitly
 reports process-state loss. Unknown native effects retain their reader and target
-quarantine for observation. This integration is experimental: physical-host R2
-qualification and comparative measurements remain pending.
+quarantine for observation. Both compressed-full and incremental physical R2
+recoveries passed, with the first pre-effect parent-policy failure and its guarded
+repair retained in the report. The second replacement used the automatic fix.
 
 The optional Boat binary archive bindings also transfer memory through scoped
 outer-host files. Exports are read-only links; imports are bounded disposable
@@ -105,3 +105,19 @@ Other transports retain bounded control transfers. Transfer links and upload fil
 never grant execution authority or enter workload mounts. Diagnostics optionally
 separate source verification, encoding, reconstruction, target verification and
 native restore; timings are observations, not publication receipts.
+
+
+## Durability boundary and practical defaults
+
+The object store holds immutable file/memory chunks; transactional state holds the
+complete retained manifests, operation outcomes and leases. Preserve both. R2
+protects against execution-host loss; it does not replace control-plane metadata
+backups. Local storage also depends on its control-plane disk.
+
+For compressible, lightly changed memory, gzip with reuse reduced median durable
+save time by about 82% in the qualified fixture. Entropy that changes completely
+still needed roughly 64 MiB per save. Choose identity for that tradeoff if desired;
+no universally fastest mode or default client cutover is implied. Incremental
+transfer reuses chunks but still captures and verifies complete native image files.
+Use the [measurements](portable-memory-benchmarks.md) rather than synthetic codec
+ratios to estimate remote save latency.
