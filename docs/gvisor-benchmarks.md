@@ -2,8 +2,11 @@
 
 The optional gVisor runtime passed a thirty-sample Boat/R2 comparison and two
 source-deleted physical-host recovery tests. Podman remains the default. gVisor
-adds a user-space kernel and an opt-in same-host memory suspension path; it does
-not replace the machine provider or make RAM durable in R2.
+adds a user-space kernel and an opt-in same-host memory suspension path. This
+report records the November 3, 2026 filesystem/same-host-memory comparison. The
+subsequent [November 4 portable-memory comparison](portable-memory-benchmarks.md)
+qualifies R2 RAM recovery separately; it is not a rerun of these runtime timings.
+See [runtime selection](runtime-comparison.md) for the current capability boundary.
 
 ## Measured latency
 
@@ -53,8 +56,9 @@ After deleting the source physical host, both Podman and gVisor recovered exact
 files, modes, link groups and original binary command output from R2. Total
 replacement qualification took 108.01s and 117.92s, including bootstrap, restore
 and independent oracle/output checks. gVisor correctly reported
-`memoryPreserved: false`: R2 protects the declared filesystem, not live RAM or
-external socket connections. Both replacements completed another durable save.
+`memoryPreserved: false`: these tests used filesystem-only R2 checkpoints.
+They did not exercise the later portable-memory feature or preserve external
+socket connections. Both replacements completed another durable save.
 
 Fresh-host creation through initial workload validation took 80–97s for Podman,
 209–311s for gVisor filesystem, and 99s for the untainted gVisor memory arm. These

@@ -55,17 +55,22 @@ across suspension; callers must close and reconnect them explicitly.
 
 ## Recovery boundary
 
-R2 remains the independent durable filesystem authority. A memory image is an
-optional local acceleration artifact, not permission to release an uncertain
-source or remove a retained durable checkpoint. Missing, incompatible or corrupt
-memory must be refused. Cold recovery from R2 explicitly reports process-state
-loss; it cannot claim that RAM, sockets or in-flight work survived.
+R2 remains the independent durable checkpoint authority. Default memory suspension
+seals a local image alongside a verified filesystem checkpoint and retains the
+exclusive source host. Local memory alone cannot survive physical source loss.
 
-The experimental SDK/server `suspend` operation now uses the existing durable
-filesystem publication pipeline before acknowledging a sealed memory image. It
-retains exclusive host ownership. Public managed `resumeMemory` uses the sealed image when compatible and explicitly
-falls back to verified filesystem recovery otherwise; ordinary `resume` retains
-its filesystem semantics.
+The optional [portable-memory path](portable-memory.md) instead publishes both
+memory chunks and the matching filesystem root before acknowledgement. It can
+reconstruct process state on a compatible replacement host; the [November 4
+qualification](portable-memory-benchmarks.md) tests actual source-deleted recovery.
+Missing, incompatible or corrupt memory is never executed. Known pre-effect
+filesystem fallback reports `memoryPreserved: false`; uncertain native effects
+remain quarantined rather than silently restarting the process.
+
+Ordinary `resume` retains filesystem semantics. Live external connections are not
+promised across either kind of memory restore. Checkpoint objects do not replace
+transactional metadata backups or authorize release after an uncertain save.
+
 Optional operator `workloadInit` uses the same unprivileged policy on Podman and
 gVisor, allowing a stateful application to run while control I/O settles.
 
@@ -114,6 +119,8 @@ never submit a second command to resolve an uncertain first command.
 HTTP equivalents are `POST .../suspend`, `POST .../resume-memory` with an
 `operationId`, and `GET .../capabilities`, under `/v1/sandboxes/{sandboxId}`.
 The CLI exposes `suspend` and `resume-memory` with `--operation`. Ordinary `resume`
-keeps its filesystem semantics. Memory artifacts are local and optional; durable
-recovery depends on the configured checkpoint store. R2 source-deleted recovery
-passed with exact persistent files and explicit process-state loss.
+keeps its filesystem semantics. Memory artifacts are local by default. Pass explicit portable
+options to publish them in the configured store; see [portable setup](portable-memory.md).
+The original qualification tested filesystem-only replacement; the later portable
+qualification also preserves process state on compatible replacements.
+See [runtime tradeoffs](runtime-comparison.md) before selecting a default.

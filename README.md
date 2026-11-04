@@ -31,22 +31,24 @@ there is no npm release or managed Jetski hosting service.
 - **Use familiar interfaces:** command execution, files, PTYs, SSH access,
   authenticated HTTP/WebSocket previews and TCP forwarding.
 
-Workloads use rootless Podman, **one active assignment per host**, with no
+Workloads default to rootless Podman, with an optional gVisor runtime,
+**one active assignment per host**, and no
 cross-owner host reuse. Filesystem checkpoints preserve declared persistent paths
 (`/workspace` and `/home/sandbox`), including bytes, modes, symlinks and hardlinks.
 They do not preserve RAM, running processes, kernels or arbitrary host files.
 
 ## What we measured
 
-These are two separate comparisons with different controllers and workloads;
-**do not combine their percentages into one speedup**.
+Refreshed November 4, 2026 from the completed hosted runs. The comparisons below
+use different workloads and durability boundaries; **do not combine their
+percentages into one speedup**. Dates identify measurements, not new reruns.
 
-| Warm checkpoint comparison, ten trials per arm | Reference median | Optimized Jetski median |
-| ---------------------------------------------- | ---------------: | ----------------------: |
-| Durable save and release                       |          4.923 s |             **2.499 s** |
-| Resume readiness                               |          2.018 s |             **1.104 s** |
-| Work/save/resume/independent verification      |          8.034 s |             **4.933 s** |
-| Changed payload uploaded                       |         1.042 MB |            **0.263 MB** |
+| Filesystem checkpoint comparison, ten trials per arm | Reference median | Optimized Jetski median |
+| ---------------------------------------------------- | ---------------: | ----------------------: |
+| Durable save and release                             |          4.923 s |             **2.499 s** |
+| Resume readiness                                     |          2.018 s |             **1.104 s** |
+| Work/save/resume/independent verification            |          8.034 s |             **4.933 s** |
+| Changed payload uploaded                             |         1.042 MB |            **0.263 MB** |
 
 The 64 MiB fixture used equal workload limits, two host pairs and reversed order.
 All twenty filesystem comparisons matched. Coordination/storage compositions
@@ -147,7 +149,7 @@ and [OpenAPI](docs/openapi.json).
 | Boundary                 | Included implementations                                             |
 | ------------------------ | -------------------------------------------------------------------- |
 | Machine host             | Boat allocation; explicitly adopted Linux over SSH                   |
-| Workload runtime         | Rootless Podman                                                      |
+| Workload runtime         | Rootless Podman default; opt-in gVisor (`runsc`, Python host path)   |
 | Checkpoint store         | Local filesystem; S3-compatible; native R2 binding for embeddings    |
 | Transactional state      | SQLite for Node; injectable `StateStore`                             |
 | Scheduling               | Standalone worker; injectable platform scheduling                    |
@@ -193,6 +195,80 @@ The [instrumented follow-on](docs/host-stage-benchmarks.md) identifies filesyste
 sync, runtime probes and storage publication costs; experimental buffering/batching
 did not establish a repeatable end-to-end win.
 
+## Runtime choice: Podman or gVisor?
+
+Podman is the broad-compatibility default. Optional gVisor places a user-space
+kernel between workload system calls and the host, adding defense in depth and
+process checkpoint/resume. Both use the same host pooling, owner boundaries,
+verified filesystem publication and checkpoint storage.
+
+| Qualified capability                        | Default Podman backend                                    | Optional gVisor backend              |
+| ------------------------------------------- | --------------------------------------------------------- | ------------------------------------ |
+| Durable files and replacement-host recovery | Yes                                                       | Yes                                  |
+| RAM/process continuity in Jetski            | Not implemented                                           | Same-host and opt-in portable memory |
+| Runtime compatibility                       | Host Linux syscall interface, subject to container policy | gVisor's implemented Linux interface |
+| Host implementation                         | Python or opt-in Rust                                     | Python; Linux x86-64, systrap        |
+
+In the **November 3** comparison (ten samples per mode), median resume-to-useful
+response was **5.74s Podman filesystem**, **4.54s gVisor filesystem**, and
+**4.27s gVisor same-host memory**. Durable saves were 19.28s / 7.92s / 6.84s,
+but Podman spent 11.26s in quiescence versus 0.48s / 1.66s for gVisor: the test's
+PID 1 ignored SIGTERM, triggering Podman's ten-second grace period. That gap is
+**not a fair measure of intrinsic runtime or upload speed**. Warm-controller
+response medians were much closer: 4.62s / 4.54s / 4.16s.
+[Runtime measurements](docs/gvisor-benchmarks.md).
+
+Why keep Podman as default? It avoids making every workload depend on gVisor's
+syscall compatibility and extra bootstrap/restore requirements. gVisor adds kernel
+isolation, but can add syscall, filesystem/network and memory overhead. Our small
+lifecycle fixture does not establish application-throughput superiority. Choose
+gVisor explicitly for additional isolation or process continuity after checking
+your workload. Podman also supports CRIU checkpoints upstream; Jetski's qualified
+portable-memory implementation currently uses gVisor.
+[Detailed tradeoffs and upstream sources](docs/runtime-comparison.md).
+
+### Portable memory: latest measured comparison
+
+The **November 4** run compares gVisor RAM transfer modes at the same verified
+filesystem-plus-memory publication boundary: eighteen hosted cycles, three per
+mode/profile, with a changing 64 MiB heap. These are not Podman comparison rows.
+
+| Heap profile                       | Raw full save | Gzip full save | Gzip incremental save | New RAM bytes/save, raw → incremental |
+| ---------------------------------- | ------------: | -------------: | --------------------: | ------------------------------------: |
+| Small changes, compressible        |        65.76s |         42.71s |            **12.05s** |              64.19 MiB → **70.3 KiB** |
+| Entire heap rewritten with entropy |        63.65s |         61.77s |                61.99s |                 64.20 MiB → 64.12 MiB |
+
+The low-change case saved **81.7% of durable-save time** and reduced observed R2
+body transfers from 66.0 to 1.9 MiB in each direction per cycle, including
+files and verification readbacks. High-change entropy saw little benefit. Reuse avoids sending unchanged
+chunks; native capture still reads complete memory images.
+
+Both compressed-full and incremental checkpoints recovered process state after
+physical source-host deletion: heap, token/counter, open-file cursor/content,
+exact files/modes/links and retained output, followed by another save. The first
+replacement exposed a permissions bug and required guarded repair; the second
+passed automatically in **233.3s including provisioning and verification**.
+This is compatible-host process recovery, not entire-host or external-connection
+recovery. Preserve transactional metadata as well as checkpoint objects.
+
+All eight test hosts were retired. Compute consumed $0.02093 of included credits
+with **$0 wallet debit**. Retained test files plus RAM occupy 1.518 GB, about
+$0.023/month of R2 Standard storage value before free allowances and billing-unit
+rounding; this excludes request charges and is not an invoice.
+[Full measurements, costs, failures and limits](docs/portable-memory-benchmarks.md).
+
+To opt in, follow the [gVisor configuration guide](docs/gvisor-runtime.md), then
+[portable memory setup](docs/portable-memory.md):
+
+```sh
+node dist/cli.js suspend SANDBOX_ID --operation OPERATION_UUID --memory-codec gzip
+node dist/cli.js resume-memory SANDBOX_ID --operation ANOTHER_OPERATION_UUID
+```
+
+Observe each persisted operation to completion. Compatible runtime/image/helper
+ABI, kernel and CPU features are required. An ordinary filesystem checkpoint does
+not preserve processes; a failed or uncertain memory save cannot authorize release.
+
 ## Development and further reading
 
 ```sh
@@ -207,42 +283,3 @@ resources; use explicit budgets and owned-resource cleanup. See
 [design](docs/design.md), [qualification](docs/qualification.md),
 [standalone configuration](docs/standalone.md), [implementation](docs/implementation.md)
 and [MIT license](LICENSE).
-
-## Optional gVisor runtime
-
-Keep the same host and storage adapters while selecting a gVisor user-space kernel
-instead of Podman execution. Opt-in memory suspension preserves application RAM
-on a compatible retained host; verified R2 checkpoints remain the independent
-filesystem recovery path. Podman stays the default.
-
-In a thirty-sample Boat comparison, median resume-to-response was **5.74s Podman**,
-**4.54s gVisor filesystem**, and **4.27s gVisor memory**. Memory continuity and both
-source-deleted **filesystem** R2 recoveries passed exact checks. Cold setup and memory overhead
-were higher; save results depend on shutdown policy. See [measurements and limits](docs/gvisor-benchmarks.md)
-and [configuration, API usage and recovery semantics](docs/gvisor-runtime.md).
-
-
-### Portable memory checkpoints
-
-Opt-in memory saves can also survive loss of the original Boat: store verified
-RAM chunks with the matching filesystem checkpoint, then restore on a compatible
-host. Both compressed-full and incremental source-deleted recoveries preserved the
-changing 64 MiB heap, process token/counter, open-file cursor/content, exact files
-and retained command output, then saved again. The first recovery exposed a parent
-permissions bug and needed a guarded repair; the second passed automatically.
-
-In the low-change workload, median durable saves were **65.8s raw full**, **42.7s
-compressed full** and **12.1s compressed incremental** (three cycles per arm).
-High-change entropy offers little compression/reuse benefit. See the
-[comparison and limits](docs/portable-memory-benchmarks.md) and
-[configuration/API guide](docs/portable-memory.md).
-
-```sh
-node dist/cli.js suspend SANDBOX_ID --operation OPERATION_UUID --memory-codec gzip
-node dist/cli.js resume-memory SANDBOX_ID --operation ANOTHER_OPERATION_UUID
-```
-
-Observe each persisted operation to completion. Compatible runtime/image/helper
-ABI, kernel and CPU features are required; keep the transactional metadata as well
-as the checkpoint objects. This preserves declared process/filesystem state rather
-than an entire host or external network sessions. Podman remains the default.
