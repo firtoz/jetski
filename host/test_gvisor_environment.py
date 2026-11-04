@@ -136,6 +136,15 @@ class ImportedParentTests(unittest.TestCase):
                 for p in assignment.rglob("*")
             ]
             self.assertEqual(before, after)
+            assignment.chmod(0o777)
+            with (
+                patch("gvisor_environment.DATA_ROOT", root),
+                patch("gvisor_environment.os.fchown") as chown,
+            ):
+                with self.assertRaisesRegex(ValueError, "unsafe_gvisor_persistent_parent"):
+                    env.prepare_imported_parent_policy({"assignmentId": "assignment"})
+                chown.assert_not_called()
+            assignment.chmod(0o711)
             alias = root / "alias"
             alias.symlink_to(assignment, target_is_directory=True)
             with (

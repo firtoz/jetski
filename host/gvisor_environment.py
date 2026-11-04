@@ -259,6 +259,7 @@ class RootlessEnvironment:
         before = assignment.lstat()
         if (
             not stat.S_ISDIR(before.st_mode)
+            or before.st_mode & 0o022
             or before.st_uid not in (0, self.ownership["workloadUid"])
             or before.st_gid not in (0, self.ownership["workloadGid"])
         ):
