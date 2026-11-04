@@ -13,10 +13,16 @@ export * from "./files.js";
 export * from "./host-lifecycle.js";
 export * from "./host-stream.js";
 export * from "./manager.js";
+export {
+  identityMemoryCodec,
+  type MemoryChunkCodecAdapter,
+} from "./memory-chunk-codec.js";
 export type {
   MemoryCheckpointReceipt,
+  PortableMemoryOptions,
   SandboxRuntimeCapabilities,
 } from "./memory-contracts.js";
+export { portableMemoryOptions } from "./memory-contracts.js";
 export * from "./observability.js";
 export * from "./operations.js";
 export {
@@ -24,6 +30,7 @@ export {
   missingPlacementRecovery,
 } from "./placement-recovery.js";
 export type { HostLease } from "./pool.js";
+export type { MemoryChunkCodec } from "./portable-memory-format.js";
 export * from "./ports.js";
 export * from "./preview-sessions.js";
 export * from "./resources.js";

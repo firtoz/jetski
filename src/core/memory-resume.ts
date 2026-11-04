@@ -18,6 +18,7 @@ import type { MemoryCheckpointReceipt } from "./memory-contracts.js";
 import { verifyCheckpointObjects } from "./object-verification.js";
 import type { OperationJournal } from "./operations.js";
 import type { HostLease, PoolJournal } from "./pool.js";
+import { portableMemoryRoot } from "./portable-memory-root.js";
 
 type Resume = Scope & {
   id: string;
@@ -159,9 +160,9 @@ export class MemoryResumeCoordinator {
     await verifyCheckpointObjects(
       this.deps.objects,
       fence,
-      root.frames,
+      (portableMemoryRoot(root)?.filesystem ?? root).frames,
       "Memory recovery publication integrity failure",
-      checkpointObjectRanges([root]),
+      checkpointObjectRanges([portableMemoryRoot(root)?.filesystem ?? root]),
     );
   }
   private payload(record: Resume): Json {
@@ -230,8 +231,10 @@ export class MemoryResumeCoordinator {
     const { state, registry, operations } = this.deps;
     await state.transaction((tx) => {
       const sandbox = this.exact(tx, record),
-        old = this.fence(record),
-        next = registry.advanceIn(tx, old);
+        old = this.fence(record);
+      const retained = registry.validatedRootIn(tx, old, record.checkpointId);
+      const portable = retained && portableMemoryRoot(retained);
+      const next = registry.advanceIn(tx, old);
       operations.advanceIn(tx, old);
       operations.rebasePendingIn(tx, next, record.id, old.generation);
       registry.holdIn(tx, next, record.fallbackId, record.checkpointId);
@@ -248,6 +251,7 @@ export class MemoryResumeCoordinator {
         memory: null,
         placementOperation: record.fallbackId,
         restoreCheckpoint: record.checkpointId,
+        ...(portable ? { portableRestore: record.checkpointId } : {}),
         memoryRecovery: {
           operationId: record.id,
           memoryPreserved: false,
@@ -277,6 +281,18 @@ export class MemoryResumeCoordinator {
     if (record.stage === "cold") {
       const inner = await operations.get(record, record.fallbackId);
       if (inner?.phase !== "succeeded") return;
+      let memoryPreserved = false;
+      let fallbackReason: string | null = record.reason ?? "memory-unavailable";
+      if (
+        inner.result &&
+        typeof inner.result === "object" &&
+        !Array.isArray(inner.result)
+      ) {
+        memoryPreserved = inner.result.memoryPreserved === true;
+        if (memoryPreserved) fallbackReason = null;
+        else if (typeof inner.result.fallbackReason === "string")
+          fallbackReason = inner.result.fallbackReason;
+      }
       await state.transaction((tx) => {
         const current = tx.get<Resume>(key(record, record.id)),
           sandbox = tx.get<Sandbox>(sandboxKey(record));
@@ -293,8 +309,8 @@ export class MemoryResumeCoordinator {
           result: {
             sandboxId: record.sandbox,
             checkpointId: record.checkpointId,
-            memoryPreserved: false,
-            fallbackReason: record.reason ?? "memory-unavailable",
+            memoryPreserved,
+            fallbackReason,
             resumeOperationId: record.fallbackId,
           },
         });

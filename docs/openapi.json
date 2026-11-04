@@ -2217,6 +2217,25 @@
                   "operationId": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "portable": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["codec", "chunkBytes", "reuse"],
+                    "properties": {
+                      "codec": {
+                        "type": "string",
+                        "enum": ["identity", "gzip"]
+                      },
+                      "chunkBytes": {
+                        "type": "integer",
+                        "minimum": 65536,
+                        "maximum": 4194304
+                      },
+                      "reuse": {
+                        "type": "boolean"
+                      }
+                    }
                   }
                 }
               }
@@ -2237,7 +2256,7 @@
             "description": "Sandbox unavailable in principal scope"
           }
         },
-        "description": "Experimental, capability-gated memory suspension. Requires settled commands, terminals, connections and uploads. Keeps exclusive host ownership; R2 or the configured checkpoint store remains the independent durable filesystem recovery authority. Memory resume is a separate operation."
+        "description": "Experimental, capability-gated process suspension. Without portable options only the filesystem is remotely durable and RAM stays on the original host. Portable options atomically publish verified memory chunks with the matching filesystem root; restoration requires a compatible gVisor host. Both modes retain exclusive host ownership while suspended. Observe the persisted operation; never replay uncertain native effects."
       }
     },
     "/v1/sandboxes/{sandboxId}/resume-memory": {
@@ -2307,7 +2326,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Assigned runtime kind and memory suspend protocol version; null when unassigned"
+            "description": "Assigned runtime kind, memorySuspendVersion and portableMemoryVersion; version fields are 1 when supported and null otherwise."
           }
         }
       }

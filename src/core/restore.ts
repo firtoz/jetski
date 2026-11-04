@@ -24,9 +24,11 @@ export async function restoreCheckpoint(
   id: string,
   request: (action: string, payload: Json) => Promise<Json>,
   openImport?: () => Promise<CheckpointImportSink>,
+  retainedReader?: string,
 ) {
-  const reader = crypto.randomUUID();
-  await registry.admit(fence, reader, "reader", id);
+  const reader = retainedReader ?? crypto.randomUUID();
+  if (retainedReader) await registry.requireReader(fence, reader, id);
+  else await registry.admit(fence, reader, "reader", id);
   let sink: CheckpointImportSink | undefined;
   try {
     const root = await registry.root(fence, id);
@@ -201,7 +203,7 @@ export async function restoreCheckpoint(
     try {
       await sink?.close();
     } finally {
-      await registry.close(fence, reader);
+      if (!retainedReader) await registry.close(fence, reader);
     }
   }
 }

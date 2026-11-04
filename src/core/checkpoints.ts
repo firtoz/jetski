@@ -348,6 +348,33 @@ export class CheckpointRegistry {
     )
       throw Error("Checkpoint writer unavailable");
   }
+  requireReaderIn(
+    tx: Transaction,
+    fence: Fence,
+    id: string,
+    root: string,
+  ): void {
+    const state = this.load(tx, fence);
+    if (
+      state.collection ||
+      !state.accesses.some(
+        (access) =>
+          access.id === id &&
+          access.kind === "reader" &&
+          access.root === root &&
+          access.generation === fence.generation,
+      ) ||
+      !state.roots.some(
+        (value) => value.id === root && value.retiredAt === null,
+      )
+    )
+      throw Error("Checkpoint reader unavailable");
+  }
+  async requireReader(fence: Fence, id: string, root: string): Promise<void> {
+    await this.state.transaction((tx) =>
+      this.requireReaderIn(tx, fence, id, root),
+    );
+  }
   async close(fence: Fence, id: string): Promise<void> {
     await this.state.transaction((tx) => this.closeIn(tx, fence, id));
   }

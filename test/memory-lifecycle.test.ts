@@ -29,6 +29,8 @@ for (const failure of [
   "resume-uncertain",
   "memory-unavailable",
   "source-absent",
+  "portable-source-absent",
+  "portable-restore-ack",
 ] as const)
   test(`memory suspension publication and replay: ${failure}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "jetski-memory-"));
@@ -72,6 +74,52 @@ for (const failure of [
         },
       ],
     };
+    const portable = failure.startsWith("portable-");
+    const ram = Buffer.alloc(65536, 42);
+    const capture = {
+      version: 1,
+      bytes: ram.length,
+      sha256: hash(ram),
+      expandedBytes: ram.length,
+      compatibility: {
+        runtimeSha256: "a".repeat(64),
+        hostAbiSha256: "a".repeat(64),
+        image,
+        configurationSha256: "a".repeat(64),
+        platform: "systrap",
+        kernelVersion: "6.14.0",
+        cpuFeatures: ["sse"],
+      },
+      directories: [],
+      files: [
+        {
+          path: "pages.img",
+          bytes: ram.length,
+          sha256: hash(ram),
+          chunks: [
+            {
+              offset: 0,
+              bytes: ram.length,
+              sha256: hash(ram),
+              codec: "identity",
+              packedOffset: 0,
+              storedBytes: ram.length,
+              storedSha256: hash(ram),
+            },
+          ],
+        },
+      ],
+    };
+    const portableOptions = portable
+      ? { codec: "identity" as const, chunkBytes: 65536, reuse: true }
+      : undefined;
+    let portablePhase = "receiving",
+      portableOffset = 0,
+      nativeEffects = 0,
+      createEffects = 0,
+      memoryManifest: Record<string, Json> = {},
+      memorySha = "",
+      losePortable = failure === "portable-restore-ack";
     const actions: string[] = [];
     let commandStarts = 0;
     let frozen = false,
@@ -115,10 +163,92 @@ for (const failure of [
         switch (request.action) {
           case "status":
             result =
-              failure === "unsupported" ? {} : { memorySuspendVersion: 1 };
+              failure === "unsupported"
+                ? {}
+                : {
+                    memorySuspendVersion: 1,
+                    portableMemoryVersion: portable ? 1 : null,
+                  };
             break;
           case "claim":
+            break;
           case "create":
+            createEffects++;
+            break;
+          case "memory-export":
+            result = capture;
+            break;
+          case "memory-export-read": {
+            const bytes = Number(payload.bytes),
+              offset = Number(payload.offset),
+              part = ram.subarray(offset, offset + bytes);
+            result = {
+              offset,
+              bytes,
+              sha256: hash(part),
+              base64: part.toString("base64"),
+            };
+            break;
+          }
+          case "memory-import-begin":
+            memoryManifest = payload.manifest as Record<string, Json>;
+            memorySha = String(payload.manifestSha256);
+            result = {
+              id: memoryManifest.checkpointId!,
+              sha256: memorySha,
+              filesystemSha256: manifest.sha256,
+              lease: payload.lease!,
+              phase: portablePhase,
+              memoryPreserved: false,
+            };
+            break;
+          case "memory-import-status":
+            result = {
+              id: memoryManifest.checkpointId!,
+              sha256: memorySha,
+              filesystemSha256: manifest.sha256,
+              lease: payload.lease!,
+              phase: portablePhase,
+              memoryPreserved: portablePhase === "restored",
+              ...(payload.objectId
+                ? {
+                    object: {
+                      id: payload.objectId,
+                      offset: portableOffset,
+                      complete: portableOffset === ram.length,
+                    },
+                  }
+                : {}),
+            };
+            break;
+          case "memory-import-chunk": {
+            assert.equal(payload.offset, portableOffset);
+            const bytes = Buffer.from(String(payload.base64), "base64");
+            assert.deepEqual(bytes, ram);
+            portableOffset += bytes.length;
+            result = {
+              id: payload.objectId!,
+              offset: portableOffset,
+              complete: true,
+            };
+            break;
+          }
+          case "memory-import-finish":
+            assert.equal(portableOffset, ram.length);
+            nativeEffects++;
+            portablePhase = "restored";
+            if (losePortable) {
+              losePortable = false;
+              throw Error("Lost portable restore ACK");
+            }
+            result = {
+              id: memoryManifest.checkpointId!,
+              sha256: memorySha,
+              filesystemSha256: manifest.sha256,
+              lease: payload.lease!,
+              phase: portablePhase,
+              memoryPreserved: true,
+            };
             break;
           case "command-start":
             commandStarts++;
@@ -295,12 +425,15 @@ for (const failure of [
     await manager.startCommand(scope, originalCommand, ["printf", "fixture"]);
     const id = randomUUID();
     if (failure === "unsupported") {
-      await assert.rejects(manager.suspend(scope, id), /not supported/);
+      await assert.rejects(
+        manager.suspend(scope, id, portableOptions),
+        /not supported/,
+      );
       assert.equal((await manager.get(scope))?.phase, "running");
       assert.equal(freezeEffects, 0);
       return;
     }
-    await manager.suspend(scope, id);
+    await manager.suspend(scope, id, portableOptions);
     if (failure === "seal-ack" || failure === "upload") {
       await assert.rejects(manager.reconcile(owner));
       assert.equal((await manager.get(scope))?.phase, "quarantined");
@@ -333,7 +466,7 @@ for (const failure of [
         !actions.includes("purge-source"),
     );
     const before = actions.length;
-    await manager.suspend(scope, id);
+    await manager.suspend(scope, id, portableOptions);
     await manager.reconcile(owner);
     assert.equal(
       actions.length,
@@ -341,7 +474,7 @@ for (const failure of [
       "terminal replay must observe the original outcome",
     );
     const resumeId = randomUUID();
-    sourceAbsent = failure === "source-absent";
+    sourceAbsent = failure === "source-absent" || portable;
     await manager.resumeMemory(scope, resumeId);
     manager = new SandboxManager(state, provider, transport, objects, options);
     if (failure === "resume-uncertain") {
@@ -375,6 +508,28 @@ for (const failure of [
       "original command replay must not execute again",
     );
 
+    if (portable) {
+      await manager.reconcile(owner);
+      const outcome = await manager.operation(scope, resumeId);
+      assert.equal(outcome?.phase, "succeeded");
+      assert.equal(
+        (outcome!.result as Record<string, Json>).memoryPreserved,
+        true,
+      );
+      assert.equal(
+        (outcome!.result as Record<string, Json>).fallbackReason,
+        null,
+      );
+      assert.equal(nativeEffects, 1);
+      assert.equal(
+        createEffects,
+        1,
+        "no fresh workload replaces acknowledged process state",
+      );
+      assert.equal(running.lease?.machineId, "replacement");
+      assert.equal(running.memoryRecovery?.memoryPreserved, true);
+      return;
+    }
     if (failure === "memory-unavailable" || failure === "source-absent") {
       await manager.reconcile(owner);
       const outcome = await manager.operation(scope, resumeId);

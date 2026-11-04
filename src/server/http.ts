@@ -7,6 +7,7 @@ import {
 import type { ApiCapabilities } from "../core/capabilities.js";
 import { identifier } from "../core/contracts.js";
 import type { SandboxManager } from "../core/manager.js";
+import { portableMemoryOptions } from "../core/memory-contracts.js";
 import { missingPlacementRecovery } from "../core/placement-recovery.js";
 import { tcpPort } from "../core/ports.js";
 import { missingSourceRecovery } from "../core/shutdown.js";
@@ -378,11 +379,17 @@ export function createHttpServer(
         request.method === "POST"
       ) {
         const input = await body(request);
-        fields(input, ["operationId"]);
+        fields(input, ["operationId", "portable"]);
         send(
           response,
           202,
-          await manager.suspend(scope, string(input.operationId)),
+          await manager.suspend(
+            scope,
+            string(input.operationId),
+            input.portable === undefined
+              ? undefined
+              : portableMemoryOptions(input.portable),
+          ),
         );
         return;
       }

@@ -11,6 +11,7 @@
   "exports": {
     "./core": "./dist/core/index.js",
     "./sdk": "./dist/sdk.js",
+    "./storage/memory-codecs": "./dist/storage/memory-codecs.js",
     "./storage/local": "./dist/storage/local.js",
     "./state/sqlite": "./dist/state/sqlite.js",
     "./providers/ssh": "./dist/providers/ssh.js",

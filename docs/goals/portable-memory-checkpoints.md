@@ -84,8 +84,8 @@ milestones and final publication; do not import product code/history.
 
 ## Current state and recovery
 
-Workspace `/home/frtn/work/2026/jetski`, main `d65c3d0` with intended integration
-changes uncommitted. Private state:
+Workspace `/home/frtn/work/2026/jetski`, main `06c1124` with intended lifecycle
+integration changes ready for the next coherent milestone. Private state:
 `/home/frtn/.local/state/jetski-qa/portable-memory-20261104/`; read `current.json`
 for exact dirty files, receipts and next actions. No hosted controllers or VMs;
 zero paid starts. Separate $3/max10small1h allowance is approved. Do not allocate
@@ -116,7 +116,7 @@ come from runsc's saved image, with target CPU-superset validation. Old local se
 and Podman/default paths remain unchanged. These changes are not portable public
 lifecycle support yet.
 
-Latest full local pass: 323 TypeScript / 211 Python tests, build/typecheck/lint/Ruff.
+Latest full local pass: 330 TypeScript / 211 Python tests, build/typecheck/lint/Ruff.
 The host now has target import/status/chunk/finish/abort operations. It requires
 an already verified filesystem with an explicit memory-required barrier, closes
 the target fence, validates compatibility, receives immutable encoded objects,
@@ -126,23 +126,32 @@ Only pre-effect abort can authorize an explicit filesystem fallback. Seven new
 import tests cover these branches. Derived cache purge is bound to released
 assignment ownership; source memory sealing/native resume behavior stays intact.
 
-Native CI is updated to use the production host import journal and compatibility
-helper instead of calling the restore primitive directly. Its run is pending this
-milestone. No physical/R2 replacement or public portable lifecycle is qualified yet.
+Native CI 41799356913 passes the production host import journal and compatibility
+helper, preserving full heap/process/open-file state after source image/tree deletion
+on one CI machine. Eight jobs pass; the general test job has a browser startup
+timeout, preserved after one affected retry. No physical/R2 replacement is proved.
+
+The portable control-plane restore journal holds a durable reader across filesystem
+and memory transfer, controller restart and native uncertainty. Target offsets and
+receipts recover lost chunk/native acknowledgements without repeating native effects;
+pre-effect missing/incompatible memory permits only explicit verified FS fallback.
+Core suspend options are stable operation inputs; source capture metadata is persisted
+before atomic FS+RAM publication. Replacement placement uses the import coordinator
+before ordinary create/cache paths, and reports actual process preservation. SDK,
+HTTP/OpenAPI and CLI expose opt-in portable saves with injectable codecs. Existing
+local RAM and Podman/default behavior remain unchanged. Two lifecycle replacement
+fixtures and five journal interruption/fallback cases pass; these use mocked hosts,
+not physical RAM recovery. Binary bindings and hosted qualification remain open.
 
 Next actions, in order:
 
-1. Inspect the one native import-journal CI result; repair only a concrete failure.
-   Implement the durable control-plane restore journal and retained reader spanning
-   filesystem import, memory transfer and observed native restore.
-2. Connect portable save options/capabilities through manager, shutdown, resume,
-   SDK/server/CLI. Use the publication callback to upload memory before the one
-   combined commit. Preserve ordinary local memory and filesystem behavior.
-3. Add optional binary memory export/import bindings to avoid routing large images
-   through JSON; instrument actual host-direct bytes/requests. Qualify affected
-   restart/ACK/corruption/fencing paths, then freeze the artifact/workload.
-4. Run the one finite approved comparison, both physical R2 memory replacements,
+1. Add optional binary memory export/import bindings to avoid routing large images
+   through JSON; instrument actual host-direct bytes/requests. Preserve fallback
+   control transport and owner/generation confinement.
+2. Qualify only affected binary/restart/ACK/fencing paths, then freeze the artifact,
+   workload, finite matrix and owned-resource ledger. Do not allocate before this.
+3. Run the one finite approved comparison, both physical R2 memory replacements,
    exact recovery/another save, owned cleanup, honest report and final main CI.
 
-Do not call portable memory complete based on the independent native mechanism or
-unit tests. All remaining full-goal gates above still apply.
+Do not call portable memory complete based on native same-machine evidence or unit
+tests. All remaining full-goal gates above still apply.

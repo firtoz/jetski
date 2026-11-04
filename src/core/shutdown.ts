@@ -21,10 +21,14 @@ import {
   type Transaction,
 } from "./contracts.js";
 import type { Sandbox } from "./manager.js";
+import { type CapturedMemory, parseMemoryCapture } from "./memory-capture.js";
 import {
   type MemoryCheckpointReceipt,
   memoryCheckpointReceipt,
+  type PortableMemoryOptions,
+  portableMemoryOptions,
 } from "./memory-contracts.js";
+import type { PortableMemoryTransfer } from "./memory-transfer.js";
 import { verifyCheckpointObjects } from "./object-verification.js";
 import type { OperationJournal } from "./operations.js";
 import type { HostLease, PoolJournal } from "./pool.js";
@@ -70,6 +74,8 @@ type Shutdown = {
   readChunkBytes?: number;
   captureFrameBytes?: number;
   memory?: MemoryCheckpointReceipt;
+  portable?: PortableMemoryOptions;
+  memoryCapture?: CapturedMemory;
 };
 export type MissingSourceRecovery = {
   generation: number;
@@ -119,6 +125,7 @@ export function missingSourceRecovery(value: unknown): MissingSourceRecovery {
   return structuredClone(value) as MissingSourceRecovery;
 }
 type Dependencies = {
+  memoryTransfer?: PortableMemoryTransfer;
   captureFrameBytes: number;
   timings?: StageTimingSink;
   eagerCapture?: boolean;
@@ -257,17 +264,35 @@ export class ShutdownCoordinator {
       return result;
     });
   }
-  async admit(scope: Scope, id: string, mode: ShutdownMode) {
+  async admit(
+    scope: Scope,
+    id: string,
+    mode: ShutdownMode,
+    portable?: PortableMemoryOptions,
+  ) {
     const { state, operations } = this.deps;
     const fence = await operations.generation(scope);
 
-    await state.transaction((tx) => this.admitIn(tx, fence, id, mode));
+    await state.transaction((tx) =>
+      this.admitIn(tx, fence, id, mode, portable),
+    );
     return operations.get(scope, id);
   }
-  admitIn(tx: Transaction, fence: Fence, id: string, mode: ShutdownMode) {
+  admitIn(
+    tx: Transaction,
+    fence: Fence,
+    id: string,
+    mode: ShutdownMode,
+    portable?: PortableMemoryOptions,
+  ) {
+    if (portable) {
+      portable = portableMemoryOptions(portable);
+      if (mode !== "suspend" || !this.deps.memoryTransfer)
+        throw Error("Portable capture unavailable");
+    }
     const scope = { owner: fence.owner, sandbox: fence.sandbox };
     const operations = this.deps.operations;
-    operations.admitIn(tx, fence, id, mode, {});
+    operations.admitIn(tx, fence, id, mode, portable ? { portable } : {});
     const key = this.key(scope, id),
       prior = tx.get<Shutdown>(key);
     if (prior) {
@@ -294,6 +319,7 @@ export class ShutdownCoordinator {
       archive: null,
       blocked: false,
       captureFrameBytes: this.deps.captureFrameBytes,
+      ...(portable ? { portable } : {}),
     });
     // Shares the command-admission transaction boundary: no later command starts.
     tx.put(sandboxKey(scope), { ...sandbox, phase: "stopping" });
@@ -305,6 +331,7 @@ export class ShutdownCoordinator {
     finalizeVersion = record.finalizeVersion,
     readChunkBytes = record.readChunkBytes,
     memory = record.memory,
+    memoryCapture = record.memoryCapture,
   ) {
     await this.deps.state.transaction((tx) => {
       const key = this.key(record, record.id),
@@ -318,6 +345,7 @@ export class ShutdownCoordinator {
         ...(finalizeVersion === 1 ? { finalizeVersion } : {}),
         ...(readChunkBytes !== undefined ? { readChunkBytes } : {}),
         ...(memory ? { memory } : {}),
+        ...(memoryCapture ? { memoryCapture } : {}),
       });
     });
     return {
@@ -327,6 +355,7 @@ export class ShutdownCoordinator {
       ...(finalizeVersion === 1 ? { finalizeVersion } : {}),
       ...(readChunkBytes !== undefined ? { readChunkBytes } : {}),
       ...(memory ? { memory } : {}),
+      ...(memoryCapture ? { memoryCapture } : {}),
     };
   }
   async reconcile(owner: string) {
@@ -454,9 +483,64 @@ export class ShutdownCoordinator {
       }
       if (record.stage === "publish") {
         if (!record.archive) throw Error("Missing archive receipt");
+        if (record.portable && !record.memoryCapture) {
+          const capture = parseMemoryCapture(
+            await request(record.lease, "memory-export", {
+              ...payload,
+              checkpointId: record.id,
+              filesystemSha256: record.archive.sha256,
+              codec: record.portable.codec,
+              chunkBytes: record.portable.chunkBytes,
+            }),
+            fence,
+            record.id,
+            record.archive.sha256,
+          );
+          record = await this.advance(
+            record,
+            "publish",
+            record.archive,
+            record.finalizeVersion,
+            record.readChunkBytes,
+            record.memory,
+            capture,
+          );
+        }
+        const publication = record.portable
+          ? this.deps.memoryTransfer!.publication(
+              fence,
+              record.id,
+              record.archive!.sha256,
+              record.memoryCapture,
+              {
+                readChunkBytes: 1024 * 1024,
+                read: async (offset, bytes) => {
+                  const value = await request(
+                    record.lease,
+                    "memory-export-read",
+                    { ...payload, checkpointId: record.id, offset, bytes },
+                  );
+                  if (
+                    !value ||
+                    typeof value !== "object" ||
+                    Array.isArray(value) ||
+                    value.offset !== offset ||
+                    value.bytes !== bytes ||
+                    typeof value.base64 !== "string"
+                  )
+                    throw Error("Invalid memory export segment");
+                  return decodeBase64(value.base64, bytes);
+                },
+              },
+              {
+                reuse: record.portable.reuse,
+                ...(record.previous ? { previous: record.previous } : {}),
+              },
+            )
+          : undefined;
         const boundSource = await this.deps.checkpointSource?.(
           record.lease,
-          record.archive,
+          record.archive!,
           record.image,
         );
         let failure: { reason: unknown } | undefined;
@@ -488,6 +572,7 @@ export class ShutdownCoordinator {
                 },
               },
               record.previous ?? undefined,
+              publication,
             ),
           );
         } catch (reason) {

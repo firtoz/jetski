@@ -6,11 +6,13 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { identityMemoryCodec } from "./core/memory-chunk-codec.js";
 import { missingPlacementRecovery } from "./core/placement-recovery.js";
 import { missingSourceRecovery } from "./core/shutdown.js";
 import { DEFAULT_TERMINAL_GEOMETRY } from "./core/terminal-input.js";
 import { MAX_FILE_UPLOAD_BYTES } from "./core/uploads.js";
 import { JetskiClient } from "./sdk.js";
+import { gzipMemoryCodec } from "./storage/memory-codecs.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -26,6 +28,9 @@ const { values, positionals } = parseArgs({
     offset: { type: "string" },
     "state-dir": { type: "string" },
     checkpoint: { type: "string" },
+    "memory-codec": { type: "string" },
+    "memory-chunk-bytes": { type: "string" },
+    "no-memory-reuse": { type: "boolean" },
     origin: { type: "string" },
   },
 });
@@ -100,6 +105,10 @@ if (command === "serve") {
     storage.store,
     {
       poolId: config.poolId,
+      memoryCodecs: new Map([
+        ["identity", identityMemoryCodec],
+        ["gzip", gzipMemoryCodec],
+      ]),
       ...(idlePriceSource ? { idlePriceSource } : {}),
       ...(streamTransport ? { streamTransport } : {}),
       approvedImages: config.approvedImages,
@@ -506,7 +515,29 @@ if (command === "serve") {
         required(values.operation, "--operation"),
       );
       break;
-    case "suspend":
+    case "suspend": {
+      const codec = values["memory-codec"];
+      if (codec !== undefined && codec !== "identity" && codec !== "gzip")
+        throw Error("Invalid --memory-codec");
+      if (
+        codec === undefined &&
+        (values["memory-chunk-bytes"] !== undefined ||
+          values["no-memory-reuse"])
+      )
+        throw Error("Portable options require --memory-codec");
+      result = await client.suspend(
+        required(positionals[1], "sandbox ID"),
+        required(values.operation, "--operation"),
+        codec
+          ? {
+              codec,
+              chunkBytes: Number(values["memory-chunk-bytes"] ?? 1024 * 1024),
+              reuse: !values["no-memory-reuse"],
+            }
+          : undefined,
+      );
+      break;
+    }
     case "stop":
     case "checkpoint":
       result = await client.request(

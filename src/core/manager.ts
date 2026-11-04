@@ -37,11 +37,24 @@ import {
 } from "./host-lifecycle.js";
 import type { HostStreamTransport } from "./host-stream.js";
 import { CheckpointMaintenance } from "./maintenance.js";
+import {
+  identityMemoryCodec,
+  type MemoryChunkCodecAdapter,
+} from "./memory-chunk-codec.js";
 import type {
   MemoryCheckpointReceipt,
   SandboxRuntimeCapabilities,
 } from "./memory-contracts.js";
+import {
+  type PortableMemoryOptions,
+  portableMemoryOptions,
+} from "./memory-contracts.js";
+import {
+  PortableMemoryRestore,
+  type PortableRestoreResult,
+} from "./memory-restore.js";
 import { MemoryResumeCoordinator } from "./memory-resume.js";
+import { PortableMemoryTransfer } from "./memory-transfer.js";
 import { observeLifecycle } from "./observability.js";
 import { OperationJournal } from "./operations.js";
 import {
@@ -53,6 +66,7 @@ import {
   InsufficientHostLifetimeError,
   PoolJournal,
 } from "./pool.js";
+import type { MemoryChunkCodec } from "./portable-memory-format.js";
 import { PortRegistry } from "./ports.js";
 import { PreviewSessions } from "./preview-sessions.js";
 import {
@@ -104,9 +118,10 @@ export type Sandbox = {
   lease: HostLease | null;
   checkpoint: string | null;
   memory?: MemoryCheckpointReceipt | null;
+  portableRestore?: string | null;
   memoryRecovery?: {
     operationId: string;
-    memoryPreserved: false;
+    memoryPreserved: boolean;
     reason: string;
   };
   generation: number;
@@ -137,6 +152,8 @@ const EMPTY_COMMAND_OUTPUT: InlineOutput = {
 
 export type ManagerOptions = {
   poolId: string;
+  /** Trusted bounded codecs for portable capture; identity is always available. */
+  memoryCodecs?: ReadonlyMap<MemoryChunkCodec, MemoryChunkCodecAdapter>;
   streamTransport?: HostStreamTransport;
   approvedImages: string[];
   /** Operator policy for new sandboxes; existing records retain their limits. */
@@ -182,6 +199,10 @@ export class SandboxManager {
   readonly uploads: UploadCoordinator;
   private readonly terminalInputs: TerminalInputJournal;
   private readonly shutdown: ShutdownCoordinator;
+  private readonly memoryCodecs: ReadonlyMap<
+    MemoryChunkCodec,
+    MemoryChunkCodecAdapter
+  >;
   private readonly memoryResumes: MemoryResumeCoordinator;
   private readonly now: () => number;
   private readonly commandStartWaitMs: number;
@@ -329,7 +350,26 @@ export class SandboxManager {
       state,
       (lease, action, payload) => this.request(lease, action, payload),
     );
+    this.memoryCodecs = new Map(
+      options.memoryCodecs ?? [["identity", identityMemoryCodec]],
+    );
+    for (const [name, codec] of this.memoryCodecs)
+      if (
+        (name !== "identity" && name !== "gzip") ||
+        codec.name !== name ||
+        typeof codec.decode !== "function" ||
+        typeof codec.encode !== "function"
+      )
+        throw Error("Invalid memory codec adapter");
     this.shutdown = new ShutdownCoordinator({
+      memoryTransfer: new PortableMemoryTransfer(
+        state,
+        this.checkpoints,
+        objects,
+        this.memoryCodecs,
+        undefined,
+        options.timings,
+      ),
       ...(transport.checkpointSource
         ? {
             checkpointSource: (
@@ -712,6 +752,47 @@ export class SandboxManager {
         ).result,
     );
   }
+  private async restorePortable(
+    sandbox: Sandbox,
+    lease: HostLease,
+  ): Promise<PortableRestoreResult> {
+    if (
+      !sandbox.portableRestore ||
+      sandbox.portableRestore !== sandbox.restoreCheckpoint
+    )
+      throw Error("Portable placement checkpoint mismatch");
+    return new PortableMemoryRestore(
+      this.state,
+      this.checkpoints,
+      this.objects,
+      this.timings,
+    ).restore(
+      {
+        owner: sandbox.owner,
+        sandbox: sandbox.id,
+        generation: sandbox.generation,
+      },
+      sandbox.placementOperation,
+      sandbox.portableRestore,
+      lease,
+      sandbox.image,
+      workloadResources(sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES),
+      (action, payload) =>
+        this.request(lease, action, {
+          ...(payload as Record<string, Json>),
+          lease,
+          image: sandbox.image,
+        }),
+      this.transport.checkpointImport
+        ? () =>
+            this.transport.checkpointImport!(
+              lease.machineId,
+              lease,
+              sandbox.image,
+            )
+        : undefined,
+    );
+  }
   private async recoverObservedCreates(owner: string): Promise<void> {
     for (const slot of await this.pool.inspect(owner)) {
       const lease = slot.lease;
@@ -728,7 +809,10 @@ export class SandboxManager {
       if (!operation || ["succeeded", "failed"].includes(operation.phase))
         continue;
       let observed: Json;
+      let portableResult: PortableRestoreResult | undefined;
       try {
+        if (sandbox.portableRestore)
+          portableResult = await this.restorePortable(sandbox, lease);
         // Assignment may have committed before the first host RPC. Claim is
         // idempotent for this exact lease and never reopens a closed generation.
         await this.request(lease, "claim", { lease });
@@ -749,7 +833,7 @@ export class SandboxManager {
       // File import is replayable by checkpoint identity and durable byte offset;
       // a creating/uncertain runtime receipt is never redispatched here.
       if (observed.runtime === undefined || observed.runtime === null) {
-        if (sandbox.restoreCheckpoint)
+        if (sandbox.restoreCheckpoint && !portableResult)
           await restoreCheckpoint(
             this.objects,
             this.checkpoints,
@@ -802,7 +886,20 @@ export class SandboxManager {
         const current = tx.get<Sandbox>(this.key(scope));
         if (!current?.lease || canonical(current.lease) !== canonical(lease))
           throw new Error("Recovery assignment changed");
-        tx.put(this.key(scope), { ...current, phase: "running" });
+        tx.put(this.key(scope), {
+          ...current,
+          phase: "running",
+          ...(portableResult && current.memoryRecovery
+            ? {
+                memoryRecovery: {
+                  ...current.memoryRecovery,
+                  memoryPreserved: portableResult.memoryPreserved,
+                  reason:
+                    portableResult.fallbackReason ?? "portable-memory-restored",
+                },
+              }
+            : {}),
+        });
         if (current.restoreCheckpoint)
           this.checkpoints.releaseIn(
             tx,
@@ -812,7 +909,7 @@ export class SandboxManager {
       });
       await this.operations.finish(fence, operation.id, {
         phase: "succeeded",
-        result: { sandboxId: sandbox.id },
+        result: { sandboxId: sandbox.id, ...(portableResult ?? {}) },
         error: null,
       });
     }
@@ -990,23 +1087,27 @@ export class SandboxManager {
         const resources = workloadResources(
           sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES,
         );
+        const portableResult = sandbox.portableRestore
+          ? await this.restorePortable(sandbox, lease)
+          : undefined;
         const restoreCheckpointId = sandbox.restoreCheckpoint;
-        const resumedCached = restoreCheckpointId
-          ? await timeStage(this.timings, "resume.cached", () =>
-              resumeCachedCheckpoint(
-                this.checkpoints,
-                { ...scope, generation: sandbox.generation },
-                lease,
-                sandbox.image,
-                resources,
-                restoreCheckpointId,
-                this.transport,
-              ),
-            )
-          : false;
-        if (!resumedCached) {
+        const resumedCached =
+          restoreCheckpointId && !portableResult
+            ? await timeStage(this.timings, "resume.cached", () =>
+                resumeCachedCheckpoint(
+                  this.checkpoints,
+                  { ...scope, generation: sandbox.generation },
+                  lease,
+                  sandbox.image,
+                  resources,
+                  restoreCheckpointId,
+                  this.transport,
+                ),
+              )
+            : false;
+        if (!resumedCached && !portableResult?.memoryPreserved) {
           await this.request(lease, "claim", { lease });
-          if (sandbox.restoreCheckpoint)
+          if (sandbox.restoreCheckpoint && !portableResult)
             await restoreCheckpoint(
               this.objects,
               this.checkpoints,
@@ -1038,7 +1139,21 @@ export class SandboxManager {
           const current = tx.get<Sandbox>(this.key(scope));
           if (!current?.lease || canonical(current.lease) !== canonical(lease))
             throw new Error("Sandbox assignment changed");
-          tx.put(this.key(scope), { ...current, phase: "running" });
+          tx.put(this.key(scope), {
+            ...current,
+            phase: "running",
+            ...(portableResult && current.memoryRecovery
+              ? {
+                  memoryRecovery: {
+                    ...current.memoryRecovery,
+                    memoryPreserved: portableResult.memoryPreserved,
+                    reason:
+                      portableResult.fallbackReason ??
+                      "portable-memory-restored",
+                  },
+                }
+              : {}),
+          });
           if (current.restoreCheckpoint)
             this.checkpoints.releaseIn(
               tx,
@@ -1048,7 +1163,7 @@ export class SandboxManager {
         });
         await this.operations.finish(operationFence, ticket.id, {
           phase: "succeeded",
-          result: { sandboxId: sandbox.id },
+          result: { sandboxId: sandbox.id, ...(portableResult ?? {}) },
           error: null,
         });
       } catch (error) {
@@ -1114,6 +1229,7 @@ export class SandboxManager {
           generation: next.generation,
           placementOperation: id,
           restoreCheckpoint: intent.checkpointId,
+          portableRestore: null,
           pendingResume: null,
         });
       });
@@ -1180,6 +1296,7 @@ export class SandboxManager {
         phase: "queued",
         placementOperation: id,
         restoreCheckpoint: selected,
+        portableRestore: null,
       });
       return record;
     });
@@ -1271,7 +1388,11 @@ export class SandboxManager {
     const sandbox = await this.get(scope);
     if (!sandbox) throw Error("Sandbox missing");
     if (!sandbox.lease)
-      return { runtimeKind: null, memorySuspendVersion: null };
+      return {
+        runtimeKind: null,
+        memorySuspendVersion: null,
+        portableMemoryVersion: null,
+      };
     const status = await this.request(sandbox.lease, "status", {});
     if (!status || typeof status !== "object" || Array.isArray(status))
       throw Error("Invalid runtime capabilities");
@@ -1281,17 +1402,26 @@ export class SandboxManager {
     return {
       runtimeKind: kind,
       memorySuspendVersion: status.memorySuspendVersion === 1 ? 1 : null,
+      portableMemoryVersion: status.portableMemoryVersion === 1 ? 1 : null,
     };
   }
   async resumeMemory(scope: Scope, id: string) {
     this.uuid(id);
     return this.memoryResumes.admit(scope, id);
   }
-  async suspend(scope: Scope, id: string) {
+  async suspend(scope: Scope, id: string, portable?: PortableMemoryOptions) {
     this.uuid(id);
+    if (portable) {
+      portable = portableMemoryOptions(portable);
+      if (!this.memoryCodecs.has(portable.codec))
+        throw Error("Portable memory codec unavailable");
+    }
     const prior = await this.operations.get(scope, id);
     if (prior) {
-      if (prior.kind !== "suspend" || canonical(prior.input) !== "{}")
+      if (
+        prior.kind !== "suspend" ||
+        canonical(prior.input) !== canonical(portable ? { portable } : {})
+      )
         throw Error("Operation identity conflict");
       return prior;
     }
@@ -1306,7 +1436,9 @@ export class SandboxManager {
       capabilities.memorySuspendVersion !== 1
     )
       throw Error("Memory suspend not supported by this host");
-    return this.shutdown.admit(scope, id, "suspend");
+    if (portable && capabilities.portableMemoryVersion !== 1)
+      throw Error("Portable memory not supported by this host");
+    return this.shutdown.admit(scope, id, "suspend", portable);
   }
   async stop(scope: Scope, id: string, mode: ShutdownMode = "stop") {
     this.uuid(id);

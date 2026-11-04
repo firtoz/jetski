@@ -19,7 +19,11 @@ import {
   persistentPath,
 } from "./core/files.js";
 import type { Sandbox, SandboxManager } from "./core/manager.js";
-import type { SandboxRuntimeCapabilities } from "./core/memory-contracts.js";
+import {
+  type PortableMemoryOptions,
+  portableMemoryOptions,
+  type SandboxRuntimeCapabilities,
+} from "./core/memory-contracts.js";
 import {
   type MissingPlacementRecovery,
   missingPlacementRecovery,
@@ -601,11 +605,18 @@ export class JetskiClient {
     return this.request(`/v1/sandboxes/${identifier(sandbox)}/capabilities`);
   }
   /** Quiesce and durably publish filesystem state before acknowledging RAM suspension. */
-  suspend(sandbox: string, operationId: string): Promise<Operation> {
+  suspend(
+    sandbox: string,
+    operationId: string,
+    portable?: PortableMemoryOptions,
+  ): Promise<Operation> {
     return this.request(
       `/v1/sandboxes/${identifier(sandbox)}/suspend`,
       "POST",
-      { operationId: identifier(operationId) },
+      {
+        operationId: identifier(operationId),
+        ...(portable ? { portable: portableMemoryOptions(portable) } : {}),
+      },
     );
   }
   /** Restore RAM when compatible, otherwise explicitly recover verified filesystem state. */

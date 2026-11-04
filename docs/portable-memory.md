@@ -78,3 +78,22 @@ native execution. An uncertain effect is observed and quarantined, never replaye
 only known pre-effect stages permit explicit filesystem fallback. These internal
 components do not yet grant public portable lifecycle support. Control-plane/API
 integration and physical R2 qualification remain under implementation.
+
+## Experimental API integration
+
+A supported assigned gVisor host advertises `portableMemoryVersion: 1`.
+`client.suspend(sandboxId, operationId, {codec: "gzip", chunkBytes: 1048576,
+reuse: true})` requests remote memory publication alongside the matching filesystem.
+Omitting the third argument preserves same-host memory suspension. Embedded callers
+supply trusted bounded codecs through `ManagerOptions.memoryCodecs`; the standalone
+service includes identity and gzip. Gzip is available from `jetski/storage/memory-codecs`.
+The CLI accepts `suspend ID --operation UUID --memory-codec gzip`, with optional
+`--memory-chunk-bytes N` and `--no-memory-reuse`.
+
+Observe the saved operation before using `resume-memory`. A local compatible image
+remains the warm path. When that source is definitively unavailable or safely
+released, a portable root can reconstruct memory on a compatible replacement.
+Inspect `memoryPreserved` and `fallbackReason`; filesystem-only fallback explicitly
+reports process-state loss. Unknown native effects retain their reader and target
+quarantine for observation. This integration is experimental: physical-host R2
+qualification and comparative measurements remain pending.

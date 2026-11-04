@@ -80,7 +80,11 @@ def dispatch(
         return {
             **proof,
             "cachedResumeVersion": 1,
-            **({"memorySuspendVersion": 1} if hasattr(backend, "memory_driver") else {}),
+            **(
+                {"memorySuspendVersion": 1, "portableMemoryVersion": 1}
+                if hasattr(backend, "memory_driver")
+                else {}
+            ),
         }
     persistent = storage_owner if storage_owner is not None else account
     assignment_uid = persistent.pw_uid if parent_uid is None else parent_uid
