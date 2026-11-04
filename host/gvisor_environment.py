@@ -251,12 +251,51 @@ class RootlessEnvironment:
         private_directory(directory, self.account, create=True)
         write_json(directory / "config.json", spec, self.account)
 
+    def prepare_imported_parent_policy(self, lease):
+        # Archive extraction owns its staging parent as the workload identity.
+        # Only this outer traversal parent is promoted; declared persistent root
+        # modes/owners/content remain covered by their already verified proof.
+        assignment = DATA_ROOT / lease["assignmentId"]
+        before = assignment.lstat()
+        if (
+            not stat.S_ISDIR(before.st_mode)
+            or before.st_uid not in (0, self.ownership["workloadUid"])
+            or before.st_gid not in (0, self.ownership["workloadGid"])
+        ):
+            raise ValueError("unsafe_gvisor_persistent_parent")
+        fd = os.open(assignment, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            meta = os.fstat(fd)
+            if (meta.st_dev, meta.st_ino, meta.st_uid, meta.st_gid) != (
+                before.st_dev,
+                before.st_ino,
+                before.st_uid,
+                before.st_gid,
+            ):
+                raise ValueError("gvisor_persistent_parent_changed")
+            os.fchown(fd, 0, 0)
+            os.fchmod(fd, 0o711)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        sync_dir(assignment.parent)
+
     def prepare_imported(self, lease, image, memory_mb, cpus):
         # This is a replayable data-only preparation BEFORE native restore intent.
         # The caller proves native absence and holds the closed host fence.
+        self.prepare_imported_parent_policy(lease)
         limits = self.limits_path(lease)
-        if limits.exists() and (limits / "cgroup.procs").read_text().strip():
-            raise ValueError("portable_preparation_has_processes")
+        if limits.exists():
+            if (
+                limits.is_symlink()
+                or not limits.is_dir()
+                or (limits / "cgroup.procs").read_text().strip()
+            ):
+                raise ValueError("portable_preparation_has_processes")
+            # Before native effects, a previous data-only attempt may have left
+            # its empty cgroup. Kernel rmdir rejects processes/child cgroups;
+            # never recursively remove or reuse an occupied resource boundary.
+            limits.rmdir()
         directory = pathlib.Path(self.bundle(lease))
         if os.path.lexists(directory):
             private_directory(directory, self.account)

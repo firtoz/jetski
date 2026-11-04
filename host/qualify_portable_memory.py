@@ -147,8 +147,6 @@ def main():
             receipt["sha256"],
             owner=(ownership["workloadUid"], ownership["workloadGid"]),
         )
-        os.chown(destination, 0, 0)
-        destination.chmod(0o711)
         assert exact == oracle(destination)
         assert physical != frozen_identity(
             {name: destination / name for name in ("workspace", "home")}
