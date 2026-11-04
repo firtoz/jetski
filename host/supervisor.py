@@ -11,6 +11,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import contextlib
 import time
 
 CONFIG_PATH = pathlib.Path("/etc/jetski/host.json")
@@ -51,7 +52,7 @@ def configuration():
         raise ValueError("unsupported_host_configuration")
     if config.get("storageMode", "default") not in ("default", "fuse-overlayfs"):
         raise ValueError("invalid_storage_policy")
-    if config.get("networkMode", "none") not in ("none", "egress"):
+    if config.get("networkMode", "none") not in ("none", "egress", "public-egress"):
         raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:
         raise ValueError("invalid_image_policy")
@@ -116,19 +117,32 @@ def runtime_control_argv(account):
     ]
 
 
-def bounded_command(argv, root, timeout=120, max_output=MAX_OUTPUT):
+def bounded_command(argv, root, timeout=120, max_output=MAX_OUTPUT, stdin_bytes=None):
     if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("invalid_host_command_timeout")
+    if stdin_bytes is not None and (
+        not isinstance(stdin_bytes, bytes) or len(stdin_bytes) > 4 * 1024**2
+    ):
+        raise ValueError("host_command_input_limit")
     watchdog = shutil.which("timeout", path="/usr/bin:/bin")
     if watchdog is None:
         raise ValueError("host_command_watchdog_unavailable")
     # The control process may be killed by its transport before our finally block.
     # GNU timeout owns the same process group and enforces the deadline independently.
     # SIGKILL also removes descendants that ignore termination; never use --foreground.
-    with tempfile.TemporaryFile(dir=root) as out, tempfile.TemporaryFile(dir=root) as err:
+    with (
+        tempfile.TemporaryFile(dir=root) as out,
+        tempfile.TemporaryFile(dir=root) as err,
+        contextlib.ExitStack() as inputs,
+    ):
+        input_file = subprocess.DEVNULL
+        if stdin_bytes is not None:
+            input_file = inputs.enter_context(tempfile.TemporaryFile(dir=root))
+            input_file.write(stdin_bytes)
+            input_file.seek(0)
         proc = subprocess.Popen(
             [watchdog, "--signal=KILL", "--", str(timeout) + "s", *argv],
-            stdin=subprocess.DEVNULL,
+            stdin=input_file,
             stdout=out,
             stderr=err,
             start_new_session=True,

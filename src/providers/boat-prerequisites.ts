@@ -41,3 +41,16 @@ required = ("podman", "newuidmap", "newgidmap", "slirp4netns", "fuse-overlayfs",
 if any(shutil.which(tool) is None for tool in required) or not compiler_ready():
     raise RuntimeError("prerequisite_tools_unavailable")
 `;
+
+/** Optional packages only on newly allocated hosts using explicit public egress. */
+export const BOAT_PUBLIC_NETWORK_PREREQUISITES = `import shutil, subprocess
+wanted = ["passt", "nftables", "iproute2"]
+query = subprocess.run(["dpkg-query", "-W", "-f=\${Package}\\t\${db:Status-Status}\\n", *wanted], capture_output=True, text=True)
+if query.returncode not in (0, 1): raise RuntimeError("network_package_query_failed")
+installed = {line.split("\\t",1)[0] for line in query.stdout.splitlines() if line.endswith("\\tinstalled")}
+missing = [name for name in wanted if name not in installed]
+if missing:
+ subprocess.run(["apt-get", "update", "-qq"], check=True)
+ subprocess.run(["apt-get", "install", "-y", "--no-install-recommends", *missing], check=True)
+if any(shutil.which(tool) is None for tool in ("pasta", "nft", "nsenter", "ip")): raise RuntimeError("public_network_prerequisite_unavailable")
+`;

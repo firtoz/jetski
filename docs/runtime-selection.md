@@ -58,10 +58,11 @@ ordinary filesystem restore also cannot claim it preserved RAM. Cross-runtime
 filesystem migration requires an explicit stopped, verified checkpoint and a new
 placement; the selector does not implement or authorize that migration.
 
-Current Jetski gVisor support is Python host / Linux x86-64 / systrap / network
-`none`. Podman supports the separately qualified egress policy. A workload needing
-outbound internet must currently use Podman or fail admission; gVisor-preferred
-does not add gVisor egress support.
+The qualified baseline gVisor profile is Python host / Linux x86-64 / systrap /
+network `none`. The experimental [public-egress profile](networking.md) adds a
+shared filtered IPv4 path for both runtimes; hosted qualification is in progress.
+An admission adapter must supply evidence for that exact profile. It must never
+treat support for legacy Podman `egress` as support for `public-egress`.
 
 ## Laptop and computer-use boundary
 

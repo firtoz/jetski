@@ -55,6 +55,7 @@ class CgroupPolicyTests(unittest.TestCase):
 
     def test_only_launch_and_execution_enter_their_exact_workload_cgroup(self):
         environment = object.__new__(RootlessEnvironment)
+        environment.network = None
         environment.account = types.SimpleNamespace(pw_uid=1234)
         environment.namespace_argv = [
             "unshare",

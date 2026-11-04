@@ -16,6 +16,22 @@ from supervisor import bounded_command, runtime_argv, runtime_control_argv
 
 
 class SupervisorTests(unittest.TestCase):
+    def test_bounded_input_reaches_only_the_child_and_excess_is_refused(self):
+        with tempfile.TemporaryDirectory() as root:
+            result = bounded_command(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())",
+                ],
+                root,
+                stdin_bytes=b"exact\0input\xff",
+            )
+            self.assertEqual(result["exitCode"], 0)
+            self.assertEqual(result["stdout"], "exact\0input\ufffd")
+            with self.assertRaisesRegex(ValueError, "host_command_input_limit"):
+                bounded_command([sys.executable], root, stdin_bytes=b"x" * (4 * 1024**2 + 1))
+
     def test_control_uses_same_private_engine_and_rejects_unsafe_socket(self):
         account = types.SimpleNamespace(pw_uid=1002, pw_dir="/var/lib/jetski-runtime")
         connection = Mock()

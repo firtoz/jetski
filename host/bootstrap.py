@@ -41,6 +41,8 @@ MODULES = (
     "fence.py",
     "runtime.py",
     "runtime_backend.py",
+    "network_namespace.py",
+    "network_policy.py",
     "gvisor_environment.py",
     "gvisor_exec.py",
     "gvisor_install.py",
@@ -151,7 +153,7 @@ def bootstrap(config):
             raise ValueError("invalid_host_identity")
     if config.get("storageMode", "default") not in ("default", "fuse-overlayfs"):
         raise ValueError("invalid_storage_policy")
-    if config.get("networkMode", "none") not in ("none", "egress"):
+    if config.get("networkMode", "none") not in ("none", "egress", "public-egress"):
         raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:
         raise ValueError("invalid_image_policy")
@@ -216,6 +218,12 @@ def bootstrap(config):
             check=True,
         )
     account = runtime_account()
+    if config.get("networkMode") == "public-egress":
+        for tool in ("pasta", "nft", "nsenter", "ip"):
+            if shutil.which(tool) is None:
+                raise ValueError("missing_public_network_prerequisite:" + tool)
+        if not pathlib.Path("/dev/net/tun").is_char_device():
+            raise ValueError("network_tun_unavailable")
     if config.get("storageMode", "default") == "fuse-overlayfs":
         if (
             not os.access("/usr/bin/fuse-overlayfs", os.X_OK)
@@ -259,7 +267,10 @@ def bootstrap(config):
 
         configure_namespace_policy()
         prepare_images(account, config["images"], run)
-    for name in ("command-supervisor", "tcp-relay"):
+    binaries = ["command-supervisor", "tcp-relay"]
+    if config.get("networkMode") == "public-egress":
+        binaries.append("network-keeper")
+    for name in binaries:
         native = source / "native" / f"{name}.c"
         if not native.exists():
             native = source / f"{name}.c"
@@ -291,6 +302,20 @@ def bootstrap(config):
         fd = os.open(target_binary.parent, os.O_RDONLY | os.O_DIRECTORY)
         os.fsync(fd)
         os.close(fd)
+    if config.get("networkMode") == "public-egress":
+        from network_namespace import prepare_image
+
+        prepare_image(
+            account,
+            run,
+            lambda data: bounded_command(
+                runtime_argv(account) + ["import", "-"],
+                CONTROL_ROOT,
+                timeout=60,
+                max_output=4096,
+                stdin_bytes=data,
+            ),
+        )
     # Dedicated account only: do not inherit another login's runtime directory
     # from the systemd user manager. Never change the host-wide Podman unit.
     dropin = pathlib.Path(account.pw_dir) / ".config/systemd/user/podman.service.d"

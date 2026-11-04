@@ -371,6 +371,11 @@ class PodmanBackend:
     def lifecycle(self, *args, **kwargs) -> SandboxRuntime:
         from runtime import PodmanRuntime
 
+        if kwargs.get("network_mode") == "public-egress":
+            from network_namespace import controlled_namespace
+            from supervisor import runtime_account
+
+            kwargs["network"] = controlled_namespace(runtime_account())
         return PodmanRuntime(*args, init_argv=self.init_argv, **kwargs)
 
     def execution(self, uid: int) -> ExecutionRuntime:
@@ -400,7 +405,7 @@ def runtime_policy(config):
         or policy["archiveSha256"] != ARCHIVE_SHA256
     ):
         raise ValueError("unsupported_runtime_policy")
-    if config.get("networkMode", "none") != "none":
+    if config.get("networkMode", "none") not in ("none", "public-egress"):
         raise ValueError("gvisor_egress_not_qualified")
     return dict(policy)
 
@@ -438,6 +443,27 @@ class GvisorBackend(PodmanBackend):
         )
         if observed["exitCode"] != 0 or RELEASE.removeprefix("release-") not in observed["stdout"]:
             raise ValueError("gvisor_version_unconfirmed")
+        if self.config.get("networkMode") == "public-egress":
+            flags = bounded_command(
+                runtime_argv(self.account)
+                + ["unshare", str(INSTALL_ROOT / RELEASE / "runsc"), "flags"],
+                CONTROL_ROOT,
+                timeout=30,
+                max_output=128 * 1024,
+            )
+            if flags["exitCode"] != 0 or any(
+                re.search(
+                    r"(?m)^  -" + re.escape(name) + r"(?:\s|$)", (flags["stdout"] + flags["stderr"])
+                )
+                is None
+                for name in (
+                    "network",
+                    "net-disconnect-ok",
+                    "allow-connected-on-save",
+                    "allow-live-tcp-migration",
+                )
+            ):
+                raise ValueError("gvisor_network_flags_unconfirmed")
         return {
             **details,
             "runtimeKind": "gvisor",
@@ -466,7 +492,7 @@ class GvisorBackend(PodmanBackend):
         if (
             pathlib.Path(data_root) != DATA_ROOT
             or tuple(approved_images) != tuple(self.config["images"])
-            or network_mode != "none"
+            or network_mode != self.config.get("networkMode", "none")
             or user_namespace != PREPARED_USER_NAMESPACE
             or uid_mappings != environment.ownership["uidMappings"]
             or gid_mappings != environment.ownership["gidMappings"]

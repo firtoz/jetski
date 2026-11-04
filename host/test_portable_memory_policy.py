@@ -45,6 +45,45 @@ class PortablePolicyTests(unittest.TestCase):
         self.assertEqual(source, configuration_sha256(target, other, **target_paths))
         self.assertEqual(spec["root"]["path"], paths["image_root"])
 
+    def test_network_paths_normalize_only_with_exact_policy_and_expected_namespace(self):
+        from gvisor_oci import RunscCommands
+        from network_policy import policy_sha256
+
+        spec, paths = self.prepare()
+        spec["annotations"]["org.jetski.network-policy"] = policy_sha256()
+        for ns in spec["linux"]["namespaces"]:
+            if ns["type"] == "network":
+                ns["path"] = "/proc/123/ns/net"
+        spec["mounts"].append(
+            dict(
+                destination="/etc/resolv.conf",
+                type="bind",
+                source="/private/resolver",
+                options=["bind", "ro"],
+            )
+        )
+        paths.update(
+            network_namespace="/proc/123/ns/net",
+            resolver_source="/private/resolver",
+            runtime=RunscCommands("/opt/runsc", "/source/state", "public-egress").prefix(),
+        )
+        first = configuration_sha256(spec, self.lease, **paths)
+        changed = copy.deepcopy(spec)
+        for ns in changed["linux"]["namespaces"]:
+            if ns["type"] == "network":
+                ns["path"] = "/proc/456/ns/net"
+        self.assertEqual(
+            first,
+            configuration_sha256(
+                changed, self.lease, **{**paths, "network_namespace": "/proc/456/ns/net"}
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "network_namespace_mismatch"):
+            configuration_sha256(changed, self.lease, **paths)
+        changed["annotations"]["org.jetski.network-policy"] = "wrong"
+        with self.assertRaisesRegex(ValueError, "network_policy_mismatch"):
+            configuration_sha256(changed, self.lease, **paths)
+
     def test_resource_execution_and_isolation_changes_remain_in_digest(self):
         spec, paths = self.prepare()
         source = configuration_sha256(spec, self.lease, **paths)

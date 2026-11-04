@@ -13,7 +13,7 @@ import sys
 def prepare(root):
     fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        for parts in (("workspace",), ("home", "sandbox")):
+        for parts in (("workspace",), ("home", "sandbox"), ("etc",)):
             current = os.dup(fd)
             try:
                 for name in parts:
@@ -30,6 +30,20 @@ def prepare(root):
                 os.fsync(current)
             finally:
                 os.close(current)
+        etc = os.open("etc", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+        try:
+            resolver = os.open(
+                "resolv.conf", os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW, 0o644, dir_fd=etc
+            )
+            try:
+                if not stat.S_ISREG(os.fstat(resolver).st_mode):
+                    raise ValueError("unsafe_resolver_mount_destination")
+                os.fsync(resolver)
+            finally:
+                os.close(resolver)
+            os.fsync(etc)
+        finally:
+            os.close(etc)
         for name in ("jetski-supervisor", "jetski-tcp-relay"):
             target = os.open(
                 name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o555, dir_fd=fd

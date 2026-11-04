@@ -214,3 +214,43 @@ test("lost capability on a bound host refuses admission without rebinding", asyn
   await assert.rejects(bootstrap.ensure("physical-host"), /not permitted/);
   assert.deepEqual(attempted, ["gvisor"]);
 });
+
+test("public egress needs explicit evidence on both preferred and fallback runtimes", () => {
+  const required = { ...requirements, networkMode: "public-egress" as const };
+  assert.throws(
+    () => selectRuntime(preference, required, admissions()),
+    /cannot meet/,
+  );
+  const proof = admissions();
+  proof[0] = {
+    runtime: GVISOR_RUNTIME,
+    evidenceId: "verified-public-egress",
+    status: "supported",
+    networkModes: ["none", "public-egress"],
+    portableMemory: true,
+  };
+  assert.equal(
+    selectRuntime(preference, required, proof).runtime.kind,
+    "gvisor",
+  );
+  proof[0] = {
+    runtime: GVISOR_RUNTIME,
+    evidenceId: "unsupported-public-egress",
+    status: "unsupported",
+    reason: "network-policy",
+  };
+  assert.throws(
+    () => selectRuntime(preference, required, proof),
+    /cannot meet/,
+  );
+  proof[1] = {
+    runtime: PODMAN_RUNTIME,
+    evidenceId: "verified-public-egress-podman",
+    status: "supported",
+    networkModes: ["none", "public-egress"],
+    portableMemory: false,
+  };
+  const fallback = selectRuntime(preference, required, proof);
+  assert.equal(fallback.runtime.kind, "podman");
+  assert.equal(fallback.fallbackReason, "network-policy");
+});

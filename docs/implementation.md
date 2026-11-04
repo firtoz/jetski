@@ -128,6 +128,11 @@ twenty hosted and twenty local application samples, both physical filesystem
 replacements and private-browser demonstrations. [Runtime selection](runtime-selection.md)
 remains opt-in; it does not change existing host or deployment defaults.
 
+The experimental [public-egress task](goals/gvisor-egress.md) adds shared filtered
+IPv4 networking. Its [twenty-cycle comparison](network-benchmarks.md) is complete;
+source-deleted network memory recovery also passes. The scoped downstream trial
+remains open.
+
 The [portable memory checkpoint goal](goals/portable-memory-checkpoints.md) extends
 optional process recovery to remote memory artifacts, compression/chunk reuse and
 source-deleted host replacement. See its [dedicated report](portable-memory-benchmarks.md)

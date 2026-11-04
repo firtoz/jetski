@@ -26,6 +26,7 @@ MODULES = {
     "podman_exec.py",
     "command-supervisor.c",
     "tcp-relay.c",
+    "network-keeper.c",
     "control.py",
     "fence.py",
     "file_upload.py",
@@ -37,6 +38,8 @@ MODULES = {
     "checkpoint_export.py",
     "runtime.py",
     "runtime_backend.py",
+    "network_namespace.py",
+    "network_policy.py",
     "gvisor_environment.py",
     "gvisor_exec.py",
     "gvisor_install.py",
@@ -182,7 +185,12 @@ def install(data):
         if config != bundle["config"]:
             raise ValueError("bootstrap_configuration_conflict")
         # Validate installed bytes too: a receipt is not readiness evidence.
-        for name in MODULES - {"bootstrap.py", "command-supervisor.c", "tcp-relay.c"}:
+        for name in MODULES - {
+            "bootstrap.py",
+            "command-supervisor.c",
+            "tcp-relay.c",
+            "network-keeper.c",
+        }:
             path = pathlib.Path("/opt/jetski/host") / name
             if name == "runtime_service.py":
                 path = pathlib.Path("/opt/jetski/runtime_service.py")

@@ -12,7 +12,17 @@ from fence import identity
 from gvisor_oci import absolute_path, specification_sha256
 
 
-def configuration_sha256(spec, lease, *, image_root, assignment, cgroup_path, runtime):
+def configuration_sha256(
+    spec,
+    lease,
+    *,
+    image_root,
+    assignment,
+    cgroup_path,
+    runtime,
+    network_namespace=None,
+    resolver_source=None,
+):
     lease = identity(lease)
     image_root, assignment, cgroup_path = map(absolute_path, (image_root, assignment, cgroup_path))
     policy = copy.deepcopy(spec)
@@ -29,17 +39,36 @@ def configuration_sha256(spec, lease, *, image_root, assignment, cgroup_path, ru
     if policy["linux"]["cgroupsPath"] != cgroup_path:
         raise ValueError("portable_cgroup_policy_mismatch")
     policy["linux"]["cgroupsPath"] = "@enforced-private-cgroup"
+    if network_namespace is not None:
+        from network_policy import policy_sha256
+
+        absolute_path(network_namespace)
+        absolute_path(resolver_source)
+        if annotations.get("org.jetski.network-policy") != policy_sha256():
+            raise ValueError("portable_network_policy_mismatch")
+        networks = [ns for ns in policy["linux"]["namespaces"] if ns.get("type") == "network"]
+        if networks != [{"type": "network", "path": network_namespace}]:
+            raise ValueError("portable_network_namespace_mismatch")
+        networks[0]["path"] = "@private-public-egress-namespace"
+    elif any("path" in ns for ns in policy["linux"]["namespaces"] if ns.get("type") == "network"):
+        raise ValueError("unexpected_portable_network_namespace")
     destinations = set()
     for mount in policy["mounts"]:
         target = mount["destination"]
         if target in destinations:
             raise ValueError("portable_duplicate_mount")
         destinations.add(target)
+        if target == "/etc/resolv.conf" and network_namespace is not None:
+            if mount["source"] != resolver_source or mount["type"] != "bind":
+                raise ValueError("portable_network_resolver_mismatch")
+            mount["source"] = "@public-network/resolver"
         name = {"/workspace": "workspace", "/home/sandbox": "home"}.get(target)
         if name is not None:
             if mount["source"] != assignment + "/" + name or mount["type"] != "bind":
                 raise ValueError("portable_persistent_mount_mismatch")
             mount["source"] = "@persistent/" + name
+    if network_namespace is not None and "/etc/resolv.conf" not in destinations:
+        raise ValueError("portable_network_resolver_missing")
     if not {"/workspace", "/home/sandbox"}.issubset(destinations):
         raise ValueError("portable_persistent_mount_missing")
     if not isinstance(runtime, list) or len(runtime) < 2:

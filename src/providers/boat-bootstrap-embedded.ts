@@ -21,7 +21,10 @@ import {
   validateHostBackend,
 } from "../transport/host-backend.js";
 import type { BoatApi } from "./boat.js";
-import { BOAT_PREREQUISITES } from "./boat-prerequisites.js";
+import {
+  BOAT_PREREQUISITES,
+  BOAT_PUBLIC_NETWORK_PREREQUISITES,
+} from "./boat-prerequisites.js";
 
 export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "archive.py",
@@ -34,6 +37,7 @@ export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "podman_exec.py",
   "command-supervisor.c",
   "tcp-relay.c",
+  "network-keeper.c",
   "control.py",
   "fence.py",
   "file_upload.py",
@@ -45,6 +49,8 @@ export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
   "checkpoint_export.py",
   "runtime.py",
   "runtime_backend.py",
+  "network_namespace.py",
+  "network_policy.py",
   "gvisor_environment.py",
   "gvisor_exec.py",
   "gvisor_install.py",
@@ -96,9 +102,13 @@ export class EmbeddedBoatBootstrap {
       workloadInit === undefined ? undefined : [...workloadInit];
     if (
       runtime.kind === "gvisor" &&
-      (backend.kind !== "python" || networkMode !== "none")
+      (backend.kind !== "python" || networkMode === "egress")
     )
-      throw Error("gVisor requires the Python host and isolated networking");
+      throw Error(
+        "gVisor requires the Python host and a qualified network policy",
+      );
+    if (networkMode === "public-egress" && backend.kind !== "python")
+      throw Error("Public egress requires the Python host");
     this.runtime = structuredClone(runtime);
     this.backend = structuredClone(backend);
     identifier(poolId);
@@ -229,6 +239,12 @@ finally:
       secureParent,
     ]);
     await this.channel.run(host, Buffer.alloc(0), [...rootProgram, prepare]);
+    if (this.networkMode === "public-egress") {
+      await this.channel.run(host, Buffer.alloc(0), [
+        ...rootProgram,
+        BOAT_PUBLIC_NETWORK_PREREQUISITES,
+      ]);
+    }
     const program = `exec(bytes.fromhex("${installer.toString("hex")}"))`;
     const output = await this.channel.run(host, bundle, [
       ...rootProgram,

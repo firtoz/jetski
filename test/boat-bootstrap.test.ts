@@ -233,7 +233,7 @@ test("optional gVisor policy rejects unsupported host/network combinations befor
           undefined,
           GVISOR_RUNTIME,
         ),
-      /isolated networking/,
+      /qualified network policy/,
     );
     new EmbeddedBoatBootstrap(
       state,

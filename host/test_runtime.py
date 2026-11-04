@@ -133,6 +133,30 @@ class RuntimeTests(unittest.TestCase):
                     self.fence, self.fake_run, IMAGE, self.base / "data", [IMAGE], network_mode=mode
                 )
 
+    def test_failed_public_namespace_proof_quarantines_without_replaying_launch(self):
+        from unittest.mock import Mock
+
+        network = Mock()
+        network.prepare.return_value = {"namespace": {"pid": 42}}
+        network.verify_workload.side_effect = ValueError("network_workload_namespace_mismatch")
+        runtime = PodmanRuntime(
+            self.fence,
+            self.fake_run,
+            IMAGE,
+            self.base / "data",
+            [IMAGE],
+            network_mode="public-egress",
+            network=network,
+        )
+        with self.assertRaisesRegex(ValueError, "namespace_mismatch"):
+            runtime.create(self.lease)
+        self.assertEqual(self.fence.read()["phase"], "quarantined")
+        self.assertEqual(self.fence.read()["runtime"]["phase"], "creating")
+        with self.assertRaisesRegex(ValueError, "closed_lease"):
+            runtime.create(self.lease)
+        self.assertEqual(len(self.calls), 1)
+        network.cleanup.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

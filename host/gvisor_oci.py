@@ -79,6 +79,8 @@ def sandbox_spec(
     supervisor="/opt/jetski/command-supervisor",
     relay="/opt/jetski/tcp-relay",
     init_argv=None,
+    network_namespace=None,
+    resolver=None,
 ):
     """Build a fixed policy. rootfs/assignment/cgroup come only from the host.
 
@@ -150,6 +152,18 @@ def sandbox_spec(
                 options=["bind", "rprivate", "nosuid", "nodev", "ro"],
             )
         )
+    if network_namespace is not None:
+        from network_policy import policy_sha256
+
+        absolute_path(network_namespace)
+        mounts.append(
+            dict(
+                destination="/etc/resolv.conf",
+                type="bind",
+                source=absolute_path(resolver),
+                options=["bind", "rprivate", "nosuid", "nodev", "ro"],
+            )
+        )
     devices = [
         dict(path="/dev/" + name, type="c", major=major, minor=minor, fileMode=0o666, uid=0, gid=0)
         for name, major, minor in (
@@ -161,7 +175,7 @@ def sandbox_spec(
             ("tty", 5, 0),
         )
     ]
-    return dict(
+    result = dict(
         ociVersion="1.0.2",
         hostname="sandbox",
         root=dict(path=rootfs, readonly=True),
@@ -200,6 +214,11 @@ def sandbox_spec(
         ),
     )
 
+    if network_namespace is not None:
+        result["linux"]["namespaces"][-1]["path"] = network_namespace
+        result["annotations"]["org.jetski.network-policy"] = policy_sha256()
+    return result
+
 
 def specification_sha256(spec):
     return hashlib.sha256(
@@ -214,20 +233,31 @@ class RunscCommands:
     process argv travels in a separately persisted process.json, never as flags.
     """
 
-    def __init__(self, binary, state_root):
+    def __init__(self, binary, state_root, network_mode="none"):
+        if network_mode not in ("none", "public-egress"):
+            raise ValueError("unsupported_native_network_policy")
+        self.network_mode = network_mode
         self.binary, self.root = absolute_path(binary), absolute_path(state_root)
 
     def prefix(self):
-        return [
+        arguments = [
             self.binary,
             "--root=" + self.root,
             "--platform=systrap",
             "--rootless=false",
-            "--network=none",
+            "--network=" + ("sandbox" if self.network_mode == "public-egress" else "none"),
             "--file-access=shared",
             "--overlay2=none",
             "--ignore-cgroups=true",
         ]
+
+        if self.network_mode == "public-egress":
+            arguments += [
+                "--net-disconnect-ok=true",
+                "--allow-connected-on-save=false",
+                "--allow-live-tcp-migration=false",
+            ]
+        return arguments
 
     def command(self, action, lease, *, bundle=None, image=None, process=None):
         name = container_name(lease)

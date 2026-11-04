@@ -83,6 +83,33 @@ class EnvironmentTests(unittest.TestCase):
                 prepare_images(account, [image], lambda args: self.fail("Image copying replayed"))
                 delegation.assert_called_once_with(account)
 
+    def test_public_network_flag_probe_accepts_native_stderr_and_rejects_missing_flag(self):
+        from runtime_backend import GvisorBackend, PodmanBackend
+
+        policy = dict(kind="gvisor", version=1, release=RELEASE, archiveSha256=ARCHIVE_SHA256)
+        account = SimpleNamespace(pw_uid=1001, pw_dir="/var/lib/jetski-runtime")
+        backend = GvisorBackend(account, dict(runtime=policy, networkMode="public-egress"))
+        version = dict(exitCode=0, stdout="runsc version 20261102.0", stderr="")
+        flags = dict(
+            exitCode=0,
+            stdout="",
+            stderr="  -network value\n  -net-disconnect-ok\n  -allow-connected-on-save\n  -allow-live-tcp-migration\n",
+        )
+        with (
+            patch.object(PodmanBackend, "probe", return_value={}),
+            patch("supervisor.bounded_command", side_effect=[version, flags]),
+        ):
+            self.assertEqual(backend.probe(None)["runtimeKind"], "gvisor")
+        with (
+            patch.object(PodmanBackend, "probe", return_value={}),
+            patch(
+                "supervisor.bounded_command",
+                side_effect=[version, {**flags, "stderr": "  -network value\n"}],
+            ),
+        ):
+            with self.assertRaisesRegex(ValueError, "network_flags_unconfirmed"):
+                backend.probe(None)
+
     def test_operator_policy_is_pinned_and_default_stays_podman(self):
         self.assertIs(selected_backend({}, None), DEFAULT_BACKEND)
         policy = dict(kind="gvisor", version=1, release=RELEASE, archiveSha256=ARCHIVE_SHA256)

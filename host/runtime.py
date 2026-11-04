@@ -36,6 +36,7 @@ class PodmanRuntime:
         uid_mappings=None,
         gid_mappings=None,
         init_argv=None,
+        network=None,
     ):
         if not isinstance(image, str) or not re.fullmatch(
             r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image
@@ -43,7 +44,7 @@ class PodmanRuntime:
             raise ValueError("digest_pinned_image_required")
         if image not in approved_images:
             raise ValueError("image_not_approved")
-        if network_mode not in ("none", "egress"):
+        if network_mode not in ("none", "egress", "public-egress"):
             raise ValueError("invalid_network_policy")
         if user_namespace not in (
             WORKLOAD_USER_NAMESPACE,
@@ -55,6 +56,9 @@ class PodmanRuntime:
         self.uid_mappings, self.gid_mappings = uid_mappings, gid_mappings
         self.user_namespace = user_namespace
         self.network_mode = network_mode
+        self.network = network
+        if network_mode == "public-egress" and network is None:
+            raise ValueError("public_network_adapter_required")
         self.relay = relay
         self.supervisor = supervisor
         self.fence = fence
@@ -117,6 +121,19 @@ class PodmanRuntime:
                     path = self.data_root / lease["assignmentId"] / root
                     if path.is_symlink() or not path.is_dir():
                         raise ValueError("persistent_root_unprepared")
+                network_argument = "none"
+                if self.network_mode == "egress":
+                    network_argument = "slirp4netns:allow_host_loopback=false"
+                if self.network is not None:
+                    proof = self.network.prepare(lease)["namespace"]
+                    network_argument = f"ns:/proc/{proof['pid']}/ns/net"
+                mapping_args = self.mapping_args
+                if self.network is not None:
+                    # For rootless Podman, "host" is the engine's private user
+                    # namespace, not the outer host namespace. A nested userns
+                    # cannot configure a netns owned by its parent. Require the
+                    # exact verified keeper namespace after launch below.
+                    mapping_args = ["--userns=host"]
                 args = [
                     "run",
                     "--detach",
@@ -131,19 +148,14 @@ class PodmanRuntime:
                     "--security-opt=no-new-privileges",
                     "--user",
                     WORKLOAD_USER,
-                    *self.mapping_args,
+                    *mapping_args,
                     "--pids-limit",
                     "256",
                     "--memory",
                     str(memory_mb) + "m",
                     "--cpus",
                     str(cpus),
-                    "--network="
-                    + (
-                        "none"
-                        if self.network_mode == "none"
-                        else "slirp4netns:allow_host_loopback=false"
-                    ),
+                    "--network=" + network_argument,
                     "--pull=never",
                     "--tmpfs",
                     "/tmp:rw,nosuid,nodev,size=128m",
@@ -154,6 +166,8 @@ class PodmanRuntime:
                     "--workdir",
                     "/workspace",
                 ]
+                if self.network is not None:
+                    args.append("--dns=10.0.2.3")
                 for source, target in (("workspace", "/workspace"), ("home", "/home/sandbox")):
                     args.extend(
                         [
@@ -183,6 +197,8 @@ class PodmanRuntime:
                 result = self.run(args)
                 if result["exitCode"] != 0:
                     raise RuntimeError("runtime_create_failed")
+                if self.network is not None:
+                    self.network.verify_workload(lease, name)
                 next_state = {
                     **self.fence.read(),
                     "runtime": dict(
@@ -242,6 +258,8 @@ class PodmanRuntime:
                 result = self.run(["container", "exists", runtime["name"]])
             if result["exitCode"] != 1:
                 raise RuntimeError("runtime_still_present_or_unknown")
+            if self.network is not None:
+                self.network.cleanup(lease)
             runtime = {**runtime, "phase": "removed"}
             self.fence.write({**state, "runtime": runtime})
             return runtime

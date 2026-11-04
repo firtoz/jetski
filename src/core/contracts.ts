@@ -163,7 +163,11 @@ export interface HostProvider {
 }
 
 /** Operator policy; workload requests cannot select host networking. */
-export const RUNTIME_NETWORK_MODES = ["none", "egress"] as const;
+export const RUNTIME_NETWORK_MODES = [
+  "none",
+  "egress",
+  "public-egress",
+] as const;
 export type RuntimeNetworkMode = (typeof RUNTIME_NETWORK_MODES)[number];
 
 /** Trusted bootstrap choice; never switched on an existing runtime store. */

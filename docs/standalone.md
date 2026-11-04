@@ -572,6 +572,10 @@ private networks, metadata services or public host interfaces. Use `none` unless
 outbound access is required; broader destination restrictions require an external
 network policy. See [Podman's network options](https://docs.podman.io/en/v5.7.0/markdown/podman-run.1.html).
 
+The experimental `public-egress` profile is separate from that legacy policy; see
+[networking](networking.md) for its supported runtimes, isolation and reconnect
+boundaries. Hosted qualification is still in progress.
+
 ### Create from a retained checkpoint
 
 `JetskiClient.copyCheckpoint(id, image, operationId, sourceSandbox, checkpointId)`

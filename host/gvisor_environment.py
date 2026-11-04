@@ -148,15 +148,21 @@ class RootlessEnvironment:
     def __init__(self, account, images, network_mode="none", init_argv=None):
         if os.geteuid() != 0:
             raise ValueError("root_supervisor_required")
-        if network_mode != "none":
+        if network_mode not in ("none", "public-egress"):
             raise ValueError("gvisor_egress_not_qualified")
         self.account, self.images = account, tuple(images)
+        self.network_mode = network_mode
+        self.network = None
+        if network_mode == "public-egress":
+            from network_namespace import controlled_namespace
+
+            self.network = controlled_namespace(account)
         self.init_argv = workload_init({"workloadInit": init_argv})
         self.ownership = read_workload_identity(account)
         self.namespace_argv = native_namespace_arguments(account, self.ownership)
         self.root = private_directory(pathlib.Path(account.pw_dir) / "gvisor", account)
         self.commands = RunscCommands(
-            str(INSTALL_ROOT / RELEASE / "runsc"), str(self.root / "state")
+            str(INSTALL_ROOT / RELEASE / "runsc"), str(self.root / "state"), network_mode
         )
         for name in ("state", "bundles", "memory", "images", "exec"):
             private_directory(self.root / name, account)
@@ -183,6 +189,12 @@ class RootlessEnvironment:
             # Root joins before dropping privileges: cgroupv2 migration requires
             # write permission at the common ancestor of source and target.
             # The workload runtime never receives that host-wide permission.
+            if self.network is not None:
+                lease = self._network_lease(name)
+                receipt = self.network.verify(lease)
+                prefix = runtime_argv(self.account)[:-1] + self.network.namespace_argv(
+                    receipt["namespace"]
+                )
             return [
                 "/opt/jetski/gvisor_cgroup.py",
                 str(cgroup_parent(self.account) / name),
@@ -190,6 +202,28 @@ class RootlessEnvironment:
                 *arguments,
             ]
         return prefix + arguments
+
+    def _network_lease(self, name):
+        path = pathlib.Path(self.root / "bundles" / name / "lease.json")
+        return read_json(path, self.account.pw_uid)
+
+    def _network_spec(self, spec, lease):
+        receipt = self.network.prepare(lease)
+        for namespace in spec["linux"]["namespaces"]:
+            if namespace["type"] == "network":
+                namespace["path"] = f"/proc/{receipt['namespace']['pid']}/ns/net"
+        from network_policy import policy_sha256
+
+        spec["annotations"]["org.jetski.network-policy"] = policy_sha256()
+        spec["mounts"].append(
+            dict(
+                destination="/etc/resolv.conf",
+                type="bind",
+                source=str(pathlib.Path(self.account.pw_dir) / "network-resolv.conf"),
+                options=["bind", "rprivate", "nosuid", "nodev", "ro"],
+            )
+        )
+        return spec
 
     def run(self, arguments):
         return bounded_command(self.argv(arguments), CONTROL_ROOT, timeout=120)
@@ -245,11 +279,15 @@ class RootlessEnvironment:
             cpus=cpus,
             init_argv=self.init_argv,
         )
+        if self.network is not None:
+            spec = self._network_spec(spec, lease)
         directory = pathlib.Path(self.bundle(lease))
         if os.path.lexists(directory):
             raise ValueError("gvisor_bundle_already_admitted")
         private_directory(directory, self.account, create=True)
         write_json(directory / "config.json", spec, self.account)
+        if self.network is not None:
+            write_json(directory / "lease.json", lease, self.account)
 
     def prepare_imported_parent_policy(self, lease):
         # Archive extraction owns its staging parent as the workload identity.
@@ -300,7 +338,7 @@ class RootlessEnvironment:
         directory = pathlib.Path(self.bundle(lease))
         if os.path.lexists(directory):
             private_directory(directory, self.account)
-            if any(name != "config.json" for name in os.listdir(directory)):
+            if any(name not in ("config.json", "lease.json") for name in os.listdir(directory)):
                 raise ValueError("unexpected_imported_bundle_member")
             config = directory / "config.json"
             if os.path.lexists(config):
@@ -312,6 +350,10 @@ class RootlessEnvironment:
                 ):
                     raise ValueError("unsafe_imported_bundle")
                 config.unlink()
+            lease_file = directory / "lease.json"
+            if lease_file.exists():
+                read_json(lease_file, self.account.pw_uid)
+                lease_file.unlink()
             directory.rmdir()
             sync_dir(directory.parent)
         self.prepare(lease, image, memory_mb, cpus)
@@ -427,6 +469,16 @@ class RootlessEnvironment:
                 assignment=str(DATA_ROOT / lease["assignmentId"]),
                 cgroup_path=str(self.limits_path(lease)).removeprefix("/sys/fs/cgroup"),
                 runtime=self.commands.prefix(),
+                network_namespace=(
+                    f"/proc/{self.network.verify(lease)['namespace']['pid']}/ns/net"
+                    if self.network is not None
+                    else None
+                ),
+                resolver_source=(
+                    str(pathlib.Path(self.account.pw_dir) / "network-resolv.conf")
+                    if self.network is not None
+                    else None
+                ),
             ),
             platform="systrap",
             kernelVersion=pathlib.Path("/proc/sys/kernel/osrelease").read_text().strip(),
@@ -463,8 +515,13 @@ class RootlessEnvironment:
             resources["memory"]["limit"] // 1024**2,
             resources["cpu"]["quota"] // resources["cpu"]["period"],
         )
+        if self.network is not None:
+            spec["mounts"] = [m for m in spec["mounts"] if m["destination"] != "/etc/resolv.conf"]
+            spec = self._network_spec(spec, successor)
         directory = private_directory(self.bundle(successor), self.account, create=True)
         write_json(directory / "config.json", spec, self.account)
+        if self.network is not None:
+            write_json(directory / "lease.json", successor, self.account)
 
     def verify_successor(self, previous, successor):
         expected = copy.deepcopy(self.config(previous))
@@ -472,6 +529,11 @@ class RootlessEnvironment:
         expected["linux"]["cgroupsPath"] = str(self.limits_path(successor)).removeprefix(
             "/sys/fs/cgroup"
         )
+        if self.network is not None:
+            receipt = self.network.verify(successor)
+            for namespace in expected["linux"]["namespaces"]:
+                if namespace["type"] == "network":
+                    namespace["path"] = f"/proc/{receipt['namespace']['pid']}/ns/net"
         if self.config(successor) != expected:
             return False
         resources = expected["linux"]["resources"]
@@ -507,6 +569,8 @@ class RootlessEnvironment:
             private_directory(memory, self.account)
             shutil.rmtree(memory)
             sync_dir(memory.parent)
+        if self.network is not None:
+            self.network.cleanup(lease)
         path = self.limits_path(lease)
         if path.exists():
             if (path / "cgroup.procs").read_text().strip():

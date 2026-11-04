@@ -234,6 +234,14 @@ or qualify arbitrary browsing. The [runtime-selection guide](docs/runtime-select
 describes the opt-in gVisor-preferred bootstrap component and explicit fallback
 permissions. Existing defaults remain unchanged.
 
+The experimental [public-egress profile](docs/networking.md) adds filtered IPv4
+internet to both runtimes. In twenty exact controlled-transfer cycles, the median
+network workload took **2.83 s on gVisor / 3.64 s on Podman**; gVisor used more guest
+CPU and memory and had slower DNS/first-request latency. [Full measurements and
+qualification boundaries](docs/network-benchmarks.md) include the cold-start cost
+and the passed source-deleted memory recovery; the scoped staging check remains
+open. This does not change deployment defaults.
+
 Why keep Podman as default? It avoids making every workload depend on gVisor's
 syscall compatibility and extra bootstrap/restore requirements. gVisor adds kernel
 isolation, but can add syscall, filesystem/network and memory overhead. Our small
