@@ -42,6 +42,7 @@ jobs:
           result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$sha" --json conclusion --jq 'map(select(.conclusion=="success"))|length')
           test "$result" -gt 0
           echo "SOURCE_SHA=$sha" >> "$GITHUB_ENV"
+      - run: npm install --global npm@11.15.0
       - run: npm ci
       - run: npm run build
       - run: node scripts/qualify-package.mjs

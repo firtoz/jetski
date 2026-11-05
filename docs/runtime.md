@@ -80,8 +80,8 @@ probe with compatibility date `2026-10-01` rejected `http.request`'s
 `createConnection` option before invoking it. Node compatibility flags alone do
 not qualify that server for an embedded platform.
 
-Optional `jet-ski/transport/http`, `jet-ski/transport/websocket` and
-`jet-ski/server/preview-fetch` exports provide portable alternatives without loading
+Optional `@firtoz/jetski/transport/http`, `@firtoz/jetski/transport/websocket` and
+`@firtoz/jetski/server/preview-fetch` exports provide portable alternatives without loading
 host SDKs or the Node server. Transports consume already-authorized core host
 connections. The Fetch gateway uses durable preview sessions, a separate configured
 preview origin, secure HttpOnly cookies and recurring authority checks. The caller

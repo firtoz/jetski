@@ -34,7 +34,7 @@ The collector independently enforces object grace, complete reachability and all
 reader/writer fences. Maintenance does not expire acknowledged checkpoint history.
 The option defaults to false until release qualification is complete.
 
-Install the prebuilt version: `npm install --global jet-ski@0.1.0` using Node
+Install the prebuilt version: `npm install --global @firtoz/jetski@0.1.0` using Node
 from `.nvmrc`. Source-build instructions are in CONTRIBUTING.md. Prepare a dedicated
 Linux x86-64 host with rootless Podman prerequisites and GNU coreutils `timeout`.
 As an operator on that host,
@@ -308,7 +308,7 @@ PTY qualification are tracked in the implementation document.
 
 ## SSH terminal gateway (experimental)
 
-The optional `jet-ski/server/ssh` export provides an encrypted, public-key-only
+The optional `@firtoz/jetski/server/ssh` export provides an encrypted, public-key-only
 attachment gateway. It is not loaded by SDK/core imports. `serve` enables it only
 when `sshGateway` is configured:
 
@@ -412,7 +412,7 @@ connections run at once. Each intentional local connection gets a new UUID;
 transport failure stops the listener and rejects its completion promise, without
 reconnecting or replaying data. SIGINT/SIGTERM closes the listener and active
 channels. Socket pipes provide backpressure and preserve both half-closes.
-The optional Node API is `jet-ski/client/forward`; SDK/core imports do not load it.
+The optional Node API is `@firtoz/jetski/client/forward`; SDK/core imports do not load it.
 Its onStream callback runs before dispatch and may record the stream identity;
 throwing prevents that connection from opening. Network closure still requires
 operation inspection if the application needs verified delivery/cleanup.
@@ -465,7 +465,7 @@ qualify every interactive lifecycle or operator deployment.
 
 ## Isolated HTTP/WebSocket preview transport (experimental)
 
-The optional `jet-ski/server/preview` module forwards only declared preview routes
+The optional `@firtoz/jetski/server/preview` module forwards only declared preview routes
 to authorized workload port exposures through the core stream coordinator. It does
 not resolve or connect to arbitrary destinations. Each route has its own origin,
 owner, sandbox and exposure. Shared origins across routes and reuse of a declared
@@ -613,7 +613,7 @@ admission guard.
 
 Pass `events: { emit(event) { /* enqueue in your telemetry adapter */ } }` in
 `SandboxManager` options. Embedded integrations can also wrap a `StateStore` with
-`observeLifecycle(state, sink)` from `jet-ski/core`. Do not wrap the same store twice.
+`observeLifecycle(state, sink)` from `@firtoz/jetski/core`. Do not wrap the same store twice.
 The sink receives committed sandbox and operation phase changes with owner/sandbox
 scope, timestamp, generation and operation identity. Operation events include
 `elapsedMs` from durable admission to that phase; aggregate by operation kind and
@@ -782,7 +782,7 @@ pricing uses the configured fallback and does not prevent lifecycle work.
 
 Trusted embeddings can inject `idlePriceSource` in manager options, or supply
 `manager.setIdlePriceQuote(owner, quote)` outside state transactions without an
-automatic source. `jet-ski/providers/boat-pricing` exports `BoatIdlePriceSource` for
+automatic source. `@firtoz/jetski/providers/boat-pricing` exports `BoatIdlePriceSource` for
 that composition. Ordinary workload API callers cannot set prices. An admitted
 idle decision is not silently extended by later pricing. Warm minimum capacity
 remains zero.

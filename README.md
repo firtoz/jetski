@@ -26,8 +26,8 @@ there is no npm release or managed Jetski hosting service.
 - **Reconnect safely:** persisted operation identities and resumable output let a
   client observe existing work after interruption without blindly rerunning it.
 - **Bring your infrastructure:** replace host, storage, transactional state,
-  scheduling, identity, transport and observability adapters. Importing `jet-ski/core`
-  or `jet-ski/sdk` does not load SSH servers, SQLite or provider SDKs.
+  scheduling, identity, transport and observability adapters. Importing `@firtoz/jetski/core`
+  or `@firtoz/jetski/sdk` does not load SSH servers, SQLite or provider SDKs.
 - **Use familiar interfaces:** command execution, files, PTYs, SSH access,
   authenticated HTTP/WebSocket previews and TCP forwarding.
 
@@ -79,13 +79,13 @@ bytes plus retained session files and acknowledged output.
 Use Node from [`.nvmrc`](.nvmrc). Install the prebuilt package (the CLI is `jetski`):
 
 ```sh
-npm install --global jet-ski@0.1.0
+npm install --global @firtoz/jetski@0.1.0
 jetski --version
 jetski --help
 ```
 
-For an SDK application: `npm install --save-exact jet-ski@0.1.0`, then import
-`JetskiClient` from `jet-ski/sdk` or compose `SandboxManager` from `jet-ski/core`.
+For an SDK application: `npm install --save-exact @firtoz/jetski@0.1.0`, then import
+`JetskiClient` from `@firtoz/jetski/sdk` or compose `SandboxManager` from `@firtoz/jetski/core`.
 Registry users do not need TypeScript or a source build. See [contributing](CONTRIBUTING.md)
 for checkout instructions, [operations](docs/operations.md) for deployment/backup,
 and [releases](docs/releases.md) for versions, containers and upgrades.
@@ -182,9 +182,9 @@ after verifying SHA256SUMS. Both contain built JavaScript, declarations and host
 assets. Lifecycle scripts can be disabled. Git-source installs are contributor
 workflows; the prepare hook needs build dependencies and is not qualified for Bun.
 
-Embedded clients compose `SandboxManager` from `jet-ski/core` and supply state,
+Embedded clients compose `SandboxManager` from `@firtoz/jetski/core` and supply state,
 provider, host transport, storage and scheduling. No standalone service is required.
-`jet-ski/host-assets` supplies bundled bootstrap source without filesystem reads;
+`@firtoz/jetski/host-assets` supplies bundled bootstrap source without filesystem reads;
 see [embedded bootstrap](docs/boat.md) and [native R2 storage](docs/storage-r2.md).
 
 ## Does it replace Boat?

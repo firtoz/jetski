@@ -98,9 +98,9 @@ jobs:
           npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/jetski-package"
           cd "$RUNNER_TEMP/jetski-bun-consumer"
           printf '%s' '{"name":"artifact-consumer","private":true,"type":"module"}' > package.json
-          bun add --ignore-scripts "$RUNNER_TEMP/jetski-package/jet-ski-0.1.0.tgz"
+          bun add --ignore-scripts "$RUNNER_TEMP/jetski-package/firtoz-jetski-0.1.0.tgz"
           bun install --frozen-lockfile --ignore-scripts
-          bun --eval 'import {SandboxManager} from "jet-ski/core";import {JetskiClient} from "jet-ski/sdk";import {loadBoatBootstrapAssets} from "jet-ski/host-assets";if(!SandboxManager||!JetskiClient||!(await loadBoatBootstrapAssets()).installer.length)throw Error("Artifact import failed")'
+          bun --eval 'import {SandboxManager} from "@firtoz/jetski/core";import {JetskiClient} from "@firtoz/jetski/sdk";import {loadBoatBootstrapAssets} from "@firtoz/jetski/host-assets";if(!SandboxManager||!JetskiClient||!(await loadBoatBootstrapAssets()).installer.length)throw Error("Artifact import failed")'
       - uses: actions/upload-artifact@v4
         with:
           name: jetski-package

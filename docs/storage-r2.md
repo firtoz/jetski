@@ -1,12 +1,12 @@
 # Native R2 checkpoint storage
 
-`jet-ski/storage/r2` provides `R2CheckpointStore` for a native bucket binding.
+`@firtoz/jetski/storage/r2` provides `R2CheckpointStore` for a native bucket binding.
 It uses a structural `R2BucketPort` and loads no framework, database or provider
 SDK. The adapter requires Node-compatible hashing; Workers deployments need
 `nodejs_compat`. The core and SDK do not import this optional module.
 
 ```ts
-import { R2CheckpointStore, type R2BucketPort } from "jet-ski/storage/r2";
+import { R2CheckpointStore, type R2BucketPort } from "@firtoz/jetski/storage/r2";
 
 export function checkpointStore(bucket: R2BucketPort) {
   return new R2CheckpointStore(bucket, "checkpoints/v1", {

@@ -85,7 +85,7 @@ A supported assigned gVisor host advertises `portableMemoryVersion: 1`.
 reuse: true})` requests remote memory publication alongside the matching filesystem.
 Omitting the third argument preserves same-host memory suspension. Embedded callers
 supply trusted bounded codecs through `ManagerOptions.memoryCodecs`; the standalone
-service includes identity and gzip. Gzip is available from `jet-ski/storage/memory-codecs`.
+service includes identity and gzip. Gzip is available from `@firtoz/jetski/storage/memory-codecs`.
 The CLI accepts `suspend ID --operation UUID --memory-codec gzip`, with optional
 `--memory-chunk-bytes N` and `--no-memory-reuse`.
 

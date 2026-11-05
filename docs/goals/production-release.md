@@ -48,3 +48,8 @@ needed bounded readiness observation. Fix only the fixture, preserve failed log,
 then reuse all unaffected checks. New-name staged registry request failed400
 "Version uniqueness check failed unexpectedly"; not treated as proof of availability
 or successful publication. Direct name admission remains pending after green CI.
+
+Registry confirmed E403 jet-ski is too similar to jetski. Use authorized scoped
+@firtoz/jetski0.1.0; CLI remainsjetski and storage namespacejetski/v1 is preserved.
+All9 jobs passed at5388caf / CI42001976206, including fixed container qualification.
+Only package/import documentation metadata is renamed for final source CI.

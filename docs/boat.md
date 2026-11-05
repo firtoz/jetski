@@ -1,6 +1,6 @@
 # Boat machine-host adapter
 
-`jet-ski/providers/boat` exports `BoatApi` and `BoatHostProvider`. This adapter
+`@firtoz/jetski/providers/boat` exports `BoatApi` and `BoatHostProvider`. This adapter
 provisions owned machines and implements the core allocation/inspection/retirement
 contract. It uses the public HTTPS API with explicit credentials; it does not import
 a provider SDK into the core or SDK entry points.
@@ -41,7 +41,7 @@ separate controller state.
 
 ## Idle pricing
 
-`jet-ski/providers/boat-pricing` exports an optional controller-only price source.
+`@firtoz/jetski/providers/boat-pricing` exports an optional controller-only price source.
 It uses the read-only limits endpoint, scales the default hourly rate for the
 selected machine size and preserves a zero next-start fee. A blocked start is not
 converted into an invented monetary quote. Only validated micro-dollar values
@@ -65,7 +65,7 @@ and [deletion lifecycle](https://docs.boat.dev/data-retention).
 
 ## Host-control transport
 
-`jet-ski/transport/boat` exposes `BoatTransport(state, api)`. It accepts only hosts
+`@firtoz/jetski/transport/boat` exposes `BoatTransport(state, api)`. It accepts only hosts
 in the allocation journal, invokes the fixed installed Python control program, and
 requires an exact protocol/version/request-ID response. Provider command errors,
 truncation, timeout, cancellation and response mismatch are uncertain outcomes;
@@ -92,7 +92,7 @@ and [write file](https://docs.boat.dev/api/reference/agent/write-sandbox-file).
 
 ## Automatic owned-machine bootstrap
 
-`jet-ski/providers/boat-bootstrap` exports the Node-only `BoatBootstrap`. The
+`@firtoz/jetski/providers/boat-bootstrap` exports the Node-only `BoatBootstrap`. The
 standalone host factory selects it only for a Boat configuration:
 
 ```json
@@ -138,7 +138,7 @@ the corrected fixture explicitly rejects a root provider-command process.
 
 ## Interactive stream transport
 
-`jet-ski/transport/boat-stream` supplies `BoatStreamTransport`, automatically selected
+`@firtoz/jetski/transport/boat-stream` supplies `BoatStreamTransport`, automatically selected
 by the standalone Boat factory. It registers a per-machine Ed25519 public key with
 the authenticated Boat API and pins the returned SSH host key in transactional
 controller state. Private keys stay in that state, outside workloads and public

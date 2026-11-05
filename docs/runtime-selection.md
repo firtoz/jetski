@@ -12,8 +12,8 @@ existing hosts, the standalone configuration default or a running workload.
 - `gvisor-preferred`: choose supported gVisor, otherwise consider Podman only for
   the exact unsupported-capability reasons the operator explicitly permits.
 
-`selectRuntime` and `bindRuntimeSelection` are exported from `jet-ski/core`.
-`SelectingRuntimeBootstrap` is exported from `jet-ski/providers/runtime-selection`.
+`selectRuntime` and `bindRuntimeSelection` are exported from `@firtoz/jetski/core`.
+`SelectingRuntimeBootstrap` is exported from `@firtoz/jetski/providers/runtime-selection`.
 The latter composes an admission probe with existing runtime-specific bootstraps.
 It persists the choice before bootstrap effects. Bootstrap failures propagate;
 there is no catch-and-retry-on-Podman path.
@@ -109,7 +109,7 @@ was lost. Inspect `decision(host)` for the verified selection; null means it has
 not completed. Existing `SelectingRuntimeBootstrap` remains available for adapters
 that already have fully verified admission evidence.
 
-`BoatRuntimeEligibility` from `jet-ski/providers/boat-runtime-selection` performs a
+`BoatRuntimeEligibility` from `@firtoz/jetski/providers/boat-runtime-selection` performs a
 bounded read-only check on a positively owned Linux x86-64 host, covering namespace
 prerequisites and required cgroup controllers. The operator supplies `qualified`
 only for an independently qualified image/runtime/network combination; `excluded`

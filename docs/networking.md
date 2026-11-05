@@ -24,8 +24,8 @@ const bootstrap = new BoatBootstrap(
 );
 ```
 
-Import `BoatBootstrap` from `jet-ski/providers/boat-bootstrap` and runtime constants
-from `jet-ski/core`. Admission adapters must explicitly prove support for the
+Import `BoatBootstrap` from `@firtoz/jetski/providers/boat-bootstrap` and runtime constants
+from `@firtoz/jetski/core`. Admission adapters must explicitly prove support for the
 requested profile; binary presence alone is insufficient. The Rust host does not
 implement `public-egress`. Existing host policies and deployment defaults stay
 unchanged.

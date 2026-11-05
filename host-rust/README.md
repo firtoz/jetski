@@ -22,8 +22,8 @@ Use an already prepared compiler with the musl target, or the disposable CI buil
 the project does not install toolchains/targets on the operator's desktop.
 CI produces a separate static musl binary, dependency/compiler notices and SHA/source manifest. The npm artifact
 does not require Cargo or build/download native executables at installation.
-Select the binary explicitly through `jet-ski/host-rust-assets`; embed its bytes
-and installer through `RustBoatBootstrap` from `jet-ski/providers/boat-bootstrap-rust`.
+Select the binary explicitly through `@firtoz/jetski/host-rust-assets`; embed its bytes
+and installer through `RustBoatBootstrap` from `@firtoz/jetski/providers/boat-bootstrap-rust`.
 Supply the existing base assets loader independently. Give Boat control and stream
 transports the same `{kind: "rust", sha256}` backend option. Providers/storage and
 the portable core remain unchanged. Call host `status` before assigning work;
