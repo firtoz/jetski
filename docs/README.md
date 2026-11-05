@@ -17,7 +17,8 @@ runtime deliberately.
 
 - [Architecture and contracts](design.md): replaceable boundaries and core guarantees.
 - [Boat hosts](boat.md): provisioning and bootstrap; SSH adoption is in the standalone guide.
-- [boxd hosts](boxd.md): optional SDK-only Node adapter and measured comparison (source preview).
+- [boxd hosts](boxd.md): SDK-only embedded/standalone configuration (source preview).
+- [Provider parity](provider-parity-benchmarks.md): matched runtime timings, interactive access and replacement recovery.
 - [Checkpoint storage](storage.md) and [native R2 bindings](storage-r2.md): adapter contracts.
 - [Runtime selection](runtime-selection.md): Podman, optional gVisor and fallback policy.
 - [Networking](networking.md): egress and isolation boundaries.
@@ -27,6 +28,7 @@ runtime deliberately.
 ## Run a controller
 
 - [Standalone guide](standalone.md): configuration, API, CLI, terminals and gateways.
+- [Failure recovery](failure-recovery.md): reconnect to existing operations, typed diagnostics and quarantine boundaries.
 - [Operations](operations.md): supported deployment scope, backups, alerts and disaster recovery.
 - [Releases](releases.md): installation and release artifacts.
 

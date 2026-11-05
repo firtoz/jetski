@@ -142,27 +142,50 @@ export interface Scheduler {
 export interface EventSink {
   emit(event: { type: string; scope: Scope; at: number; details: Json }): void;
 }
+/** Adapter declarations only. Per-host readiness/runtime observations are separate.
+ * A declaration never asserts workload compatibility or hosted qualification. */
+export type MachineHostFeatures = {
+  evidence: "adapter-declaration";
+  runtimes: readonly ("podman" | "gvisor")[];
+  networkModes: readonly RuntimeNetworkMode[];
+  storageModes: readonly RuntimeStorageMode[];
+  nativeIdleModes: readonly ("ram" | "disk")[];
+  hostStreams: boolean;
+  portableMemoryRuntimes: readonly "gvisor"[];
+};
 export type HostCapabilities = {
   kind: "machine-host";
   architecture: "x86_64";
   rootlessPodman: boolean;
+  features?: MachineHostFeatures;
   /** Absence retains the original one-hour allocation contract. */
   maxLifetimeMs?: number;
 };
+/** Unknown readiness reserves the existing host; it never authorizes a new allocation. */
+export type HostObservation = {
+  state: "ready" | "starting" | "absent" | "unknown";
+  diagnostic?: import("./transport.js").HostTransportDetails;
+};
 export interface HostProvider {
+  readonly idlePower?: import("./host-power.js").HostIdlePower;
   capabilities(): HostCapabilities;
   allocate(input: {
     owner: string;
     operationId: string;
     expiresAt: number;
   }): Promise<{ id: string; allocationId: string }>;
-  inspect(
-    id: string,
-  ): Promise<{ state: "ready" | "starting" | "absent" | "unknown" }>;
+  inspect(id: string): Promise<HostObservation>;
   retire(id: string, allocationId: string): Promise<void>;
 }
 
 /** Operator policy; workload requests cannot select host networking. */
+export const NETWORK_FILTER_BACKENDS = [
+  "auto",
+  "nft-netdev",
+  "tc-bpf",
+] as const;
+export type NetworkFilterBackend = (typeof NETWORK_FILTER_BACKENDS)[number];
+
 export const RUNTIME_NETWORK_MODES = [
   "none",
   "egress",

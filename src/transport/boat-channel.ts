@@ -87,7 +87,18 @@ export class BoatControlChannel {
         Buffer.byteLength(value.stdout) > outputLimit ||
         Buffer.byteLength(value.stderr) > 64 * 1024
       )
-        throw Error("Invalid command completion");
+        throw new HostTransportError("Boat command completion unconfirmed", {
+          provider: "boat",
+          code:
+            typeof value.exitCode === "number" && value.exitCode !== 0
+              ? "remote-exit"
+              : "invalid-receipt",
+          httpStatus: reply.status,
+          ...(typeof value.exitCode === "number" &&
+          Number.isSafeInteger(value.exitCode)
+            ? { exitCode: value.exitCode }
+            : {}),
+        });
       return value.stdout;
     };
     let directory: string | undefined;
@@ -160,9 +171,11 @@ export class BoatControlChannel {
       }
 
       return stdout;
-    } catch {
+    } catch (error) {
+      if (error instanceof HostTransportError) throw error;
       throw new HostTransportError(
         "Boat host command failed; remote completion unknown",
+        { provider: "boat", code: signal?.aborted ? "aborted" : "transport" },
       );
     } finally {
       if (directory) {

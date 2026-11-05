@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { StateStore } from "../core/contracts.js";
 import {
   identifier,
+  NETWORK_FILTER_BACKENDS,
+  type NetworkFilterBackend,
   RUNTIME_NETWORK_MODES,
   RUNTIME_STORAGE_MODES,
   type RuntimeNetworkMode,
@@ -26,56 +28,14 @@ import {
   BOAT_PUBLIC_NETWORK_PREREQUISITES,
 } from "./boat-prerequisites.js";
 
-export const BOAT_BOOTSTRAP_MODULES = Object.freeze([
-  "archive.py",
-  "bootstrap.py",
-  "commands.py",
-  "terminal_input.py",
-  "streams.py",
-  "stream_protocol.py",
-  "stream_broker.py",
-  "podman_exec.py",
-  "command-supervisor.c",
-  "tcp-relay.c",
-  "network-keeper.c",
-  "control.py",
-  "fence.py",
-  "file_upload.py",
-  "files.py",
-  "frames.py",
-  "timing.py",
-  "import_checkpoint.py",
-  "local_checkpoint.py",
-  "checkpoint_export.py",
-  "runtime.py",
-  "runtime_backend.py",
-  "network_namespace.py",
-  "network_policy.py",
-  "gvisor_environment.py",
-  "gvisor_exec.py",
-  "gvisor_install.py",
-  "gvisor_lifecycle.py",
-  "gvisor_memory.py",
-  "memory_filesystem.py",
-  "memory_control.py",
-  "memory_chunks.py",
-  "portable_memory_policy.py",
-  "portable_memory_export.py",
-  "portable_memory_files.py",
-  "portable_memory_import.py",
-  "portable_memory_format.py",
-  "gvisor_native.py",
-  "gvisor_oci.py",
-  "gvisor_rootfs.py",
-  "gvisor_cgroup.py",
-  "gvisor_apparmor.py",
-  "runtime_service.py",
-  "supervisor.py",
-]);
-export type BoatBootstrapAssets = {
-  files: Readonly<Record<string, Uint8Array>>;
-  installer: Uint8Array;
-};
+import {
+  HOST_BOOTSTRAP_MODULES as BOAT_BOOTSTRAP_MODULES,
+  type HostBootstrapAssets,
+} from "./host-bootstrap-assets.js";
+
+// Preserve the published Boat subpath contract. New adapters use the neutral module.
+export { HOST_BOOTSTRAP_MODULES as BOAT_BOOTSTRAP_MODULES } from "./host-bootstrap-assets.js";
+export type BoatBootstrapAssets = HostBootstrapAssets;
 const digest = (value: Uint8Array) =>
   createHash("sha256").update(value).digest("hex");
 /** Injected immutable source assets; no controller filesystem or credentials in the bundle. */
@@ -92,7 +52,10 @@ export class EmbeddedBoatBootstrap {
     private readonly backend: HostBackend = PYTHON_HOST_BACKEND,
     private readonly runtime: RuntimePolicy = PODMAN_RUNTIME,
     private readonly workloadInit?: readonly string[],
+    private readonly networkFilter: NetworkFilterBackend = "auto",
   ) {
+    if (!NETWORK_FILTER_BACKENDS.includes(networkFilter))
+      throw Error("Unsupported network filter backend");
     validateHostBackend(backend);
     validateRuntimePolicy(runtime);
     validateWorkloadInit(workloadInit);
@@ -164,6 +127,9 @@ export class EmbeddedBoatBootstrap {
           archiveTransferUser: "user",
           poolId: this.poolId,
           images: this.images,
+          ...(this.networkFilter === "auto"
+            ? {}
+            : { networkFilter: this.networkFilter }),
           ...(this.workloadInit === undefined
             ? {}
             : { workloadInit: this.workloadInit }),

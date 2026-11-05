@@ -45,13 +45,22 @@ def configuration():
     config = json.loads(CONFIG_PATH.read_text())
     if (
         set(config)
-        - {"networkMode", "storageMode", "archiveTransferUser", "runtime", "workloadInit"}
+        - {
+            "networkMode",
+            "networkFilter",
+            "storageMode",
+            "archiveTransferUser",
+            "runtime",
+            "workloadInit",
+        }
         != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
         raise ValueError("unsupported_host_configuration")
     if config.get("storageMode", "default") not in ("default", "fuse-overlayfs"):
         raise ValueError("invalid_storage_policy")
+    if config.get("networkFilter", "auto") not in ("auto", "nft-netdev", "tc-bpf"):
+        raise ValueError("invalid_network_filter_policy")
     if config.get("networkMode", "none") not in ("none", "egress", "public-egress"):
         raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:

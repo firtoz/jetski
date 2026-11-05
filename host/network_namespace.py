@@ -18,6 +18,7 @@ import shutil
 
 from archive import sync_dir
 from fence import identity
+from network_filter_tc import TcBpfEgressFilter
 from network_policy import DNS_IPV4, GUEST_IPV4, TABLE, policy_sha256, ruleset
 
 IMAGE_PROOF = pathlib.Path("/etc/jetski/network-helper.json")
@@ -172,7 +173,21 @@ def prepare_image(account, run, import_image):
 
 
 class NetworkNamespace:
-    def __init__(self, account, ownership, control_root, *, run, host_run, namespace_run):
+    def __init__(
+        self,
+        account,
+        ownership,
+        control_root,
+        *,
+        run,
+        host_run,
+        namespace_run,
+        filter_backend="auto",
+    ):
+        if filter_backend not in ("auto", "nft-netdev", "tc-bpf"):
+            raise ValueError("unsupported_network_filter_backend")
+        self.filter_backend = filter_backend
+        self.tc = shutil.which("tc", path="/usr/sbin:/usr/bin:/sbin:/bin")
         self.account, self.ownership = account, ownership
         self.root = pathlib.Path(control_root) / "networks"
         self.run, self.host_run, self.namespace_run = run, host_run, namespace_run
@@ -329,6 +344,14 @@ class NetworkNamespace:
 
         return hashlib.sha256(json.dumps(stable(entries), sort_keys=True).encode()).hexdigest()
 
+    def tc_filter(self, proof):
+        if not self.tc:
+            raise ValueError("network_tc_executable_unavailable")
+        return TcBpfEgressFilter(
+            self.tc,
+            lambda argv: self.namespace_run(self.namespace_argv(proof, network=True) + argv),
+        )
+
     def prepare(self, lease):
         lease = identity(lease)
         prior = self.read(lease) if self.path(lease).exists() else None
@@ -383,18 +406,36 @@ class NetworkNamespace:
             for entry in interface.get("addr_info", [])
         ]
         policy = ruleset("tap0", addresses)
-        installed = self.namespace_run(
-            self.namespace_argv(proof, network=True) + [self.nft, "--file", "-"], policy.encode()
-        )
-        if installed["exitCode"]:
-            raise ValueError("network_filter_installation_failed")
+        backend = getattr(self, "filter_backend", "nft-netdev")
+        if backend == "auto":
+            checked = self.namespace_run(
+                self.namespace_argv(proof, network=True) + [self.nft, "--check", "--file", "-"],
+                policy.encode(),
+            )
+            if checked["exitCode"] == 0:
+                backend = "nft-netdev"
+            elif "Operation not supported" in checked.get("stderr", ""):
+                backend = "tc-bpf"
+            else:
+                raise ValueError("network_filter_capability_unknown")
+        if backend == "tc-bpf":
+            kernel_proof = self.tc_filter(proof).install("tap0", addresses)
+        else:
+            installed = self.namespace_run(
+                self.namespace_argv(proof, network=True) + [self.nft, "--file", "-"],
+                policy.encode(),
+            )
+            if installed["exitCode"]:
+                raise ValueError("network_filter_installation_failed")
+            kernel_proof = self.filter_proof(proof)
         # Store an immutable placement receipt before any workload can join.
         ready = dict(
             intent,
             phase="ready",
             namespace=proof,
             filterSha256=hashlib.sha256(policy.encode()).hexdigest(),
-            kernelFilterSha256=self.filter_proof(proof),
+            kernelFilterSha256=kernel_proof,
+            filterBackend=backend,
         )
         self.write(lease, ready)
         return ready
@@ -403,7 +444,14 @@ class NetworkNamespace:
         receipt = self.read(lease)
         if receipt["phase"] != "ready" or self.inspect(lease) != receipt["namespace"]:
             raise ValueError("network_namespace_not_ready")
-        if self.filter_proof(receipt["namespace"]) != receipt["kernelFilterSha256"]:
+        backend = receipt.get("filterBackend", "nft-netdev")
+        if backend == "tc-bpf":
+            observed = self.tc_filter(receipt["namespace"]).proof("tap0")
+        elif backend == "nft-netdev":
+            observed = self.filter_proof(receipt["namespace"])
+        else:
+            raise ValueError("unknown_network_filter_backend")
+        if observed != receipt["kernelFilterSha256"]:
             raise ValueError("network_filter_changed")
         verify_resolver(self.account)
         return receipt
@@ -450,12 +498,19 @@ class NetworkNamespace:
 def controlled_namespace(account):
     """Bind privileged control and sterile runtime-account runners explicitly."""
     from runtime_backend import read_workload_identity
-    from supervisor import CONTROL_ROOT, bounded_command, runtime_argv, runtime_control_argv
+    from supervisor import (
+        CONTROL_ROOT,
+        bounded_command,
+        configuration,
+        runtime_argv,
+        runtime_control_argv,
+    )
 
     return NetworkNamespace(
         account,
         read_workload_identity(account),
         CONTROL_ROOT,
+        filter_backend=configuration().get("networkFilter", "auto"),
         run=lambda args: bounded_command(
             runtime_control_argv(account) + args, CONTROL_ROOT, timeout=60
         ),

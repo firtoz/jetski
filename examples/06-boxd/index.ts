@@ -1,23 +1,16 @@
-import { Boxd } from "@boxd-sh/sdk";
 import { openJetski } from "@firtoz/jetski/node";
-import { boxdHostFactory } from "@firtoz/jetski/providers/boxd-hosts";
 
-const client = new Boxd({
-  apiKey: env("BOXD_API_KEY"),
-  region: "fra",
-  maxRetries: 0,
-  timeout: 330_000,
-});
 const jetski = await openJetski({
-  provider: boxdHostFactory(client, {
-    id: "boxd-personal-fra",
-    close: () => client.close(),
-  }),
+  provider: {
+    kind: "boxd",
+    token: env("BOXD_API_KEY"),
+    namespace: "boxd-personal-fra",
+    region: "fra",
+  },
   image: env("JETSKI_IMAGE"),
   // Metadata and local checkpoint objects live on this script's machine, not boxd.
   dataDirectory: "./.jetski",
 });
-
 try {
   const sandbox = await jetski.create();
   process.stdout.write(
@@ -26,7 +19,6 @@ try {
 } finally {
   await jetski.close();
 }
-
 function env(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Set ${name} before running this example`);

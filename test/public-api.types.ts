@@ -20,6 +20,12 @@ export async function publicApiTypes(
 ) {
   const opened: Promise<NodeJetski> = openJetski(options);
   const session: SandboxSession = await embedded.create();
+  await session.waitForOperation("existing", { waitTimeoutMs: 1000 });
+  await remote.client.waitForOperation(session.id, "existing", {
+    waitTimeoutMs: 1000,
+  });
+  // @ts-expect-error observation timeout is numeric
+  session.waitForOperation("existing", { waitTimeoutMs: "1000" });
   const result: CommandResult = await session.exec(["echo", "hello"]);
   const bytes: Uint8Array = result.stdoutBytes;
   const text: string = await session.readText("/workspace/file");

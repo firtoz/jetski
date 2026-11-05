@@ -15,10 +15,19 @@ facade, including distinct-sandbox checkpoint restore, and an embedded Node
 controller with Boat/SSH, local/S3 storage, SQLite state, owner-bound scheduling
 and verified shutdown. Source setup uses `npm install` with the existing automatic
 build; released packages are prebuilt. See [API and recovery boundaries](simple-api.md).
-These source APIs are not yet included in the published 0.1.1 package. Local acceptance:370 tests, build,
+These source APIs are not yet included in the published 0.1.1 package. Local acceptance:385 tests, build,
 typecheck and lint pass. All six examples use TypeScript with strict standalone
 typechecks; compile-only contracts check valid/invalid public API calls. Protocol fixtures are not new hosted
 Boat/R2 or physical-host replacement qualification.
+
+## Completed provider parity goal
+
+The [Boat / boxd parity goal](goals/boat-boxd-parity.md) tracks consistent
+configuration, runtime options, capabilities, currency-safe pricing, native idle
+coordination and interactive qualification. All finite gates pass; see its linked
+consolidated measurements and limitations.
+The local [failure-observation follow-up](failure-recovery.md) adds typed operation
+waiting and safe transport diagnostics without another hosted benchmark pass.
 
 ## boxd source qualification
 

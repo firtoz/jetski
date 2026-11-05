@@ -7,6 +7,7 @@ below, including scoped browser preview sessions. Do not
 use this preview as a durable hosted service; use disposable qualification hosts.
 The full release gates remain in [implementation.md](implementation.md).
 Select `hostProvider: { "kind": "ssh", "hosts": [...] }` for an adopted host,
+the [boxd configuration](boxd.md) for optional SDK-backed machines,
 or the [Boat configuration](boat.md#automatic-owned-machine-bootstrap) for automatic
 owned-machine bootstrap. The instructions below describe the SSH path.
 

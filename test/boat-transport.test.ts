@@ -625,3 +625,46 @@ test("portable export command envelope is admitted by the actual bounded API", a
   );
   assert.equal(calls, 1);
 });
+
+test("Boat remote exit retains safe structured diagnostics through transport wrappers", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  await state.transaction((tx) => {
+    tx.put("boat-host/bx_owned", "allocation");
+    tx.put("allocation", { id: "bx_owned", retired: false });
+  });
+  let calls = 0;
+  const api = new BoatApi("credential-secret", async () => {
+    calls++;
+    return Response.json({
+      success: true,
+      exitCode: 125,
+      timedOut: false,
+      stdout: "private-output",
+      stderr: "private-error",
+    });
+  });
+  const transport = new BoatTransport(state, api);
+  await assert.rejects(
+    transport.request("bx_owned", {
+      version: 1,
+      id: "existing",
+      action: "status",
+      payload: null,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof HostTransportError);
+      assert.deepEqual(error.details, {
+        provider: "boat",
+        code: "remote-exit",
+        httpStatus: 200,
+        exitCode: 125,
+      });
+      assert.equal(error.uncertain, true);
+      assert.ok(!JSON.stringify(error).includes("private"));
+      assert.ok(!JSON.stringify(error).includes("credential-secret"));
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+});

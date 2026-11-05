@@ -59,6 +59,7 @@ export class BoatIdlePriceSource implements IdlePriceSource {
     )
       throw Error("Invalid Boat idle pricing response");
     return idlePriceQuote({
+      currency: "USD",
       observedAt: input.now,
       validUntil: input.now + HOST_LIFECYCLE_LIMITS.maxQuoteAgeMs,
       computeMicrosPerHour: Math.round(

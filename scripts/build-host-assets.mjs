@@ -1,10 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { BOAT_BOOTSTRAP_MODULES } from "../dist/providers/boat-bootstrap-embedded.js";
+import { HOST_BOOTSTRAP_MODULES } from "../dist/providers/host-bootstrap-assets.js";
 
 // Release artifact only: no credentials, operator configuration or generated state.
 const root = new URL("../host/", import.meta.url);
 const encoded = {};
-for (const name of [...BOAT_BOOTSTRAP_MODULES, "install_bundle.py"]) {
+for (const name of [...HOST_BOOTSTRAP_MODULES, "install_bundle.py"]) {
   const path = name.endsWith(".c") ? `native/${name}` : name;
   const bytes = await readFile(new URL(path, root));
   const limit = name === "install_bundle.py" ? 32 * 1024 : 256 * 1024;

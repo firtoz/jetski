@@ -1,3 +1,8 @@
+export {
+  OperationOutcomeError,
+  type OperationWaitOptions,
+} from "./client/wait.js";
+
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
@@ -26,6 +31,7 @@ import { type ManagerOptions, SandboxManager } from "./core/manager.js";
 import { identityMemoryCodec } from "./core/memory-chunk-codec.js";
 import type { HostTransport } from "./core/transport.js";
 import { managerApi } from "./node/manager-api.js";
+import { validateBoxdHostConfig } from "./providers/boxd-config.js";
 import { acquireControllerLock } from "./server/controller-lock.js";
 import type { HostConfig } from "./server/hosts.js";
 import { SqliteState } from "./state/sqlite.js";
@@ -47,11 +53,16 @@ export type NodeProvider =
   | {
       kind: "factory";
       id: string;
+      /** Non-secret immutable policy included in controller identity. */
+      configuration?: Json;
       create(
         context: NodeHostFactoryContext,
       ): NodeHostAdapters | Promise<NodeHostAdapters>;
     }
   | (Omit<Extract<HostConfig, { kind: "boat" }>, "tokenEnv"> & {
+      token: string;
+    })
+  | (Omit<Extract<HostConfig, { kind: "boxd" }>, "tokenEnv"> & {
       token: string;
     })
   | Extract<HostConfig, { kind: "ssh" }>
@@ -134,8 +145,11 @@ function configuration(
 ) {
   let provider: Json;
   switch (options.provider.kind) {
+    case "boxd":
     case "boat": {
       const { token: _token, ...policy } = options.provider;
+      if (policy.kind === "boxd")
+        validateBoxdHostConfig({ ...policy, tokenEnv: "JETSKI_NODE_PROVIDER" });
       provider = JSON.parse(JSON.stringify(policy)) as Json;
       break;
     }
@@ -156,7 +170,14 @@ function configuration(
     case "factory":
     case "custom":
       identifier(options.provider.id);
-      provider = { kind: options.provider.kind, id: options.provider.id };
+      provider = {
+        kind: options.provider.kind,
+        id: options.provider.id,
+        ...(options.provider.kind === "factory" &&
+        options.provider.configuration !== undefined
+          ? { configuration: options.provider.configuration }
+          : {}),
+      };
       break;
   }
   let objects: Json;
@@ -526,10 +547,13 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
       const { standaloneHosts } = await import("./server/hosts.js");
       let config: HostConfig,
         environment: NodeJS.ProcessEnv = {};
-      if (options.provider.kind === "boat") {
+      if (
+        options.provider.kind === "boat" ||
+        options.provider.kind === "boxd"
+      ) {
         const { token, ...rest } = options.provider;
-        config = { ...rest, tokenEnv: "JETSKI_NODE_BOAT" };
-        environment = { JETSKI_NODE_BOAT: token };
+        config = { ...rest, tokenEnv: "JETSKI_NODE_PROVIDER" };
+        environment = { JETSKI_NODE_PROVIDER: token };
       } else config = options.provider;
       hosts = await standaloneHosts(
         state,

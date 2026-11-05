@@ -135,6 +135,7 @@ test("Boxd retirement retains authority after lost ACK and confirms absence befo
   await provider.retire("host", "operation");
   await provider.retire("host", "operation");
   assert.equal(f.deletes, 1);
+  assert.equal((await provider.inspect("host")).state, "absent");
   await assert.rejects(provider.owned("host"), /owned/);
 });
 test("Boxd transport preserves stdin bytes, bounds output and never replays uncertain execution", async () => {
@@ -195,10 +196,15 @@ test("Boxd transport preserves stdin bytes, bounds output and never replays unce
   assert.equal(opened, 1);
   assert.equal(closed, 1);
   exitCode = 1;
-  await assert.rejects(
-    transport.request("host", request),
-    /completion unknown/,
-  );
+  await assert.rejects(transport.request("host", request), (error: unknown) => {
+    assert.ok(error instanceof Error && "details" in error);
+    assert.deepEqual(error.details, {
+      provider: "boxd",
+      code: "remote-exit",
+      exitCode: 1,
+    });
+    return true;
+  });
   assert.equal(opened, 2);
   exitCode = 0;
   outputBytes = new Uint8Array(2 * 1024 * 1024 + 1);
@@ -216,4 +222,164 @@ test("Boxd transport preserves stdin bytes, bounds output and never replays unce
     /completion unknown/,
   );
   assert.equal(opened, 3);
+});
+
+test("native boxd power observes lost ACKs without replay and denies foreign owner transitions", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const f = fixture();
+  let sleeps = 0,
+    wakes = 0;
+  f.client.machines.pause = async (id) => {
+    sleeps++;
+    f.machines.get(id)!.status = "suspended";
+    throw Error("lost pause ACK");
+  };
+  f.client.machines.resume = async (id) => {
+    wakes++;
+    f.machines.get(id)!.status = "running";
+    throw Error("lost resume ACK");
+  };
+  const provider = new BoxdHostProvider(
+    state,
+    f.client,
+    "pool",
+    async () => {},
+  );
+  const expiresAt = Date.now() + 3599000;
+  await provider.allocate({
+    owner: "alice",
+    operationId: "allocation",
+    expiresAt,
+  });
+  const input = {
+    host: "host",
+    owner: "alice",
+    allocationId: "allocation",
+    expiresAt,
+    mode: "ram" as const,
+    operationId: "sleep",
+  };
+  await assert.rejects(
+    provider.idlePower.sleep({ ...input, owner: "bob" }),
+    /authority/,
+  );
+  assert.equal(sleeps, 0);
+  await assert.rejects(provider.idlePower.sleep(input), /lost pause/);
+  assert.equal(await provider.idlePower.sleep(input), "asleep");
+  assert.equal(sleeps, 1);
+  const wake = { ...input, operationId: "wake" };
+  await assert.rejects(provider.idlePower.wake(wake), /lost resume/);
+  assert.equal(await provider.idlePower.wake(wake), "awake");
+  assert.equal(wakes, 1);
+  await assert.rejects(
+    provider.idlePower.sleep({ ...input, mode: "disk" }),
+    /unavailable/,
+  );
+});
+
+test("boxd rejects out-of-range lifetimes before RPC and fences expired control while allowing cleanup", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const f = fixture();
+  let now = 1000;
+  const provider = new BoxdHostProvider(
+    state,
+    f.client,
+    "pool",
+    async () => {},
+    { now: () => now },
+  );
+  for (const expiresAt of [now, now + 999, now + 86400001, Number.NaN]) {
+    await assert.rejects(
+      provider.allocate({ owner: "alice", operationId: "invalid", expiresAt }),
+      /lifetime/,
+    );
+  }
+  assert.equal(f.creates, 0);
+  await provider.allocate({
+    owner: "alice",
+    operationId: "valid",
+    expiresAt: 2000,
+  });
+  now = 2000;
+  await assert.rejects(provider.owned("host"), /owned/);
+  assert.equal((await provider.inspect("host")).state, "ready");
+  await provider.retire("host", "valid");
+  assert.equal((await provider.inspect("host")).state, "absent");
+});
+
+test("transient bootstrap control loss returns unknown on the same owned allocation; policy errors still reject", async (t) => {
+  const { HostTransportError } = await import("../src/core/transport.js");
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const f = fixture();
+  let attempts = 0;
+  const provider = new BoxdHostProvider(
+    state,
+    f.client,
+    "pool",
+    async () => {
+      attempts++;
+      if (attempts === 1)
+        throw new HostTransportError("Lost bootstrap completion", {
+          provider: "boxd",
+          code: "remote-exit",
+          exitCode: 1,
+        });
+      if (attempts === 3) throw Error("Bootstrap identity changed");
+    },
+    { now: () => 1000 },
+  );
+  const input = { owner: "alice", operationId: "existing", expiresAt: 3600000 };
+  await provider.allocate(input);
+  assert.deepEqual(await provider.inspect("host"), {
+    state: "unknown",
+    diagnostic: { provider: "boxd", code: "remote-exit", exitCode: 1 },
+  });
+  await provider.allocate(input);
+  assert.equal((await provider.inspect("host")).state, "ready");
+  assert.equal(f.creates, 1, "reconciliation observes the original host");
+  await assert.rejects(provider.inspect("host"), /identity changed/);
+});
+
+test("control deadline remains uncertain even when closing the SDK stream reports exit zero", async () => {
+  const { HostTransportError } = await import("../src/core/transport.js");
+  const f = fixture();
+  let finish!: () => void;
+  const closed = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let calls = 0;
+  f.client.machines.streamExec = () => {
+    calls++;
+    const stdout = (async function* (): AsyncGenerator<Uint8Array> {
+      await closed;
+    })();
+    return {
+      stdout,
+      stderr: (async function* () {})(),
+      write() {},
+      end() {},
+      close() {
+        finish();
+      },
+      wait: async () => {
+        await closed;
+        return 0;
+      },
+      [Symbol.asyncIterator]() {
+        return stdout[Symbol.asyncIterator]();
+      },
+    };
+  };
+  const channel = new BoxdControlChannel(f.client, async () => {});
+  await assert.rejects(
+    channel.run("host", ["control"], new Uint8Array(), { timeoutMs: 5 }),
+    (error: unknown) =>
+      error instanceof HostTransportError &&
+      error.uncertain &&
+      error.details?.code === "deadline",
+  );
+  assert.equal(calls, 1);
 });

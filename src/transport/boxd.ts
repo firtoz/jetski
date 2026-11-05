@@ -1,4 +1,3 @@
-import { Readable, Writable } from "node:stream";
 import type { Json } from "../core/contracts.js";
 import type {
   HostConnection,
@@ -21,6 +20,7 @@ import {
   hostResponseByteLimit,
 } from "../core/transport.js";
 import type { BoxdClient } from "../providers/boxd.js";
+import { creditDuplex } from "./credit-duplex.js";
 import { hostControlArguments } from "./host-backend.js";
 import { attachHostStream } from "./host-stream.js";
 
@@ -50,15 +50,23 @@ export class BoxdControlChannel {
       command: program,
       cwd: "/",
     });
+    let expired = false;
     const stop = () => stream.close(),
-      timer = setTimeout(stop, options.timeoutMs ?? HOST_CONTROL_TIMEOUT_MS);
+      timer = setTimeout(() => {
+        expired = true;
+        stop();
+      }, options.timeoutMs ?? HOST_CONTROL_TIMEOUT_MS);
     options.signal?.addEventListener("abort", stop, { once: true });
     async function collect(source: AsyncIterable<Uint8Array>, maximum: number) {
       const chunks: Uint8Array[] = [];
       let size = 0;
       for await (const chunk of source) {
         size += chunk.length;
-        if (size > maximum) throw Error("Boxd output exceeds bound");
+        if (size > maximum)
+          throw new HostTransportError(
+            "Boxd output exceeds bound; completion unknown",
+            { provider: "boxd", code: "output-bound" },
+          );
         chunks.push(chunk);
       }
       return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
@@ -74,11 +82,31 @@ export class BoxdControlChannel {
         stream.wait(),
       ]);
       options.signal?.throwIfAborted();
+      if (expired)
+        throw new HostTransportError(
+          "Boxd control deadline expired; completion unknown",
+          { provider: "boxd", code: "deadline" },
+        );
       if (exitCode !== 0)
         throw new HostTransportError(
           "Boxd control exited without a successful receipt; completion unknown",
+          {
+            provider: "boxd",
+            code: "remote-exit",
+            ...(Number.isSafeInteger(exitCode) ? { exitCode } : {}),
+          },
         );
       return { stdout, stderr };
+    } catch (error) {
+      if (error instanceof HostTransportError) throw error;
+      let code: import("../core/transport.js").HostTransportDetails["code"] =
+        "transport";
+      if (expired) code = "deadline";
+      if (options.signal?.aborted) code = "aborted";
+      throw new HostTransportError(
+        "Boxd control transport failed; completion unknown",
+        { provider: "boxd", code },
+      );
     } finally {
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", stop);
@@ -117,9 +145,11 @@ export class BoxdTransport implements HostTransport {
       )
         throw Error("Invalid host response");
       return value;
-    } catch {
+    } catch (error) {
+      if (error instanceof HostTransportError) throw error;
       throw new HostTransportError(
         "Boxd host control failed; remote completion unknown",
+        { provider: "boxd", code: "invalid-receipt" },
       );
     }
   }
@@ -174,26 +204,10 @@ export class BoxdStreamTransport implements HostStreamTransport {
     );
     if (body.length > 16384) throw Error("Stream header bound");
     const exec = this.client.machines.streamExec(host, {
-      command: ["sudo", "-n", ...hostControlArguments()],
+      command: ["sudo", "-n", "python3", "-I", "/opt/jetski/host/sdk_relay.py"],
       cwd: "/",
     });
-    const input = new Writable({
-      write(chunk, _encoding, callback) {
-        try {
-          exec.write(chunk);
-          callback();
-        } catch (error) {
-          callback(
-            error instanceof Error ? error : Error("Stream write failed"),
-          );
-        }
-      },
-      final(callback) {
-        exec.end();
-        callback();
-      },
-    });
-    const output = Readable.from(exec.stdout);
+    const wire = creditDuplex(exec);
     const diagnostics = (async () => {
       let bytes = 0;
       for await (const chunk of exec.stderr) {
@@ -201,7 +215,7 @@ export class BoxdStreamTransport implements HostStreamTransport {
         if (bytes > 65536) throw Error("Stream diagnostic bound");
       }
     })();
-    const closed = Promise.all([exec.wait(), diagnostics]).then(
+    const closed = Promise.all([wire.closed, diagnostics]).then(
       ([code]) => code,
     );
     void closed.catch(() => exec.close());
@@ -209,16 +223,7 @@ export class BoxdStreamTransport implements HostStreamTransport {
     length.writeUInt32BE(body.length);
     try {
       return await attachHostStream(
-        {
-          input,
-          output,
-          closed,
-          terminate: () => {
-            exec.close();
-            input.destroy();
-            output.destroy();
-          },
-        },
+        { ...wire, closed },
         Buffer.concat([Buffer.from(STREAM_MAGIC), length, body]),
         signal,
       );

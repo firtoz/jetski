@@ -68,6 +68,28 @@ class NetworkLifecycleTests(unittest.TestCase):
         self.assertEqual(argv[-1], "/jetski-network-keeper")
         self.assertFalse(any("workspace" in value or "home/sandbox" in value for value in argv))
 
+    def test_auto_uses_verified_tc_only_for_known_unsupported_nft_and_never_for_unknown_error(self):
+        self.network.filter_backend = "auto"
+        self.network.namespace_run.return_value = dict(
+            exitCode=1, stdout="", stderr="Operation not supported"
+        )
+        tc = Mock()
+        tc.install.return_value = "tc-proof"
+        self.network.tc_filter = Mock(return_value=tc)
+        ready = self.network.prepare(self.lease)
+        self.assertEqual(ready["filterBackend"], "tc-bpf")
+        self.assertEqual(ready["kernelFilterSha256"], "tc-proof")
+        tc.install.assert_called_once_with("tap0", ["1.1.1.1"])
+        self.network.filter_proof.assert_not_called()
+        self.network.path(self.lease).unlink()
+        self.saved = self.observed = None
+        self.network.namespace_run.return_value = dict(
+            exitCode=1, stdout="", stderr="Permission denied"
+        )
+        with self.assertRaisesRegex(ValueError, "capability_unknown"):
+            self.network.prepare(self.lease)
+        self.assertEqual(tc.install.call_count, 1)
+
     def test_lost_start_ack_never_blindly_creates_another_keeper(self):
         self.network.run.side_effect = ConnectionError("lost namespace start acknowledgement")
         with self.assertRaises(ConnectionError):

@@ -83,10 +83,11 @@ if (values.version) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const releaseController = await acquireControllerLock(directory);
   let closeState = () => {};
+  let closeHosts: (() => void | Promise<void>) | undefined;
   try {
     const state = new SqliteState(join(directory, "state.sqlite"));
     closeState = () => state.close();
-    const { provider, transport, streamTransport, idlePriceSource } =
+    const { provider, transport, streamTransport, idlePriceSource, close } =
       await standaloneHosts(
         state,
         config.hostProvider,
@@ -95,6 +96,7 @@ if (values.version) {
         process.env,
         config.hostLifecycle,
       );
+    closeHosts = close;
     const storage = await standaloneStorage(directory, config.storage);
     const manager = new SandboxManager(
       state,
@@ -228,6 +230,7 @@ if (values.version) {
       await sshGateway?.close();
       await stopWorker();
       await closed;
+      await closeHosts?.();
       state.close();
       storage.close();
       await releaseController();
@@ -235,6 +238,7 @@ if (values.version) {
     process.on("SIGINT", () => void stop());
     process.on("SIGTERM", () => void stop());
   } catch (error) {
+    await closeHosts?.();
     closeState();
     await releaseController();
     throw error;

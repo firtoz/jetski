@@ -43,6 +43,7 @@ MODULES = (
     "runtime_backend.py",
     "network_namespace.py",
     "network_policy.py",
+    "network_filter_tc.py",
     "gvisor_environment.py",
     "gvisor_exec.py",
     "gvisor_install.py",
@@ -66,6 +67,7 @@ MODULES = (
     "commands.py",
     "terminal_input.py",
     "streams.py",
+    "sdk_relay.py",
     "stream_protocol.py",
     "stream_broker.py",
     "podman_exec.py",
@@ -132,7 +134,14 @@ def bootstrap(config):
         raise ValueError("root_required")
     if (
         set(config)
-        - {"networkMode", "storageMode", "archiveTransferUser", "runtime", "workloadInit"}
+        - {
+            "networkMode",
+            "networkFilter",
+            "storageMode",
+            "archiveTransferUser",
+            "runtime",
+            "workloadInit",
+        }
         != {"version", "machineId", "poolId", "images"}
         or config["version"] != 1
     ):
@@ -153,6 +162,8 @@ def bootstrap(config):
             raise ValueError("invalid_host_identity")
     if config.get("storageMode", "default") not in ("default", "fuse-overlayfs"):
         raise ValueError("invalid_storage_policy")
+    if config.get("networkFilter", "auto") not in ("auto", "nft-netdev", "tc-bpf"):
+        raise ValueError("invalid_network_filter_policy")
     if config.get("networkMode", "none") not in ("none", "egress", "public-egress"):
         raise ValueError("invalid_network_policy")
     if not isinstance(config["images"], list) or not 1 <= len(config["images"]) <= 32:

@@ -104,7 +104,28 @@ export interface HostTransport {
     signal?: AbortSignal,
   ): Promise<HostResponse>;
 }
-/** Transport loss is uncertainty about a remote effect, never permission to retry. */
+/** Safe controller diagnostics: never include command text, stdout/stderr or credentials. */
+export type HostTransportDetails = Readonly<{
+  provider: string;
+  code:
+    | "transport"
+    | "remote-exit"
+    | "invalid-receipt"
+    | "output-bound"
+    | "deadline"
+    | "aborted";
+  exitCode?: number;
+  httpStatus?: number;
+}>;
+/** Transport loss is uncertainty about a remote effect, never permission to retry.
+ * Details classify observation; they are deliberately not a retryable flag.
+ */
 export class HostTransportError extends Error {
   readonly uncertain = true;
+  readonly details: HostTransportDetails | undefined;
+  constructor(message: string, details?: HostTransportDetails) {
+    super(message);
+    this.name = "HostTransportError";
+    this.details = details ? Object.freeze({ ...details }) : undefined;
+  }
 }

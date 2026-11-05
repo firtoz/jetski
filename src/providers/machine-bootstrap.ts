@@ -2,20 +2,36 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { StateStore } from "../core/contracts.js";
 import { identifier } from "../core/contracts.js";
-import type { BoxdControlChannel } from "../transport/boxd.js";
-import { BOAT_BOOTSTRAP_MODULES } from "./boat-bootstrap-embedded.js";
-import { BOAT_PREREQUISITES } from "./boat-prerequisites.js";
+import type { MachineControlChannel } from "../transport/machine-channel.js";
+import { HOST_BOOTSTRAP_MODULES } from "./host-bootstrap-assets.js";
+import {
+  type MachineRuntimeOptions,
+  machineRuntimeOptions,
+} from "./machine-options.js";
+import {
+  MACHINE_PREREQUISITES,
+  MACHINE_PUBLIC_NETWORK_PREREQUISITES,
+} from "./machine-prerequisites.js";
 
 /** Same ordinary host sources and fenced installer used by cloud bootstrap.
  * Only call through an owned-machine channel, never on an operator desktop. */
 export class OwnedMachineBootstrap {
+  private readonly options: Required<
+    Pick<
+      MachineRuntimeOptions,
+      "runtime" | "networkMode" | "storageMode" | "networkFilter"
+    >
+  > &
+    Pick<MachineRuntimeOptions, "workloadInit">;
   constructor(
     private state: StateStore,
-    private channel: Pick<BoxdControlChannel, "run">,
+    private channel: MachineControlChannel,
     private poolId: string,
     private images: string[],
     private transferUser: string,
+    options: MachineRuntimeOptions = {},
   ) {
+    this.options = machineRuntimeOptions(options);
     identifier(poolId);
     if (!/^[a-z_][a-z0-9_-]*$/.test(transferUser))
       throw Error("Invalid transfer account");
@@ -24,7 +40,7 @@ export class OwnedMachineBootstrap {
     identifier(host);
     const root = new URL("../../host/", import.meta.url),
       files: Record<string, string> = {};
-    for (const name of BOAT_BOOTSTRAP_MODULES) {
+    for (const name of HOST_BOOTSTRAP_MODULES) {
       const bytes = await readFile(
         new URL(name.endsWith(".c") ? `native/${name}` : name, root),
       );
@@ -44,6 +60,21 @@ export class OwnedMachineBootstrap {
           poolId: this.poolId,
           archiveTransferUser: this.transferUser,
           images: this.images,
+          ...(this.options.networkFilter === "auto"
+            ? {}
+            : { networkFilter: this.options.networkFilter }),
+          ...(this.options.runtime.kind === "podman"
+            ? {}
+            : { runtime: this.options.runtime }),
+          ...(this.options.networkMode === "none"
+            ? {}
+            : { networkMode: this.options.networkMode }),
+          ...(this.options.storageMode === "default"
+            ? {}
+            : { storageMode: this.options.storageMode }),
+          ...(this.options.workloadInit
+            ? { workloadInit: this.options.workloadInit }
+            : {}),
         },
         files,
       }),
@@ -94,7 +125,12 @@ try:
   os.fchown(fd,0,0);os.fchmod(fd,stat.S_IMODE(meta.st_mode)&~0o022)
 finally:os.close(fd)`,
       ]);
-      await this.channel.run(host, [...program, BOAT_PREREQUISITES]);
+      await this.channel.run(host, [...program, MACHINE_PREREQUISITES]);
+      if (this.options.networkMode === "public-egress")
+        await this.channel.run(host, [
+          ...program,
+          MACHINE_PUBLIC_NETWORK_PREREQUISITES,
+        ]);
       const result = await this.channel.run(
         host,
         [...program, `exec(bytes.fromhex("${installer.toString("hex")}"))`],

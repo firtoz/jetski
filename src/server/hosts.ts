@@ -1,10 +1,12 @@
 import type {
   HostProvider,
+  NetworkFilterBackend,
   RuntimeNetworkMode,
   RuntimeStorageMode,
   StateStore,
 } from "../core/contracts.js";
 import {
+  HOST_LIFECYCLE_LIMITS,
   type HostLifecycle,
   hostLifecycle,
   type IdlePriceSource,
@@ -18,14 +20,23 @@ import {
 } from "../core/runtime-policy.js";
 import type { HostTransport } from "../core/transport.js";
 import type { BoatMachineType } from "../providers/boat.js";
+import {
+  type BoxdHostConfig,
+  validateBoxdHostConfig,
+} from "../providers/boxd-config.js";
+
+export type { BoxdHostConfig } from "../providers/boxd-config.js";
+
 import type { SshHost } from "../transport/ssh.js";
 export type HostConfig =
+  | BoxdHostConfig
   | { kind: "ssh"; hosts: SshHost[] }
   | {
       kind: "boat";
       tokenEnv: string;
       machine?: BoatMachineType;
       networkMode?: RuntimeNetworkMode;
+      networkFilter?: NetworkFilterBackend;
       storageMode?: RuntimeStorageMode;
       runtime?: RuntimePolicy;
       workloadInit?: readonly string[];
@@ -43,6 +54,7 @@ export async function standaloneHosts(
   transport: HostTransport;
   streamTransport?: HostStreamTransport;
   idlePriceSource?: IdlePriceSource;
+  close?: () => void | Promise<void>;
 }> {
   if (config.kind === "ssh") {
     const [{ SshTransport }, { SshHostProvider }] = await Promise.all([
@@ -59,6 +71,72 @@ export async function standaloneHosts(
         transport,
       ),
     };
+  }
+  if (config.kind === "boxd") {
+    validateBoxdHostConfig(config);
+    const token = environment[config.tokenEnv];
+    if (!token) throw Error("boxd credential environment variable missing");
+    const [{ Boxd }, { boxdHostFactory }] = await Promise.all([
+      import("@boxd-sh/sdk"),
+      import("../providers/boxd-hosts.js"),
+    ]);
+    // Explicit credentials, endpoint and region avoid metadata discovery/env drift.
+    const client = new Boxd({
+      apiKey: token,
+      region: config.region,
+      baseURL: config.baseURL ?? "https://boxd.sh:9443",
+      maxRetries: 0,
+      timeout: 330_000,
+    });
+    try {
+      const factory = boxdHostFactory(client, {
+        ...config,
+        id: config.namespace,
+        close: () => client.close(),
+      });
+      if (factory.kind !== "factory") throw Error("Invalid boxd factory");
+      const adapters = await factory.create({ state, poolId, approvedImages });
+      const idle = hostLifecycle(lifecycle).idle;
+      if (idle.mode !== "adaptive" || !config.idlePricing) return adapters;
+      const { BoxdIdlePriceSource } = await import(
+        "../providers/boxd-pricing.js"
+      );
+      const pricing = new BoxdIdlePriceSource(
+        async (signal) => {
+          const reader = new Boxd({
+            apiKey: token,
+            region: config.region,
+            baseURL: config.baseURL ?? "https://boxd.sh:9443",
+            maxRetries: 0,
+            timeout: HOST_LIFECYCLE_LIMITS.priceRequestMs,
+          });
+          const stop = () => reader.close();
+          signal.throwIfAborted();
+          signal.addEventListener("abort", stop, { once: true });
+          try {
+            const now = Date.now();
+            const usage = await reader.orgs.usage({
+              since: new Date(now - 60000),
+              until: new Date(now),
+            });
+            return { currency: usage.currency, rates: usage.rates };
+          } finally {
+            signal.removeEventListener("abort", stop);
+            await reader.close();
+          }
+        },
+        { vcpu: config.vcpu ?? 2, memoryGiB: (config.vcpu ?? 2) * 4 },
+        {
+          currency: idle.currency ?? "USD",
+          maxIdleSpendMicros: idle.maxIdleSpendMicros,
+          diskGiB: config.idlePricing.diskGiB,
+        },
+      );
+      return { ...adapters, idlePriceSource: pricing };
+    } catch (error) {
+      await client.close();
+      throw error;
+    }
   }
   if (config.kind !== "boat") throw Error("Unsupported machine host provider");
   if (
@@ -93,6 +171,7 @@ export async function standaloneHosts(
     config.storageMode,
     config.runtime,
     config.workloadInit,
+    config.networkFilter,
   );
   return {
     transport,

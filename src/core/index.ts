@@ -11,6 +11,7 @@ export * from "./checkpoints.js";
 export * from "./contracts.js";
 export * from "./files.js";
 export * from "./host-lifecycle.js";
+export * from "./host-power.js";
 export * from "./host-stream.js";
 export * from "./manager.js";
 export {

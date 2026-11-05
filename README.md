@@ -17,7 +17,9 @@ requirements. There is no managed Jetski hosting service.
 [Examples](examples/README.md) · [Where data lives](docs/storage-locations.md)
 
 Source preview: an optional [SDK-only boxd adapter](docs/boxd.md) and
-[TypeScript example](examples/06-boxd/) add another machine-host choice.
+[TypeScript example](examples/06-boxd/) add another machine-host choice. The
+[parity comparison](docs/provider-parity-benchmarks.md) covers both runtimes,
+interactive access and source-deleted R2 filesystem/process recovery.
 These additions are not in the published 0.1.1 package.
 
 ## Why use it?

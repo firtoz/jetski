@@ -340,9 +340,11 @@ export class BoatTransport implements HostTransport {
         );
       }
       return response;
-    } catch {
+    } catch (error) {
+      if (error instanceof HostTransportError) throw error;
       throw new HostTransportError(
         "Boat host control failed; remote completion unknown",
+        { provider: "boat", code: "invalid-receipt" },
       );
     }
   }

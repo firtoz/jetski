@@ -1,0 +1,382 @@
+{
+  "date": "2026-11-05",
+  "sourcePreview": true,
+  "publishedPackageUnchanged": "0.1.1",
+  "workload": {
+    "cpus": 1,
+    "memoryMb": 512,
+    "blobBytes": 4194304,
+    "cyclesPerArm": 5,
+    "store": "R2",
+    "network": "public-egress"
+  },
+  "arms": [
+    {
+      "provider": "boxd",
+      "runtime": "podman",
+      "createMs": 37100.299148,
+      "rows": [
+        {
+          "n": 1,
+          "resumeMs": 2510.3325620000105,
+          "workMs": 370.3075539999991,
+          "saveMs": 5015.251195999997,
+          "cycleMs": 8610.43645600001,
+          "requests": 28,
+          "putBytes": 965648,
+          "getBytes": 965648
+        },
+        {
+          "n": 2,
+          "resumeMs": 2007.520676,
+          "workMs": 335.20434500000556,
+          "saveMs": 4064.040672000003,
+          "cycleMs": 7109.38722199999,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 3,
+          "resumeMs": 2760.166385999997,
+          "workMs": 362.4679860000033,
+          "saveMs": 4510.628900000011,
+          "cycleMs": 8337.082636000006,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 4,
+          "resumeMs": 2765.549708999999,
+          "workMs": 318.43554200000654,
+          "saveMs": 5751.180999999997,
+          "cycleMs": 9510.385846000005,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 5,
+          "resumeMs": 2008.1928500000067,
+          "workMs": 361.3527839999879,
+          "saveMs": 4526.245545999991,
+          "cycleMs": 7556.127637000012,
+          "requests": 28,
+          "putBytes": 965649,
+          "getBytes": 965649
+        }
+      ],
+      "median": {
+        "resumeMs": 2510.3325620000105,
+        "saveMs": 4526.245545999991,
+        "cycleMs": 8337.082636000006
+      },
+      "interactive": {
+        "terminalInput": true,
+        "terminalResize": true,
+        "terminalSignal": true,
+        "binaryTcpBytes": 512,
+        "verifiedStreamClosure": true
+      },
+      "sshGateway": true,
+      "previews": {
+        "https": true,
+        "wssBinaryBytes": 6,
+        "unauthenticatedDenied": true,
+        "providerCredentialsStripped": true
+      },
+      "metadataDenied": true,
+      "nativeMode": "ram",
+      "nativeWakeMs": 3261.481382999991,
+      "memoryReplacementExact": null,
+      "replacementMs": null,
+      "replacementIncludesHarnessInterruption": false,
+      "originalOutputExact": null
+    },
+    {
+      "provider": "boat",
+      "runtime": "podman",
+      "createMs": 54642.511301,
+      "rows": [
+        {
+          "n": 1,
+          "resumeMs": 4018.1668219999992,
+          "workMs": 943.8769840000023,
+          "saveMs": 5089.485486999998,
+          "cycleMs": 11968.784300000014,
+          "requests": 28,
+          "putBytes": 965648,
+          "getBytes": 965648
+        },
+        {
+          "n": 2,
+          "resumeMs": 2762.481020999985,
+          "workMs": 976.3360600000015,
+          "saveMs": 5572.116410999995,
+          "cycleMs": 11251.891687999974,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 3,
+          "resumeMs": 3260.144234999985,
+          "workMs": 794.6353989999916,
+          "saveMs": 5266.134735,
+          "cycleMs": 10995.803687000007,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 4,
+          "resumeMs": 3515.9924460000184,
+          "workMs": 908.447845000017,
+          "saveMs": 5566.263674999995,
+          "cycleMs": 11921.443522000016,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 5,
+          "resumeMs": 3517.5664270000125,
+          "workMs": 967.8335599999991,
+          "saveMs": 5531.810114000022,
+          "cycleMs": 11856.447966000007,
+          "requests": 28,
+          "putBytes": 965649,
+          "getBytes": 965649
+        }
+      ],
+      "median": {
+        "resumeMs": 3515.9924460000184,
+        "saveMs": 5531.810114000022,
+        "cycleMs": 11856.447966000007
+      },
+      "interactive": {
+        "terminalInput": true,
+        "terminalResize": true,
+        "terminalSignal": true,
+        "binaryTcpBytes": 512,
+        "verifiedStreamClosure": true
+      },
+      "sshGateway": true,
+      "previews": {
+        "https": true,
+        "wssBinaryBytes": 6,
+        "unauthenticatedDenied": true,
+        "providerCredentialsStripped": true
+      },
+      "metadataDenied": true,
+      "nativeMode": null,
+      "nativeWakeMs": null,
+      "memoryReplacementExact": null,
+      "replacementMs": null,
+      "replacementIncludesHarnessInterruption": false,
+      "originalOutputExact": null
+    },
+    {
+      "provider": "boat",
+      "runtime": "gvisor",
+      "createMs": 68203.636611,
+      "rows": [
+        {
+          "n": 1,
+          "resumeMs": 3017.038659999991,
+          "workMs": 1022.9732420000073,
+          "saveMs": 4774.970904999995,
+          "cycleMs": 10797.816212999984,
+          "requests": 28,
+          "putBytes": 965648,
+          "getBytes": 965648
+        },
+        {
+          "n": 2,
+          "resumeMs": 3264.233984999999,
+          "workMs": 925.6320989999804,
+          "saveMs": 4524.53637300001,
+          "cycleMs": 10707.674213999999,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 3,
+          "resumeMs": 3511.4828689999995,
+          "workMs": 921.2735070000053,
+          "saveMs": 5402.772679999995,
+          "cycleMs": 11798.91861599998,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 4,
+          "resumeMs": 2765.037811999995,
+          "workMs": 784.0070600000035,
+          "saveMs": 5023.572970000008,
+          "cycleMs": 10520.42764400001,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 5,
+          "resumeMs": 3572.1167469999928,
+          "workMs": 913.506217999995,
+          "saveMs": 4595.873973999987,
+          "cycleMs": 11020.880840999976,
+          "requests": 28,
+          "putBytes": 965649,
+          "getBytes": 965649
+        }
+      ],
+      "median": {
+        "resumeMs": 3264.233984999999,
+        "saveMs": 4774.970904999995,
+        "cycleMs": 10797.816212999984
+      },
+      "interactive": {
+        "terminalInput": true,
+        "terminalResize": true,
+        "terminalSignal": true,
+        "binaryTcpBytes": 512,
+        "verifiedStreamClosure": true
+      },
+      "sshGateway": true,
+      "previews": {
+        "https": true,
+        "wssBinaryBytes": 6,
+        "unauthenticatedDenied": true,
+        "providerCredentialsStripped": true
+      },
+      "metadataDenied": true,
+      "nativeMode": null,
+      "nativeWakeMs": null,
+      "memoryReplacementExact": true,
+      "replacementMs": 95027.49637100002,
+      "replacementIncludesHarnessInterruption": false,
+      "originalOutputExact": true
+    },
+    {
+      "provider": "boxd",
+      "runtime": "gvisor",
+      "createMs": 38635.354783,
+      "rows": [
+        {
+          "n": 1,
+          "resumeMs": 2264.821186000001,
+          "workMs": 390.4266110000026,
+          "saveMs": 4792.550271999993,
+          "cycleMs": 8543.330316000007,
+          "requests": 28,
+          "putBytes": 965648,
+          "getBytes": 965648
+        },
+        {
+          "n": 2,
+          "resumeMs": 2516.014790999994,
+          "workMs": 360.1324959999911,
+          "saveMs": 4512.962104000006,
+          "cycleMs": 8471.524946999998,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 3,
+          "resumeMs": 2012.9690559999872,
+          "workMs": 352.89497100000153,
+          "saveMs": 4011.7560410000006,
+          "cycleMs": 7342.493654000005,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 4,
+          "resumeMs": 1762.783241000012,
+          "workMs": 360.112930999996,
+          "saveMs": 5109.385081,
+          "cycleMs": 8186.95683000001,
+          "requests": 28,
+          "putBytes": 965646,
+          "getBytes": 965646
+        },
+        {
+          "n": 5,
+          "resumeMs": 2511.5055120000034,
+          "workMs": 398.8898659999977,
+          "saveMs": 4764.128518999991,
+          "cycleMs": 8784.948860999997,
+          "requests": 28,
+          "putBytes": 965649,
+          "getBytes": 965649
+        }
+      ],
+      "median": {
+        "resumeMs": 2264.821186000001,
+        "saveMs": 4764.128518999991,
+        "cycleMs": 8471.524946999998
+      },
+      "interactive": {
+        "terminalInput": true,
+        "terminalResize": true,
+        "terminalSignal": true,
+        "binaryTcpBytes": 512,
+        "verifiedStreamClosure": true
+      },
+      "sshGateway": true,
+      "previews": {
+        "https": true,
+        "wssBinaryBytes": 6,
+        "unauthenticatedDenied": true,
+        "providerCredentialsStripped": true
+      },
+      "metadataDenied": true,
+      "nativeMode": "disk",
+      "nativeWakeMs": 3264.7105940000038,
+      "memoryReplacementExact": true,
+      "replacementMs": 109806,
+      "replacementIncludesHarnessInterruption": true,
+      "originalOutputExact": true
+    }
+  ],
+  "limitations": [
+    "Provider physical machine sizes differ; same workload limits.",
+    "Five samples per arm; not provider-wide reliability or universal speed claims.",
+    "Portable replacement latency on boxd includes a preserved harness interruption and recovery.",
+    "Original baseline uses a different lighter workload."
+  ],
+  "cleanup": {
+    "ownedActiveMachines": 0,
+    "allOwnedProviderAbsenceConfirmed": true,
+    "temporaryKeyRevoked": true,
+    "privateCredentialCopiesRemoved": true
+  },
+  "cost": {
+    "currencyConversionPerformed": false,
+    "providers": {
+      "boxd": {
+        "physicalStartsIncludingFailures": 5,
+        "physicalSecondsFromIntentToConfirmedAbsence": 1702.592,
+        "failedSourceAttempts": 2,
+        "currency": "EUR",
+        "meteredEstimate": 0.012817,
+        "meteringComplete": false,
+        "fullCapacityCpuRamEstimateExcludingDisk": 0.08229194666666667
+      },
+      "boat": {
+        "physicalStartsIncludingFailures": 5,
+        "physicalSecondsFromIntentToConfirmedAbsence": 1129.017,
+        "failedSourceAttempts": 2,
+        "currency": "USD",
+        "smallComputeValueAtPublishedRate": 0.005645085,
+        "computeValueIsWalletDebit": false,
+        "startFeesNotInferredFromAccountDeltas": true
+      }
+    }
+  }
+}

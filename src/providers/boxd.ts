@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
-import type { HostProvider, StateStore } from "../core/contracts.js";
+import type {
+  HostObservation,
+  HostProvider,
+  StateStore,
+} from "../core/contracts.js";
 import { identifier } from "../core/contracts.js";
+import { HostTransportError } from "../core/transport.js";
+import { BoxdIdlePower } from "./boxd-power.js";
 
 /** The SDK is supplied by the application; importing this adapter loads no SDK. */
 export type BoxdMachine = {
@@ -28,6 +34,7 @@ export interface BoxdClient {
         vcpu: number;
         memory: string;
         autoSuspendTimeout: number;
+        autoHibernateTimeout: number;
         ssh: boolean;
       };
     }): Promise<BoxdMachine>;
@@ -37,6 +44,10 @@ export interface BoxdClient {
       id: string,
       options?: { timeout?: number; pollInterval?: number },
     ): Promise<BoxdMachine>;
+    pause?(id: string): Promise<unknown>;
+    resume?(id: string): Promise<unknown>;
+    hibernate?(id: string): Promise<void>;
+    wake?(id: string): Promise<void>;
     streamExec(
       id: string,
       input: { command: string[]; cwd?: string },
@@ -55,6 +66,7 @@ export function boxdNotFound(error: unknown) {
   return error instanceof Error && error.name === "NotFoundError";
 }
 export class BoxdHostProvider implements HostProvider {
+  readonly idlePower: BoxdIdlePower;
   constructor(
     private state: StateStore,
     private client: BoxdClient,
@@ -67,10 +79,13 @@ export class BoxdHostProvider implements HostProvider {
     } = {},
   ) {
     identifier(poolId);
+    this.idlePower = new BoxdIdlePower(state, client, poolId, (host) =>
+      this.owned(host, true),
+    );
     const cpu = options.vcpu ?? 2;
     if (
       ![1, 2, 4, 8].includes(cpu) ||
-      (options.memory && options.memory !== `${cpu * 4}G`)
+      (options.memory !== undefined && options.memory !== `${cpu * 4}G`)
     )
       throw Error("Unsupported boxd machine size");
   }
@@ -80,6 +95,22 @@ export class BoxdHostProvider implements HostProvider {
       architecture: "x86_64",
       rootlessPodman: true,
       maxLifetimeMs: 24 * 60 * 60_000,
+      features: {
+        evidence: "adapter-declaration",
+        runtimes: ["podman", "gvisor"],
+        networkModes: ["none", "egress", "public-egress"],
+        storageModes: ["default", "fuse-overlayfs"],
+        nativeIdleModes: [
+          ...(this.client.machines.pause && this.client.machines.resume
+            ? ["ram" as const]
+            : []),
+          ...(this.client.machines.hibernate && this.client.machines.wake
+            ? ["disk" as const]
+            : []),
+        ],
+        hostStreams: true,
+        portableMemoryRuntimes: ["gvisor"],
+      },
     } as const;
   }
   private key(operation: string) {
@@ -94,8 +125,13 @@ export class BoxdHostProvider implements HostProvider {
     identifier(input.operationId);
     const key = this.key(input.operationId),
       now = this.options.now?.() ?? Date.now();
-    if (!Number.isSafeInteger(input.expiresAt) || input.expiresAt <= now)
-      throw Error("Expired boxd allocation");
+    const lifetime = input.expiresAt - now;
+    if (
+      !Number.isSafeInteger(input.expiresAt) ||
+      lifetime < 1000 ||
+      lifetime > this.capabilities().maxLifetimeMs
+    )
+      throw Error("Invalid boxd allocation lifetime");
     const name =
       "jetski-" +
       createHash("sha256")
@@ -140,6 +176,7 @@ export class BoxdHostProvider implements HostProvider {
           vcpu: this.options.vcpu ?? 2,
           memory: this.options.memory ?? `${(this.options.vcpu ?? 2) * 4}G`,
           autoSuspendTimeout: 0,
+          autoHibernateTimeout: 0,
           ssh: false,
         },
       });
@@ -171,22 +208,27 @@ export class BoxdHostProvider implements HostProvider {
     )
       throw Error("Boxd host ownership mismatch");
   }
-  async owned(id: string) {
+  async owned(id: string, allowRetired = false) {
     identifier(id);
     return this.state.transaction((tx) => {
       const operation = tx.get<string>(`boxd/${this.poolId}/host/${id}`),
         record = operation
           ? tx.get<BoxdAllocation>(this.key(operation))
           : undefined;
-      if (!record || record.id !== id || record.phase === "retired")
+      if (
+        !record ||
+        record.id !== id ||
+        (!allowRetired &&
+          (record.phase === "retired" ||
+            record.expiresAt <= (this.options.now?.() ?? Date.now())))
+      )
         throw Error("Boxd host not actively owned");
       return record;
     });
   }
-  async inspect(
-    id: string,
-  ): Promise<{ state: "ready" | "unknown" | "absent" }> {
-    const record = await this.owned(id);
+  async inspect(id: string): Promise<HostObservation> {
+    const record = await this.owned(id, true);
+    if (record.phase === "retired") return { state: "absent" };
     let machine: BoxdMachine;
     try {
       machine = await this.client.machines.get(id);
@@ -196,11 +238,19 @@ export class BoxdHostProvider implements HostProvider {
     }
     this.validate(machine, record);
     if (machine.status !== "running") return { state: "unknown" };
-    await this.client.machines.waitUntilReady(id, {
-      timeout: 30000,
-      pollInterval: 500,
-    });
-    await this.bootstrap(id);
+    try {
+      await this.client.machines.waitUntilReady(id, {
+        timeout: 30000,
+        pollInterval: 500,
+      });
+      await this.bootstrap(id);
+    } catch (error) {
+      if (!(error instanceof HostTransportError)) throw error;
+      return {
+        state: "unknown",
+        ...(error.details ? { diagnostic: error.details } : {}),
+      };
+    }
     return { state: "ready" };
   }
   async retire(id: string, allocationId: string) {

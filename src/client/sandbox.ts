@@ -6,7 +6,11 @@ import {
 import type { Sandbox } from "../core/manager.js";
 import { MAX_FILE_UPLOAD_BYTES } from "../core/uploads.js";
 import type { JetskiClient } from "../sdk.js";
-import { observationDelay } from "./wait.js";
+import {
+  OPERATION_WAIT_LIMITS,
+  observationDelay,
+  observeOperation,
+} from "./wait.js";
 
 export type SandboxApi = Pick<
   JetskiClient,
@@ -106,13 +110,15 @@ export class JetskiOperationError extends Error {
   }
 }
 
-const DEFAULT_WAIT_MS = 10 * 60_000;
 export function sessionDeadline(
   options: OperationOptions,
   defaults: SessionOptions,
 ): AbortSignal {
-  const ms = options.waitTimeoutMs ?? defaults.waitTimeoutMs ?? DEFAULT_WAIT_MS;
-  if (!Number.isSafeInteger(ms) || ms < 1 || ms > 60 * 60_000)
+  const ms =
+    options.waitTimeoutMs ??
+    defaults.waitTimeoutMs ??
+    OPERATION_WAIT_LIMITS.defaultMs;
+  if (!Number.isSafeInteger(ms) || ms < 1 || ms > OPERATION_WAIT_LIMITS.maxMs)
     throw Error("Invalid observation timeout");
   const timeout = AbortSignal.timeout(ms);
   return options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
@@ -220,6 +226,17 @@ export class SandboxSession {
   /** Explicit low-level IDs/cursors for advanced examples. No mutations are retried. */
   raw(options: OperationOptions = {}): SandboxApi {
     return this.clientFor(sessionDeadline(options, this.options));
+  }
+  /** Reconnect to an existing operation ID without admitting another operation. */
+  waitForOperation(
+    id: string,
+    options: Omit<OperationOptions, "operationId"> = {},
+  ) {
+    const signal = sessionDeadline(options, this.options);
+    const client = this.clientFor(signal);
+    return observeOperation(this.id, id, () => client.operation(this.id, id), {
+      signal,
+    });
   }
   inspect(options: OperationOptions = {}) {
     return this.raw(options).getSandbox(this.id);

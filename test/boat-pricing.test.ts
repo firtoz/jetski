@@ -30,6 +30,7 @@ test("Boat pricing scales host size and strips unrelated account data", async ()
       signal: new AbortController().signal,
     });
     assert.deepEqual(quote, {
+      currency: "USD",
       observedAt: 1000,
       validUntil: 301_000,
       computeMicrosPerHour: rate,

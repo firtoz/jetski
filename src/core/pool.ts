@@ -15,6 +15,7 @@ import {
   type IdlePriceQuote,
   idlePriceQuote,
 } from "./host-lifecycle.js";
+import type { HostIdleMode } from "./host-power.js";
 
 export type HostLease = {
   owner: string;
@@ -26,6 +27,11 @@ export type HostLease = {
   generation: number;
 };
 export type PoolSlot = {
+  nativePower?: {
+    mode: HostIdleMode;
+    phase: "sleeping" | "asleep" | "waking";
+    operationId: string;
+  };
   id: string;
   owner: string;
   allocationId: string;
@@ -172,6 +178,82 @@ export class PoolJournal {
       quote: tx.get<IdlePriceQuote>(`${this.prefix()}price/${slot.owner}`),
     });
   }
+  /** Durable admission fences placement across native power network effects. */
+  async claimNativePower(
+    observed: PoolSlot,
+    waking: boolean,
+  ): Promise<PoolSlot | undefined> {
+    return this.state.transaction((tx) => {
+      const slot = tx.get<PoolSlot>(this.slotKey(observed.id));
+      if (
+        !slot ||
+        canonical(slot) !== canonical(observed) ||
+        slot.phase !== "idle" ||
+        slot.lease ||
+        !slot.machineId ||
+        this.drainAt(slot) <= this.now()
+      )
+        return;
+      const queued = tx
+        .scan<Ticket>(`${this.prefix()}ticket/${slot.owner}/`)
+        .some((r) => r.value.phase === "queued");
+      if (waking) {
+        if (!queued || slot.nativePower?.phase !== "asleep") return;
+        const next = {
+          ...slot,
+          nativePower: {
+            ...slot.nativePower,
+            phase: "waking" as const,
+            operationId: this.newId(),
+          },
+        };
+        tx.put(this.slotKey(slot.id), next);
+        return next;
+      }
+      const policy = slot.lifecycle?.nativeIdle;
+      if (
+        queued ||
+        slot.nativePower ||
+        !policy ||
+        slot.idleSince === null ||
+        slot.idleSince + policy.afterMs > this.now() ||
+        this.idleRetireAt(slot) <= this.now()
+      )
+        return;
+      const next = {
+        ...slot,
+        nativePower: {
+          mode: policy.mode,
+          phase: "sleeping" as const,
+          operationId: this.newId(),
+        },
+      };
+      tx.put(this.slotKey(slot.id), next);
+      return next;
+    });
+  }
+  async finishNativePower(observed: PoolSlot): Promise<void> {
+    await this.state.transaction((tx) => {
+      const slot = tx.get<PoolSlot>(this.slotKey(observed.id));
+      if (
+        !slot ||
+        canonical(slot) !== canonical(observed) ||
+        slot.phase !== "idle" ||
+        slot.lease ||
+        !slot.nativePower
+      )
+        throw Error("Native power receipt fenced");
+      if (slot.nativePower.phase === "sleeping")
+        tx.put(this.slotKey(slot.id), {
+          ...slot,
+          nativePower: { ...slot.nativePower, phase: "asleep" },
+        });
+      else if (slot.nativePower.phase === "waking") {
+        const { nativePower: _power, ...awake } = slot;
+        tx.put(this.slotKey(slot.id), awake);
+      } else throw Error("Native power transition not admitted");
+    });
+  }
   async nextMaintenanceAt(owner: string): Promise<number | null> {
     return this.state.transaction((tx) => {
       const waiting = tx
@@ -180,7 +262,20 @@ export class PoolJournal {
       const deadlines = this.slots(tx, owner)
         .filter((slot) => slot.phase !== "retired")
         .map((slot) => {
-          if (slot.phase === "idle" && !waiting) return this.idleRetireAt(slot);
+          if (
+            slot.nativePower &&
+            (slot.nativePower.phase !== "asleep" || waiting)
+          )
+            return this.now() + HOST_LIFECYCLE_LIMITS.maintenanceRetryMs;
+          if (slot.phase === "idle" && !waiting) {
+            const sleep = slot.lifecycle?.nativeIdle;
+            if (sleep && !slot.nativePower && slot.idleSince !== null)
+              return Math.min(
+                this.idleRetireAt(slot),
+                slot.idleSince + sleep.afterMs,
+              );
+            return this.idleRetireAt(slot);
+          }
           return this.drainAt(slot);
         });
       return deadlines.length
@@ -442,6 +537,7 @@ export class PoolJournal {
       const slot = this.slots(tx, owner).find(
         (slot) =>
           slot.phase === "idle" &&
+          !slot.nativePower &&
           (readySlots === undefined || readySlots.has(slot.id)) &&
           this.drainAt(slot) > this.now(),
       );

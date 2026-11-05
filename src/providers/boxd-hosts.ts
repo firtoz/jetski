@@ -6,6 +6,8 @@ import {
 } from "../transport/boxd.js";
 import { type BoxdClient, BoxdHostProvider } from "./boxd.js";
 import { OwnedMachineBootstrap } from "./machine-bootstrap.js";
+import type { MachineRuntimeOptions } from "./machine-options.js";
+import { machineRuntimeOptions } from "./machine-options.js";
 
 /** Optional SDK injection. Build the client with maxRetries:0 and an explicit key.
  * The identity must identify one stable organization/endpoint/region namespace. */
@@ -16,10 +18,19 @@ export function boxdHostFactory(
     vcpu?: number;
     memory?: string;
     close?: () => void | Promise<void>;
-  },
+  } & MachineRuntimeOptions,
 ): NodeProvider {
+  const policy = machineRuntimeOptions(options);
+  options = { ...options, ...policy };
   return {
     kind: "factory",
+    configuration: JSON.parse(
+      JSON.stringify({
+        vcpu: options.vcpu ?? 2,
+        memory: options.memory ?? `${(options.vcpu ?? 2) * 4}G`,
+        ...policy,
+      }),
+    ),
     id: options.id,
     create({ state, poolId, approvedImages }): NodeHostAdapters {
       let provider: BoxdHostProvider;
@@ -32,6 +43,7 @@ export function boxdHostFactory(
         poolId,
         [...approvedImages],
         "boxd",
+        options,
       );
       provider = new BoxdHostProvider(
         state,

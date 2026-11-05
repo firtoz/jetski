@@ -182,3 +182,11 @@ modules remain available through their explicit package exports. PTYs, previews,
 TCP tunnels and memory checkpoints retain their capability, authentication and
 network-policy requirements. A port permission is not a gateway, and filesystem
 `resume()` never silently substitutes for a requested memory restore.
+
+## Observe interrupted operations
+
+Use `sandbox.waitForOperation(savedOperationId, { waitTimeoutMs, signal })` to
+observe existing work after reconnecting. The explicit SDK exposes the same helper
+with a sandbox ID. Neither repeats the original mutation. Failed/uncertain outcomes
+remain typed errors, and observation timeout does not cancel work. See
+[failure recovery](failure-recovery.md) for diagnostics and quarantine limits.

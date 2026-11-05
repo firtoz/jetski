@@ -113,3 +113,65 @@ test("legacy idle records retain original fixed semantics under a new operator p
   now += 10 * minute;
   assert.equal((await next.retireIdle(slot.id)).phase, "quarantined");
 });
+
+test("native sleep admission survives restart, blocks assignment and fences stale power receipts", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  let now = 1000;
+  const lifecycle: HostLifecycle = {
+    lifetimeMs: 3600000,
+    drainMs: 60000,
+    idle: { mode: "fixed", timeoutMs: 600000 },
+    nativeIdle: { mode: "disk", afterMs: 1000 },
+  };
+  const pool = new PoolJournal(
+    state,
+    "pool",
+    () => now,
+    randomUUID,
+    1,
+    lifecycle,
+  );
+  const first = await assigned(pool);
+  assert.equal(
+    await pool.claimNativePower(first.slot, false),
+    undefined,
+    "active workload must never sleep",
+  );
+  await pool.transition(first.lease, "quiescing");
+  await pool.release(first.lease);
+  let idle = (await pool.inspect("alice"))[0]!;
+  assert.equal(
+    await pool.claimNativePower(idle, false),
+    undefined,
+    "respect delay",
+  );
+  now += 1000;
+  const pending = (await pool.claimNativePower(idle, false))!;
+  assert.equal(pending.nativePower?.phase, "sleeping");
+  const restarted = new PoolJournal(
+    state,
+    "pool",
+    () => now,
+    randomUUID,
+    1,
+    lifecycle,
+  );
+  await restarted.enqueue("alice", randomUUID(), randomUUID(), null);
+  assert.equal(await restarted.assign("alice"), undefined);
+  assert.equal(
+    await restarted.reserve("alice"),
+    undefined,
+    "pending power consumes existing capacity",
+  );
+  await restarted.finishNativePower(pending);
+  idle = (await restarted.inspect("alice"))[0]!;
+  assert.equal(idle.nativePower?.phase, "asleep");
+  const waking = (await restarted.claimNativePower(idle, true))!;
+  await assert.rejects(restarted.finishNativePower(pending), /fenced/);
+  assert.equal(await restarted.assign("alice"), undefined);
+  await restarted.finishNativePower(waking);
+  const second = (await restarted.assign("alice"))!;
+  assert.equal(second.lease.machineId, first.lease.machineId);
+  assert.equal(second.lease.generation, first.lease.generation + 1);
+});

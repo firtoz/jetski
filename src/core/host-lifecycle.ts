@@ -1,4 +1,5 @@
 import { DEFAULTS } from "./contracts.js";
+import { HOST_IDLE_MODES, type HostIdleMode } from "./host-power.js";
 
 export const HOST_LIFECYCLE_LIMITS = Object.freeze({
   maxLifetimeMs: 24 * 60 * 60_000,
@@ -11,10 +12,15 @@ export const HOST_LIFECYCLE_LIMITS = Object.freeze({
   priceRetryMs: 30_000,
 });
 
+export const IDLE_CURRENCIES = ["USD", "EUR"] as const;
+export type IdleCurrency = (typeof IDLE_CURRENCIES)[number];
+
 export type IdleRetention =
   | { mode: "fixed"; timeoutMs: number }
   | {
       mode: "adaptive";
+      /** Omitted persisted v1 policies are USD. Never converted implicitly. */
+      currency?: IdleCurrency;
       minMs: number;
       maxMs: number;
       fallbackMs: number;
@@ -23,14 +29,18 @@ export type IdleRetention =
 
 /** Operator configuration. Provider limits are checked independently. */
 export type HostLifecycle = {
+  /** Opt-in native host sleep, only after durable release. */
+  nativeIdle?: { mode: HostIdleMode; afterMs: number };
   lifetimeMs: number;
   drainMs: number;
   idle: IdleRetention;
 };
 
 /** A caller supplies a bounded effective quote outside the state transaction.
- * Money is integer millionths of a dollar; no credential/network dependency. */
+ * Money is integer millionths of the declared currency; no credential/network dependency. */
 export type IdlePriceQuote = {
+  /** Missing in persisted v1 quotes means USD. */
+  currency?: IdleCurrency;
   observedAt: number;
   validUntil: number;
   computeMicrosPerHour: number;
@@ -71,6 +81,16 @@ export function hostLifecycle(input?: HostLifecycle): HostLifecycle {
     drainMs: DEFAULTS.hostDrainMs,
     idle: { mode: "fixed", timeoutMs: DEFAULTS.idleMs },
   };
+  if (value.nativeIdle !== undefined) {
+    if (!HOST_IDLE_MODES.includes(value.nativeIdle.mode))
+      throw Error("Invalid native idle mode");
+    integer(
+      value.nativeIdle.afterMs,
+      0,
+      HOST_LIFECYCLE_LIMITS.maxIdleMs,
+      "native idle delay",
+    );
+  }
   const lifetimeMs = integer(
     value.lifetimeMs,
     1,
@@ -84,6 +104,7 @@ export function hostLifecycle(input?: HostLifecycle): HostLifecycle {
   );
   if (value.idle.mode === "fixed") {
     return {
+      ...(value.nativeIdle ? { nativeIdle: { ...value.nativeIdle } } : {}),
       lifetimeMs,
       drainMs,
       idle: {
@@ -94,13 +115,22 @@ export function hostLifecycle(input?: HostLifecycle): HostLifecycle {
   }
   if (value.idle.mode !== "adaptive")
     throw Error("Invalid host lifecycle idle mode");
+  if (
+    value.idle.currency !== undefined &&
+    !IDLE_CURRENCIES.includes(value.idle.currency)
+  )
+    throw Error("Invalid idle budget currency");
   const minMs = integer(value.idle.minMs, 0, maxIdle, "minimum idle");
   const maxMs = integer(value.idle.maxMs, minMs, maxIdle, "maximum idle");
   return {
+    ...(value.nativeIdle ? { nativeIdle: { ...value.nativeIdle } } : {}),
     lifetimeMs,
     drainMs,
     idle: {
       mode: "adaptive",
+      ...(value.idle.currency === undefined
+        ? {}
+        : { currency: value.idle.currency }),
       minMs,
       maxMs,
       fallbackMs: integer(value.idle.fallbackMs, minMs, maxMs, "fallback idle"),
@@ -115,6 +145,8 @@ export function hostLifecycle(input?: HostLifecycle): HostLifecycle {
 }
 
 export function idlePriceQuote(input: IdlePriceQuote): IdlePriceQuote {
+  if (input.currency !== undefined && !IDLE_CURRENCIES.includes(input.currency))
+    throw Error("Invalid idle quote currency");
   integer(input.observedAt, 0, Number.MAX_SAFE_INTEGER, "quote time");
   integer(
     input.validUntil,
@@ -132,6 +164,7 @@ export function idlePriceQuote(input: IdlePriceQuote): IdlePriceQuote {
   ] as const)
     integer(input[key], 0, HOST_LIFECYCLE_LIMITS.maxMoneyMicros, key);
   return {
+    ...(input.currency === undefined ? {} : { currency: input.currency }),
     observedAt: input.observedAt,
     validUntil: input.validUntil,
     computeMicrosPerHour: input.computeMicrosPerHour,
@@ -181,7 +214,12 @@ export function decideIdleRetention(input: {
   const idle = policy.idle;
   const quote =
     input.quote === undefined ? undefined : idlePriceQuote(input.quote);
-  if (!quote || quote.observedAt > start || quote.validUntil <= start)
+  if (
+    !quote ||
+    (quote.currency ?? "USD") !== (idle.currency ?? "USD") ||
+    quote.observedAt > start ||
+    quote.validUntil <= start
+  )
     return {
       idleSince: start,
       retireAt: Math.min(drainAt, start + idle.fallbackMs),

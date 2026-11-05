@@ -1,0 +1,33 @@
+{
+  "dataDirectory": "./.jetski/server",
+  "poolId": "example",
+  "approvedImages": [
+    "docker.io/library/alpine@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f"
+  ],
+  "port": 8788,
+  "principals": [
+    {
+      "owner": "example",
+      "tokenEnv": "JETSKI_API_TOKEN"
+    }
+  ],
+  "hostProvider": {
+    "kind": "boxd",
+    "tokenEnv": "BOXD_API_KEY",
+    "namespace": "your-org-fra",
+    "region": "fra",
+    "networkMode": "none",
+    "storageMode": "default"
+  },
+  "storage": {
+    "kind": "local"
+  },
+  "hostLifecycle": {
+    "lifetimeMs": 3600000,
+    "drainMs": 300000,
+    "idle": {
+      "mode": "fixed",
+      "timeoutMs": 600000
+    }
+  }
+}

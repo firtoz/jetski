@@ -2490,6 +2490,58 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "Adapter allocation capability; operator lifecycle policy may impose a lower limit."
+              },
+              "features": {
+                "type": "object",
+                "description": "Adapter declarations, not observed host readiness or hosted workload qualification. Query sandbox runtime capabilities for observations.",
+                "additionalProperties": false,
+                "required": [
+                  "evidence",
+                  "runtimes",
+                  "networkModes",
+                  "storageModes",
+                  "nativeIdleModes",
+                  "hostStreams",
+                  "portableMemoryRuntimes"
+                ],
+                "properties": {
+                  "evidence": {
+                    "const": "adapter-declaration"
+                  },
+                  "runtimes": {
+                    "type": "array",
+                    "items": {
+                      "enum": ["podman", "gvisor"]
+                    }
+                  },
+                  "networkModes": {
+                    "type": "array",
+                    "items": {
+                      "enum": ["none", "egress", "public-egress"]
+                    }
+                  },
+                  "storageModes": {
+                    "type": "array",
+                    "items": {
+                      "enum": ["default", "fuse-overlayfs"]
+                    }
+                  },
+                  "nativeIdleModes": {
+                    "type": "array",
+                    "items": {
+                      "enum": ["ram", "disk"]
+                    }
+                  },
+                  "hostStreams": {
+                    "type": "boolean"
+                  },
+                  "portableMemoryRuntimes": {
+                    "type": "array",
+                    "items": {
+                      "enum": ["gvisor"]
+                    }
+                  }
+                }
               }
             },
             "required": ["kind", "architecture", "rootlessPodman"],

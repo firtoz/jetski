@@ -24,7 +24,17 @@ export {
 } from "./client/sandbox.js";
 
 import { TerminalAttachment } from "./client/terminal.js";
-import { observationDelay } from "./client/wait.js";
+import {
+  type OperationWaitOptions,
+  observationDelay,
+  observeOperation,
+} from "./client/wait.js";
+
+export {
+  OperationOutcomeError,
+  type OperationWaitOptions,
+} from "./client/wait.js";
+
 import type {
   CheckpointPage,
   CheckpointSummary,
@@ -649,9 +659,31 @@ export class JetskiClient {
       { pin, retain, operationId },
     );
   }
-  operation(sandbox: string, id: string): Promise<Operation> {
+  /** Resume observation of an existing operation. Never repeats its POST. */
+  waitForOperation(
+    sandbox: string,
+    id: string,
+    options: OperationWaitOptions = {},
+  ): Promise<Operation> {
+    identifier(sandbox);
+    identifier(id);
+    return observeOperation(
+      sandbox,
+      id,
+      (signal) => this.operation(sandbox, id, signal),
+      options,
+    );
+  }
+  operation(
+    sandbox: string,
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<Operation> {
     return this.request(
       `/v1/sandboxes/${identifier(sandbox)}/operations/${identifier(id)}`,
+      "GET",
+      undefined,
+      signal,
     );
   }
 }

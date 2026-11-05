@@ -1,5 +1,6 @@
 import {
   canonical,
+  type HostObservation,
   type HostProvider,
   identifier,
   type Json,
@@ -10,6 +11,7 @@ import {
   HOST_IMPORT_FILE_BYTES,
   HOST_PROTOCOL_VERSION,
   type HostTransport,
+  HostTransportError,
 } from "../core/transport.js";
 import { sequentialCheckpointDownload } from "../transport/checkpoint-download.js";
 
@@ -388,6 +390,15 @@ export class BoatHostProvider implements HostProvider {
       architecture: "x86_64",
       rootlessPodman: true,
       maxLifetimeMs: HOST_LIFECYCLE_LIMITS.maxLifetimeMs,
+      features: {
+        evidence: "adapter-declaration",
+        runtimes: ["podman", "gvisor"],
+        networkModes: ["none", "egress", "public-egress"],
+        storageModes: ["default", "fuse-overlayfs"],
+        nativeIdleModes: [],
+        hostStreams: true,
+        portableMemoryRuntimes: ["gvisor"],
+      },
     } as const;
   }
   async allocate(input: {
@@ -478,9 +489,7 @@ export class BoatHostProvider implements HostProvider {
       return { key, allocation };
     });
   }
-  async inspect(
-    id: string,
-  ): Promise<{ state: "ready" | "starting" | "absent" | "unknown" }> {
+  async inspect(id: string): Promise<HostObservation> {
     const { allocation } = await this.owned(id);
     if (allocation.retired) return { state: "absent" };
     try {
@@ -509,8 +518,13 @@ export class BoatHostProvider implements HostProvider {
       )
         return { state: "ready" };
       return { state: "unknown" };
-    } catch {
-      return { state: "unknown" };
+    } catch (error) {
+      return {
+        state: "unknown",
+        ...(error instanceof HostTransportError && error.details
+          ? { diagnostic: error.details }
+          : {}),
+      };
     }
   }
   async retire(id: string, allocationId: string): Promise<void> {

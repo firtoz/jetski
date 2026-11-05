@@ -6,6 +6,8 @@ import {
   validateRuntimePolicy,
   validateWorkloadInit,
 } from "../core/runtime-policy.js";
+import { validateBoxdHostConfig } from "../providers/boxd-config.js";
+import { machineRuntimeOptions } from "../providers/machine-options.js";
 
 export type ServerConfig = {
   dataDirectory: string;
@@ -93,7 +95,7 @@ export function serverConfig(value: unknown): ServerConfig {
     if (Object.keys(p).some((k) => !["owner", "tokenEnv"].includes(k)))
       throw Error("Unknown principal field");
   }
-  if (!c.hostProvider || !["boat", "ssh"].includes(c.hostProvider.kind))
+  if (!c.hostProvider || !["boat", "boxd", "ssh"].includes(c.hostProvider.kind))
     throw Error("Host provider required");
   const exact = (v: object, allowed: string[]) => {
     if (Object.keys(v).some((k) => !allowed.includes(k)))
@@ -105,6 +107,7 @@ export function serverConfig(value: unknown): ServerConfig {
       "tokenEnv",
       "machine",
       "networkMode",
+      "networkFilter",
       "storageMode",
       "runtime",
       "workloadInit",
@@ -128,6 +131,9 @@ export function serverConfig(value: unknown): ServerConfig {
       throw Error("Invalid storage mode");
     validateRuntimePolicy(c.hostProvider.runtime ?? PODMAN_RUNTIME);
     validateWorkloadInit(c.hostProvider.workloadInit);
+    machineRuntimeOptions(c.hostProvider);
+  } else if (c.hostProvider.kind === "boxd") {
+    validateBoxdHostConfig(c.hostProvider);
   } else {
     exact(c.hostProvider, ["kind", "hosts"]);
     if (!Array.isArray(c.hostProvider.hosts) || !c.hostProvider.hosts.length)

@@ -540,3 +540,42 @@ test("provider factories receive the persisted pool and state without allocating
     /Invalid identifier/,
   );
 });
+
+test("readiness unknown preserves queued work and the original physical allocation", async (t) => {
+  const dataDirectory = await directory(t),
+    host = hostFixture();
+  const inspect = host.provider.provider.inspect.bind(host.provider.provider);
+  const allocate = host.provider.provider.allocate.bind(host.provider.provider);
+  const allocations = new Map<string, Awaited<ReturnType<typeof allocate>>>();
+  host.provider.provider.allocate = async (input) => {
+    const existing = allocations.get(input.operationId);
+    if (existing) return existing;
+    const result = await allocate(input);
+    allocations.set(input.operationId, result);
+    return result;
+  };
+  let probes = 0;
+  host.provider.provider.inspect = async (id) => {
+    if (++probes <= 2)
+      return {
+        state: "unknown",
+        diagnostic: { provider: "fixture", code: "transport" },
+      };
+    return inspect(id);
+  };
+  const controller = await openJetski({
+    provider: host.provider,
+    dataDirectory,
+    image,
+    waitTimeoutMs: 5000,
+  });
+  try {
+    const sandbox = await controller.create();
+    assert.equal((await sandbox.inspect()).phase, "running");
+    assert.equal(host.starts, 1);
+    assert.ok(probes >= 3);
+  } finally {
+    await controller.close();
+  }
+  assert.equal(host.hosts.size, 0);
+});

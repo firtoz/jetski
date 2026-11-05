@@ -273,6 +273,14 @@ export class SandboxManager {
     this.state = state;
     const lifecycle = hostLifecycle(options.hostLifecycle);
     this.lifecycle = lifecycle;
+    if (
+      lifecycle.nativeIdle &&
+      (!provider.idlePower ||
+        !provider
+          .capabilities()
+          .features?.nativeIdleModes.includes(lifecycle.nativeIdle.mode))
+    )
+      throw Error("Native host sleep is unsupported by this provider");
     this.idlePriceSource = options.idlePriceSource;
     if (
       this.idlePriceSource &&
@@ -1012,6 +1020,45 @@ export class SandboxManager {
       await this.pool.retired(slot.id);
     }
   }
+  private async reconcileNativeIdle(owner: string): Promise<void> {
+    const power = this.provider.idlePower;
+    if (!power) return;
+    const queued = (await this.list(owner)).some((s) => s.phase === "queued");
+    for (let slot of await this.pool.inspect(owner)) {
+      if (slot.phase !== "idle" || slot.lease || !slot.machineId) continue;
+      if (!slot.nativePower) {
+        if (queued) continue;
+        const admitted = await this.pool.claimNativePower(slot, false);
+        if (!admitted) continue;
+        slot = admitted;
+      } else if (slot.nativePower.phase === "asleep") {
+        if (!queued) continue;
+        const admitted = await this.pool.claimNativePower(slot, true);
+        if (!admitted) continue;
+        slot = admitted;
+      }
+      const transition = slot.nativePower;
+      if (!transition || !slot.machineId) continue;
+      const input = {
+        host: slot.machineId,
+        owner: slot.owner,
+        allocationId: slot.allocationId,
+        operationId: transition.operationId,
+        mode: transition.mode,
+        expiresAt: slot.expiresAt,
+      };
+      const result =
+        transition.phase === "sleeping"
+          ? await power.sleep(input)
+          : await power.wake(input);
+      if (result === "absent") {
+        await this.pool.retireMissingIdle(slot);
+        await this.provider.retire(slot.machineId, slot.allocationId);
+        await this.pool.retired(slot.id);
+      } else if (result === "asleep" || result === "awake")
+        await this.pool.finishNativePower(slot);
+    }
+  }
   /** Pending placement and running receipts survive restarts. Unknown remote
    * effects quarantine the source; they never trigger a second allocation. */
   async reconcile(owner: string): Promise<void> {
@@ -1041,6 +1088,7 @@ export class SandboxManager {
       await this.reconcileCopies(owner);
       await this.reconcileHeldResumes(owner);
       await this.retireIdleHosts(owner);
+      await this.reconcileNativeIdle(owner);
       // Repair admission interrupted between sandbox, operation and queue commits.
       for (const sandbox of await this.list(owner))
         if (sandbox.phase === "queued") {
@@ -1069,6 +1117,7 @@ export class SandboxManager {
         for (const slot of await this.pool.inspect(owner)) {
           if (
             slot.phase !== "idle" ||
+            slot.nativePower ||
             slot.lease ||
             !slot.machineId ||
             this.pool.drainAt(slot) <= this.now()

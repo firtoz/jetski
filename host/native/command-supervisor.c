@@ -65,6 +65,27 @@ struct terminal {
     size_t output_used, output_sent;
 };
 
+/* Some sandbox kernels omit TIOCSIG. Their terminal line discipline still
+ * targets the foreground group atomically when ISIG receives its configured
+ * control character. Never substitute a numeric process-group lookup/kill.
+ * Raw/disabled signal characters are unsupported on that fallback path.
+ */
+static int terminal_signal(int master, int signo) {
+    if (!ioctl(master, TIOCSIG, signo)) return 0;
+    if (errno != ENOTTY && errno != EINVAL && errno != ENOSYS && errno != EOPNOTSUPP) return -1;
+    struct termios attributes;
+    if (tcgetattr(master, &attributes) || !(attributes.c_lflag & ISIG)) return -1;
+    int index = signo == SIGINT ? VINTR : (signo == SIGQUIT ? VQUIT : VSUSP);
+    unsigned char character = attributes.c_cc[index];
+    if (character == _POSIX_VDISABLE) return -1;
+    /* Like ordinary terminal input, acceptance does not promise consumption if
+     * the workload concurrently changes its terminal configuration.
+     */
+    ssize_t written;
+    do { written = write(master, &character, 1); } while (written < 0 && errno == EINTR);
+    return written == 1 ? 0 : -1;
+}
+
 static int terminal_pump(struct terminal *term) {
     /* Keep a bounded output buffer and service cancellation/input even when the
      * outer reader is stalled. Never discard buffered output on cancellation.
@@ -146,7 +167,7 @@ static int terminal_pump(struct terminal *term) {
         case 'S':
             if (size != 1 || (data[0] != SIGINT && data[0] != SIGQUIT && data[0] != SIGTSTP)) return -1;
             /* Kernel targets the PTY foreground group; never race a userspace PID lookup. */
-            if (ioctl(term->master, TIOCSIG, (int)data[0])) return -1;
+            if (terminal_signal(term->master, (int)data[0])) return -1;
             break;
         case 'C':
             if (size) return -1;
@@ -223,11 +244,21 @@ int main(int argc, char **argv) {
         _exit(127);
     }
     if (interactive) close(slave);
-    if (interactive && fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL) | O_NONBLOCK)) return 125;
+    if (fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL) | O_NONBLOCK)) return 125;
     if (interactive && fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK)) return 125;
     int leader_result = 125;
     for (;;) {
         if (interactive && terminal_pump(&term)) return 125;
+        if (!interactive) {
+            /* EOF on the private nonce/control pipe requests cancellation too.
+             * A workload never receives this descriptor. This lets runtimes
+             * without per-exec kill APIs request authenticated tree cleanup.
+             */
+            unsigned char unexpected;
+            ssize_t count = read(STDIN_FILENO, &unexpected, 1);
+            if (count == 0) cancelling = 1;
+            else if (count > 0 || (errno != EAGAIN && errno != EINTR)) return 125;
+        }
         if (cancelling && kill_children()) {
             /* Fail closed: remain alive rather than claim the tree is clean.
              * The host must quarantine on timeout or forced supervisor death.

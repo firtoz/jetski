@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type {
+  NetworkFilterBackend,
   RuntimeNetworkMode,
   RuntimeStorageMode,
   StateStore,
@@ -22,6 +23,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
     storageMode: RuntimeStorageMode = "default",
     runtime: RuntimePolicy = PODMAN_RUNTIME,
     workloadInit?: readonly string[],
+    networkFilter: NetworkFilterBackend = "auto",
   ) {
     super(
       state,
@@ -46,6 +48,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
       undefined,
       runtime,
       workloadInit,
+      networkFilter,
     );
   }
 }
