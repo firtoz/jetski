@@ -13,14 +13,17 @@ service and a thin CLI. The 0.1 line targets self-hosted single-controller
 deployments; see [operations](docs/operations.md) for supported scope and recovery
 requirements. There is no managed Jetski hosting service.
 
+[Documentation](docs/README.md) · [Getting started](docs/getting-started.md) ·
+[Examples](examples/README.md) · [Where data lives](docs/storage-locations.md)
+
 ## Why use it?
 
 - **Reuse compute:** owner-exclusive pools, demand-created hosts, bounded leases and
   optional adaptive idle retention reduce unnecessary starts and idle time.
 - **Keep work beyond a VM:** verified incremental filesystem checkpoints in local
   control-plane storage or S3-compatible object storage, qualified against R2.
-  Verified local archive reuse accelerates warm returns; remote storage remains
-  the recovery authority.
+  Verified host-local archive reuse accelerates warm returns; the published
+  checkpoint store remains the recovery authority.
 - **Transfer less data:** independently compressed frames and optional packing
   reuse unchanged content. Hashes, publication verification and generation fencing
   remain mandatory.
@@ -120,7 +123,12 @@ leases with adaptive idle retention. Defaults without that policy remain one hou
 ten-minute idle and zero minimum warm hosts. To use remote storage, replace
 `storage` with [the R2 example](examples/storage-r2.json) and supply its named
 bucket-scoped credential variables. Back up SQLite metadata as well as objects.
+“Local” means the disk of the machine running `jetski serve`, **not the Boat
+execution host or a remote SDK client's laptop**. Its configured `dataDirectory`
+holds SQLite metadata and, with local storage, checkpoint objects in `objects/`.
 Local storage survives execution-host loss, but not control-plane disk loss.
+See [where data lives](docs/storage-locations.md), including embedded scripts and
+container volumes.
 
 Alternatively use [the SSH example](examples/server.json) with a dedicated,
 operator-prepared Linux x86-64 host; follow the exact bootstrap, forced-command key

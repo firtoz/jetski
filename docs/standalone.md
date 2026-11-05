@@ -62,7 +62,12 @@ jetski serve --config /path/to/server.json
 
 The server binds loopback. Remote access requires an authenticated encrypted tunnel
 or an operator-managed HTTPS reverse proxy. Checkpoint objects and SQLite state
-live on the control-plane disk, independently of the execution host.
+use the server machine's configured `dataDirectory`, independently of the
+execution host. With local storage, objects are in `dataDirectory/objects/` and
+metadata in `dataDirectory/state.sqlite`. They are not stored on the remote CLI
+client or Boat disk. Mount this directory on persistent storage when running the
+controller in a container. R2/S3 replaces object storage only; metadata stays with
+the server. See [where data lives](storage-locations.md).
 
 The thin CLI uses `JETSKI_TOKEN` and optionally `JETSKI_URL`. Creation and execution
 require explicit UUIDs so retrying a request preserves its identity:

@@ -1,7 +1,19 @@
 # Checkpoint storage
 
-Local storage remains the default and lives on the control-plane disk. It does not
-protect against loss of that disk. The S3 adapter is implemented behind
+Local storage remains the default. **Local means the machine running the Jetski
+controller**, not the Boat execution host: `openJetski`/`runSandbox` use the script
+machine, while `jetski serve` uses the server machine. The built-in local store
+uses `<dataDirectory>/objects/`; SQLite metadata is `<dataDirectory>/state.sqlite`.
+Relative paths in the embedded helper resolve against the process working directory.
+A controller in a container needs a persistent volume for that directory.
+
+Boat's live workspace and optional verified host cache are separate, disposable
+execution-host data. They are not the local checkpoint store. Local storage does
+not protect against controller disk loss. R2/S3 moves checkpoint objects off that
+disk, but does not back up SQLite metadata. See [where data lives](storage-locations.md)
+for layouts, save boundaries and failure cases.
+
+The S3 adapter is implemented behind
 `@firtoz/jetski/storage/s3`. Live R2 passed the bounded storage and checkpoint-recovery
 checks below on October 31, 2026. **Physical-host replacement, provider outage and
 real-grace collection remain unqualified.** The SDK and portable core do not import

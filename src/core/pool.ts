@@ -663,13 +663,23 @@ export class PoolJournal {
     tx.put(this.slotKey(slot.id), { ...slot, phase: "retired", lease: null });
     tx.put(`${this.prefix()}lost/${identifier(lease.assignmentId)}`, lease);
   }
-  async retireIdle(id: string): Promise<PoolSlot> {
+  async retireIdle(
+    id: string,
+    reason: "idle" | "shutdown" = "idle",
+  ): Promise<PoolSlot> {
     return this.state.transaction((tx) => {
       const slot = tx.get<PoolSlot>(this.slotKey(id));
       if (!slot || slot.phase !== "idle" || slot.lease || !slot.machineId)
         throw new Error("Host not idle");
-      if (this.idleRetireAt(slot) > this.now())
+      if (reason === "idle" && this.idleRetireAt(slot) > this.now())
         throw new Error("Idle retention not elapsed");
+      if (
+        reason === "shutdown" &&
+        tx
+          .scan<Ticket>(`${this.prefix()}ticket/${slot.owner}/`)
+          .some((row) => row.value.phase === "queued")
+      )
+        throw Error("Queued assignments prevent shutdown retirement");
       if (
         this.drainAt(slot) > this.now() &&
         tx

@@ -42,7 +42,8 @@
     "./transport/websocket": "./dist/transport/websocket.js",
     "./server/preview-fetch": "./dist/server/preview-fetch.js",
     "./providers/runtime-selection": "./dist/providers/runtime-selection.js",
-    "./providers/boat-runtime-selection": "./dist/providers/boat-runtime-selection.js"
+    "./providers/boat-runtime-selection": "./dist/providers/boat-runtime-selection.js",
+    "./node": "./dist/node.js"
   },
   "files": [
     "dist",

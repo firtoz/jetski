@@ -3,12 +3,15 @@
 Use the Node version in `.nvmrc`. From a source checkout:
 
 ```sh
-npm ci
-npm run build
+npm install
 npm run typecheck
 npm test
 npm run lint
 ```
+
+`npm install` runs the repository's `prepare` script to build the source. After
+source edits, use `npm run build` to refresh the compiled output. CI uses `npm ci`
+for a clean install that requires the lockfile to match the manifest.
 
 Normal users install the prebuilt npm package or container; they do not build this
 repository. `node scripts/qualify-package.mjs` checks a tarball in a clean consumer

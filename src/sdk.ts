@@ -1,3 +1,28 @@
+import { readFileChunks, writeFileChunks } from "./client/files.js";
+import {
+  type CreateOptions,
+  type FromCheckpointOptions,
+  type JetskiOptions,
+  SandboxSession,
+  sandboxSession,
+  sessionDeadline,
+} from "./client/sandbox.js";
+
+export {
+  type CommandResult,
+  type CreateOptions,
+  type ExecOptions,
+  type FromCheckpointOptions,
+  JetskiCommandError,
+  JetskiOperationError,
+  type JetskiOptions,
+  type OperationOptions,
+  type SandboxApi,
+  type SandboxOperation,
+  SandboxSession,
+  type SessionOptions,
+} from "./client/sandbox.js";
+
 import { TerminalAttachment } from "./client/terminal.js";
 import { observationDelay } from "./client/wait.js";
 import type {
@@ -435,50 +460,7 @@ export class JetskiClient {
     sandbox: string,
     path: string,
   ): AsyncIterable<Uint8Array> {
-    let offset = 0;
-    let version: string | undefined;
-    let size: number | undefined;
-    for (;;) {
-      const chunk = await this.readFile(
-        sandbox,
-        path,
-        offset,
-        FILE_CHUNK_BYTES,
-        version,
-      );
-      if (
-        typeof chunk.base64 !== "string" ||
-        chunk.base64.length > Math.ceil(FILE_CHUNK_BYTES / 3) * 4
-      )
-        throw Error("Invalid file chunk");
-      const data = Uint8Array.from(atob(chunk.base64), (char) =>
-        char.charCodeAt(0),
-      );
-      const digest = Array.from(
-        new Uint8Array(await crypto.subtle.digest("SHA-256", data)),
-        (byte) => byte.toString(16).padStart(2, "0"),
-      ).join("");
-      if (
-        data.length > FILE_CHUNK_BYTES ||
-        chunk.offset !== offset ||
-        chunk.nextOffset !== offset + data.length ||
-        !Number.isSafeInteger(chunk.size) ||
-        chunk.size < chunk.nextOffset ||
-        chunk.sha256 !== digest ||
-        typeof chunk.version !== "string" ||
-        !/^[a-f0-9]{64}$/.test(chunk.version) ||
-        (version !== undefined && chunk.version !== version) ||
-        (size !== undefined && chunk.size !== size) ||
-        chunk.eof !== (chunk.nextOffset === chunk.size) ||
-        (!data.length && !chunk.eof)
-      )
-        throw Error("Invalid or changed file stream");
-      version = chunk.version;
-      size = chunk.size;
-      offset = chunk.nextOffset;
-      if (data.length) yield data;
-      if (chunk.eof) return;
-    }
+    yield* readFileChunks(this, sandbox, path);
   }
   listFiles(
     sandbox: string,
@@ -547,46 +529,7 @@ export class JetskiClient {
     spec: UploadSpec,
     source: AsyncIterable<Uint8Array>,
   ): Promise<UploadStatus> {
-    const receipt = await this.beginUpload(sandbox, id, spec);
-    if (receipt.phase === "committed") return receipt;
-    if (receipt.phase === "finishing") return this.finishUpload(sandbox, id);
-    if (
-      receipt.phase !== "receiving" ||
-      !Number.isSafeInteger(receipt.offset) ||
-      receipt.offset < 0 ||
-      receipt.offset > spec.bytes
-    )
-      throw Error("Upload cannot resume");
-    let offset = 0;
-    for await (const part of source) {
-      if (offset + part.length > spec.bytes)
-        throw Error("Upload exceeds declared size");
-      for (
-        let start = Math.max(0, receipt.offset - offset);
-        start < part.length;
-        start += FILE_CHUNK_BYTES
-      ) {
-        const chunk = part.subarray(
-          start,
-          Math.min(start + FILE_CHUNK_BYTES, part.length),
-        );
-        const observed = await this.uploadChunk(
-          sandbox,
-          id,
-          offset + start,
-          chunk,
-        );
-        if (
-          observed.phase !== "receiving" ||
-          observed.offset < offset + start + chunk.length ||
-          observed.offset > spec.bytes
-        )
-          throw Error("Invalid upload acknowledgement");
-      }
-      offset += part.length;
-    }
-    if (offset !== spec.bytes) throw Error("Upload source ended early");
-    return this.finishUpload(sandbox, id);
+    return writeFileChunks(this, sandbox, id, spec, source);
   }
   /** Copy into a new stopped sandbox; explicitly resume after publication. */
   copyCheckpoint(
@@ -709,6 +652,69 @@ export class JetskiClient {
   operation(sandbox: string, id: string): Promise<Operation> {
     return this.request(
       `/v1/sandboxes/${identifier(sandbox)}/operations/${identifier(id)}`,
+    );
+  }
+}
+
+/** Small server-backed facade; infrastructure stays on the configured controller. */
+export class Jetski {
+  constructor(private readonly options: JetskiOptions) {
+    this.options = Object.freeze({ ...options });
+    if (!options.token) throw Error("Jetski token required");
+    // Validate the endpoint before any operation is admitted.
+    new JetskiClient(options.url, options.token, options.fetch);
+  }
+  /** Original explicit SDK for terminals, previews, forwarding and advanced recovery. */
+  get client() {
+    return new JetskiClient(
+      this.options.url,
+      this.options.token,
+      this.options.fetch,
+    );
+  }
+  private clientFor(signal: AbortSignal) {
+    return new JetskiClient(
+      this.options.url,
+      this.options.token,
+      (input, init) =>
+        (this.options.fetch ?? fetch)(input, {
+          ...init,
+          signal: init?.signal
+            ? AbortSignal.any([signal, init.signal])
+            : signal,
+        }),
+    );
+  }
+  async get(
+    id: string,
+    options: import("./client/sandbox.js").OperationOptions = {},
+  ) {
+    const info = await this.clientFor(
+      sessionDeadline(options, this.options),
+    ).getSandbox(id);
+    return SandboxSession.attach(
+      this.options,
+      (signal) => this.clientFor(signal),
+      info,
+    );
+  }
+  list(options: import("./client/sandbox.js").OperationOptions = {}) {
+    return this.clientFor(
+      sessionDeadline(options, this.options),
+    ).listSandboxes();
+  }
+  fromCheckpoint(options: FromCheckpointOptions) {
+    return SandboxSession.fromCheckpoint(
+      this.options,
+      (signal) => this.clientFor(signal),
+      options,
+    );
+  }
+  async create(options: CreateOptions) {
+    return sandboxSession(
+      this.options,
+      (signal) => this.clientFor(signal),
+      options,
     );
   }
 }

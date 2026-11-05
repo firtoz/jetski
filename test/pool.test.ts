@@ -136,3 +136,28 @@ test("absence observations cannot retire an intervening assignment", async (t) =
   await pool.retireMissingIdle(current);
   assert.equal((await pool.inspect("alice"))[0]?.phase, "quarantined");
 });
+
+test("operator shutdown retires early only after release and refuses queued work", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const pool = new PoolJournal(state, "pool", () => 1);
+  await pool.enqueue("alice", randomUUID(), "one", null);
+  const slot = (await pool.reserve("alice"))!;
+  await pool.provisioned(slot.id, "alice", "host", slot.allocationId);
+  const placement = (await pool.assign("alice"))!;
+  await assert.rejects(pool.retireIdle(slot.id, "shutdown"), /not idle/);
+  await pool.transition(placement.lease, "active");
+  await pool.transition(placement.lease, "quiescing");
+  await pool.release(placement.lease);
+  await assert.rejects(pool.retireIdle(slot.id), /not elapsed/);
+  await pool.enqueue("alice", randomUUID(), "queued", null);
+  await assert.rejects(pool.retireIdle(slot.id, "shutdown"), /Queued/);
+  const next = (await pool.assign("alice"))!;
+  await pool.transition(next.lease, "active");
+  await pool.transition(next.lease, "quiescing");
+  await pool.release(next.lease);
+  assert.equal(
+    (await pool.retireIdle(slot.id, "shutdown")).phase,
+    "quarantined",
+  );
+});

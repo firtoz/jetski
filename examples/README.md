@@ -1,4 +1,22 @@
-# Use-case recipes
+# Examples
+
+Each numbered folder has its own runnable entry point, dependency manifest and
+short setup instructions. Each entry point is TypeScript, with `npm run typecheck`
+and direct Node execution. No custom JSON plan/configuration files are needed.
+The convenience API is a **local unpublished draft**, not part of npm 0.1.1.
+
+| Example                                               | Demonstrates                                             |
+| ----------------------------------------------------- | -------------------------------------------------------- |
+| [01-hello-world](01-hello-world/)                     | Minimal client of an existing Jetski server.             |
+| [02-hello-world-boat](02-hello-world-boat/)           | Boat token, local storage, no standalone server.         |
+| [03-hello-world-r2](03-hello-world-r2/)               | The same one-shot workload with remote R2 objects.       |
+| [04-files-and-checkpoints](04-files-and-checkpoints/) | Restore a checkpoint into a new sandbox.                 |
+| [05-warm-pool](05-warm-pool/)                         | Sequential same-owner sessions sharing reusable compute. |
+
+See [the shared API](../docs/simple-api.md) for lifecycle and recovery semantics.
+Operator configuration and qualification/recovery harnesses remain below.
+
+## Existing use-case recipes
 
 Start with the [README setup](../README.md#get-started). These recipes use an
 already configured service and operator-approved image. Examples that create a

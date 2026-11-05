@@ -8,7 +8,21 @@ Complete the [v1 design and scope](design.md), qualify its durability and isolat
 then integrate a downstream client in staging using a pinned commit. The full
 release goal remains active; passing one fixture does not complete it.
 
+## Source example API preview
+
+Self-contained [numbered examples](../examples/README.md) share a portable sandbox
+facade, including distinct-sandbox checkpoint restore, and an embedded Node
+controller with Boat/SSH, local/S3 storage, SQLite state, owner-bound scheduling
+and verified shutdown. Source setup uses `npm install` with the existing automatic
+build; released packages are prebuilt. See [API and recovery boundaries](simple-api.md).
+These source APIs are not yet included in the published 0.1.1 package. Local acceptance:366 tests, build,
+typecheck and lint pass. All five examples use TypeScript with strict standalone
+typechecks; compile-only contracts check valid/invalid public API calls. Protocol fixtures are not new hosted
+Boat/R2 or physical-host replacement qualification.
+
 ## Read selectively
+
+- [Documentation home](README.md): user guides, including storage locations and getting started.
 
 - [Design and scope](design.md): architecture, supported adapters and lifecycle contracts.
 - [Qualification evidence](qualification.md): verified results, consequential failures and limits.

@@ -989,6 +989,17 @@ export class SandboxManager {
       });
     }
   }
+  /** Trusted operator shutdown: retire only released, owner-scoped idle slots.
+   * Publication/cleanup remain prerequisites for a slot becoming idle. Unknown
+   * acknowledgements keep the durable retirement intent for reconciliation. */
+  async retireIdle(owner: string): Promise<void> {
+    identifier(owner);
+    for (const slot of await this.pool.inspect(owner)) {
+      if (slot.phase === "idle" && !slot.lease && slot.machineId)
+        await this.pool.retireIdle(slot.id, "shutdown");
+    }
+    await this.retireIdleHosts(owner);
+  }
   private async retireIdleHosts(owner: string): Promise<void> {
     for (let slot of await this.pool.inspect(owner)) {
       if (slot.lease || !slot.machineId) continue;
