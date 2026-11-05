@@ -7,6 +7,10 @@ on:
       tag:
         description: Existing version tag on main with green CI
         required: true
+      verify_existing:
+        description: Observe a version already uploaded (including automated review); never republish
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -75,16 +79,42 @@ jobs:
         run: |
           printf 'ghcr.io/firtoz/jetski@%s\n' "$DIGEST" > release/IMAGE
           (cd release && sha256sum IMAGE >> SHA256SUMS)
-      - name: Publish through npm trusted identity or verify identical existing version
+      - name: Publish through npm trusted identity or verify an existing upload
+        env:
+          VERIFY_EXISTING: ${{ inputs.verify_existing || 'false' }}
         run: |
           name=$(node -p 'require("./package.json").name')
           version=$(node -p 'require("./package.json").version')
-          existing=$(npm view "$name@$version" dist.integrity --json 2>/dev/null || true)
-          if [ -n "$existing" ] && [ "$existing" != 'null' ]; then
-            EXISTING="$existing" node --input-type=module -e 'import{readFileSync,readdirSync}from"node:fs";import{createHash}from"node:crypto";let f=readdirSync("release").find(f=>f.endsWith(".tgz"));let h="sha512-"+createHash("sha512").update(readFileSync("release/"+f)).digest("base64");if(h!==JSON.parse(process.env.EXISTING))throw Error("Registry artifact differs; do not overwrite")'
+          if npm view "$name@$version" dist.integrity --json > /tmp/jetski-registry.json; then
+            echo "Version is visible; verify identity below"
+          elif [ "$VERIFY_EXISTING" = "true" ]; then
+            echo "Upload already acknowledged; observe automated review without republishing"
           else
+            node --input-type=module -e 'import{readFileSync}from"node:fs";const r=JSON.parse(readFileSync("/tmp/jetski-registry.json"));if(r.error?.code!=="E404")throw Error("Registry lookup failed; refusing uncertain publication")'
             npm publish release/*.tgz --access public --provenance --ignore-scripts
           fi
+          node --input-type=module <<'JS'
+          import {readFileSync,readdirSync} from "node:fs";
+          import {createHash} from "node:crypto";
+          const p=JSON.parse(readFileSync("package.json"));
+          const f=readdirSync("release").find(f=>f.endsWith(".tgz"));
+          const expected="sha512-"+createHash("sha512").update(readFileSync("release/"+f)).digest("base64");
+          const url=`https://registry.npmjs.org/${encodeURIComponent(p.name)}/${p.version}`;
+          let verified=false;
+          for(let attempt=0;attempt<40;attempt++) {
+            const response=await fetch(url,{signal:AbortSignal.timeout(10000)});
+            if(response.status===200) {
+              const metadata=await response.json();
+              if(metadata.name!==p.name||metadata.version!==p.version||metadata.dist?.integrity!==expected)
+                throw Error("Registry artifact differs; do not overwrite");
+              verified=true;break;
+            }
+            if(response.status!==404) throw Error(`Registry unavailable: ${response.status}; do not republish`);
+            console.log("Waiting for registry review/visibility; no second upload");
+            await new Promise(r=>setTimeout(r,15000));
+          }
+          if(!verified) throw Error("Version is not public yet; resume with verify_existing after registry review");
+          JS
       - name: Publish immutable GitHub release
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
