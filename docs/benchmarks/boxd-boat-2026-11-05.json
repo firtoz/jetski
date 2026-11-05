@@ -1,0 +1,311 @@
+{
+  "date": "2026-11-05",
+  "kind": "bounded-provider-comparison",
+  "fixture": {
+    "physicalBinaryBytes": 4194304,
+    "cyclesPerProvider": 10,
+    "freshInitialHostsPerProvider": 2,
+    "sourceDeletedReplacementsPerProvider": 1,
+    "runtime": "rootless-podman",
+    "image": "pinned-alpine",
+    "workloadCpus": 1,
+    "workloadMemoryMiB": 512,
+    "storage": "same-s3-compatible-r2-store",
+    "ordering": "provider order reversed across two host pairs"
+  },
+  "providers": {
+    "boxd": {
+      "samples": 10,
+      "medianResumeMs": 1759.2599090000003,
+      "medianWorkAndOracleMs": 997.0047865000088,
+      "medianSaveMs": 4639.639209000001,
+      "medianCycleMs": 7261.262841499993,
+      "timedUploadedPayloadBytes": 31958,
+      "timedDownloadedPayloadBytes": 31958,
+      "timedS3Requests": 250,
+      "replicas": [
+        {
+          "replica": 1,
+          "freshJetskiReadyMs": 24567.719575,
+          "primeAndVerifySaveMs": 14388.271075999997,
+          "medianResumeMs": 1758.7588539999997,
+          "medianSaveMs": 4515.266894999979,
+          "medianCycleMs": 7031.931599000003,
+          "native": [
+            {
+              "name": "disk_dsync_100x4k",
+              "seconds": 0.023282314999960363,
+              "result": {
+                "iterations": 100,
+                "p50ms": 0.22708899632561952,
+                "p95ms": 0.2758070040727034
+              }
+            },
+            {
+              "name": "tmpfs_dsync_100x4k",
+              "seconds": 0.0004045730020152405,
+              "result": {
+                "iterations": 100,
+                "p50ms": 0.0027339992811903358,
+                "p95ms": 0.003555993316695094
+              }
+            },
+            {
+              "name": "disk_sqlite_100_commits",
+              "seconds": 0.05113717100175563,
+              "result": {
+                "commits": 100
+              }
+            },
+            {
+              "name": "tmpfs_sqlite_100_commits",
+              "seconds": 0.005749340998590924,
+              "result": {
+                "commits": 100
+              }
+            },
+            {
+              "name": "disk_64m_fdatasync",
+              "seconds": 0.08377097900665831,
+              "result": {
+                "bytes": 67108864,
+                "bufferedSeconds": 0.0737265180068789,
+                "finalSyncSeconds": 0.007953576990985312
+              }
+            },
+            {
+              "name": "sha256_128m",
+              "seconds": 0.14856519999739248,
+              "result": "02127d4a161096d802efe182b6cfa04af9a6db5c0be9c6a8e783655692609cbf"
+            }
+          ]
+        },
+        {
+          "replica": 2,
+          "freshJetskiReadyMs": 24569.333577000012,
+          "primeAndVerifySaveMs": 17829.849901000038,
+          "medianResumeMs": 1762.6154139999999,
+          "medianSaveMs": 4764.011523000023,
+          "medianCycleMs": 7422.613580000005,
+          "native": [
+            {
+              "name": "disk_dsync_100x4k",
+              "seconds": 0.02125378699565772,
+              "result": {
+                "iterations": 100,
+                "p50ms": 0.20492049952736124,
+                "p95ms": 0.2528019977035001
+              }
+            },
+            {
+              "name": "tmpfs_dsync_100x4k",
+              "seconds": 0.0003848229971481487,
+              "result": {
+                "iterations": 100,
+                "p50ms": 0.0022884996724314988,
+                "p95ms": 0.00305499997921288
+              }
+            },
+            {
+              "name": "disk_sqlite_100_commits",
+              "seconds": 0.05014159499842208,
+              "result": {
+                "commits": 100
+              }
+            },
+            {
+              "name": "tmpfs_sqlite_100_commits",
+              "seconds": 0.005872455003554933,
+              "result": {
+                "commits": 100
+              }
+            },
+            {
+              "name": "disk_64m_fdatasync",
+              "seconds": 0.06658465399232227,
+              "result": {
+                "bytes": 67108864,
+                "bufferedSeconds": 0.05281867500161752,
+                "finalSyncSeconds": 0.011090760992374271
+              }
+            },
+            {
+              "name": "sha256_128m",
+              "seconds": 0.15009500800806563,
+              "result": "02127d4a161096d802efe182b6cfa04af9a6db5c0be9c6a8e783655692609cbf"
+            }
+          ]
+        }
+      ],
+      "replacement": {
+        "recoveryMs": 26608.654756000004,
+        "exact": true,
+        "retainedOutput": true
+      }
+    },
+    "boat": {
+      "samples": 10,
+      "medianResumeMs": 1761.5666335000133,
+      "medianWorkAndOracleMs": 1994.884281500017,
+      "medianSaveMs": 4513.0628014999675,
+      "medianCycleMs": 8277.543333499969,
+      "timedUploadedPayloadBytes": 31958,
+      "timedDownloadedPayloadBytes": 31958,
+      "timedS3Requests": 250,
+      "replicas": [
+        {
+          "replica": 1,
+          "freshJetskiReadyMs": 22057.239976999997,
+          "primeAndVerifySaveMs": 16916.382117,
+          "medianResumeMs": 1506.6220209999883,
+          "medianSaveMs": 4512.032817999992,
+          "medianCycleMs": 6470.093312000012,
+          "native": [
+            {
+              "name": "disk_dsync_100x4k",
+              "seconds": 0.03270296600000222,
+              "result": {
+                "iterations": 100,
+                "p50ms": 0.20144450000003644,
+                "p95ms": 0.6605709999973897
+              }
+            },
+            {
+              "name": "tmpfs_dsync_100x4k",
+              "seconds": 0.00010292199999639706,
+              "result": {
+                "iterations": 100,
+                "p50ms": 0.0004709999998908643,
+                "p95ms": 0.0009399999996162478
+              }
+            },
+            {
+              "name": "disk_sqlite_100_commits",
+              "seconds": 0.06465010600000198,
+              "result": {
+                "commits": 100
+              }
+            },
+            {
+              "name": "tmpfs_sqlite_100_commits",
+              "seconds": 0.0012561460000029001,
+              "result": {
+                "commits": 100
+              }
+            },
+            {
+              "name": "disk_64m_fdatasync",
+              "seconds": 1.3248626059999964,
+              "result": {
+                "bytes": 67108864,
+                "bufferedSeconds": 0.01074614899999915,
+                "finalSyncSeconds": 1.3095237120000007
+              }
+            },
+            {
+              "name": "sha256_128m",
+              "seconds": 0.07452790600000014,
+              "result": "02127d4a161096d802efe182b6cfa04af9a6db5c0be9c6a8e783655692609cbf"
+            }
+          ]
+        },
+        {
+          "replica": 2,
+          "freshJetskiReadyMs": 42595.84632000001,
+          "primeAndVerifySaveMs": 23333.102159000002,
+          "medianResumeMs": 2765.4960440000286,
+          "medianSaveMs": 4513.891920999973,
+          "medianCycleMs": 10181.99524499994,
+          "native": [
+            {
+              "name": "disk_dsync_100x4k",
+              "seconds": 2.6672322630000025,
+              "result": {
+                "iterations": 100,
+                "p50ms": 19.653360500001327,
+                "p95ms": 50.751153999996745
+              }
+            },
+            {
+              "name": "tmpfs_dsync_100x4k",
+              "seconds": 0.0004104690000019673,
+              "result": {
+                "iterations": 100,
+                "p50ms": 0.0015725000039878978,
+                "p95ms": 0.0028249999957097316
+              }
+            },
+            {
+              "name": "disk_sqlite_100_commits",
+              "seconds": 5.530602526999999,
+              "result": {
+                "commits": 100
+              }
+            },
+            {
+              "name": "tmpfs_sqlite_100_commits",
+              "seconds": 0.0022650660000067546,
+              "result": {
+                "commits": 100
+              }
+            },
+            {
+              "name": "disk_64m_fdatasync",
+              "seconds": 1.309373984000004,
+              "result": {
+                "bytes": 67108864,
+                "bufferedSeconds": 0.02004568699999254,
+                "finalSyncSeconds": 1.2808917830000013
+              }
+            },
+            {
+              "name": "sha256_128m",
+              "seconds": 0.09921701899999391,
+              "result": "02127d4a161096d802efe182b6cfa04af9a6db5c0be9c6a8e783655692609cbf"
+            }
+          ]
+        }
+      ],
+      "replacement": {
+        "recoveryMs": 50445.302176,
+        "exact": true,
+        "retainedOutput": true
+      }
+    }
+  },
+  "cleanup": {
+    "ownedMachines": 7,
+    "allProviderAbsent": true
+  },
+  "limits": [
+    "Two initial hosts per provider; samples on one host are correlated.",
+    "Boxd hosts 2 vCPU/8 GiB; Boat small 2 vCPU/4 GiB. Workload resource caps match.",
+    "Python/Podman only; gVisor and native memory/forking were not qualified here.",
+    "Current adapter is Node SDK only, not a Cloudflare Worker integration.",
+    "One slow Boat host materially affects pooled medians.",
+    "R2 cost is excluded; no currency conversion or universal speed claim."
+  ],
+  "costObservations": {
+    "at": "2026-11-05T19:18:38.221Z",
+    "boxd": {
+      "currency": "eur",
+      "estimatedCost": 0.005749,
+      "matchedEstimatedCost": 0.002988,
+      "completeFlags": [true, false, false, false],
+      "settledUsageChargesObserved": 0.003349,
+      "billingObservationPartial": true,
+      "startsIncludingOnboarding": 4
+    },
+    "boat": {
+      "currency": "usd",
+      "providerWeightedSecondsDelta": 206,
+      "computeValue": 0.00206,
+      "walletDebitObserved": 0,
+      "starts": 3,
+      "perHostUsageUnavailableAfterDeletion": true
+    },
+    "excluded": ["R2", "controller compute", "development time"],
+    "noTopups": true
+  },
+  "bootstrapReconciliationErrors": 3
+}

@@ -16,6 +16,10 @@ requirements. There is no managed Jetski hosting service.
 [Documentation](docs/README.md) · [Getting started](docs/getting-started.md) ·
 [Examples](examples/README.md) · [Where data lives](docs/storage-locations.md)
 
+Source preview: an optional [SDK-only boxd adapter](docs/boxd.md) and
+[TypeScript example](examples/06-boxd/) add another machine-host choice.
+These additions are not in the published 0.1.1 package.
+
 ## Why use it?
 
 - **Reuse compute:** owner-exclusive pools, demand-created hosts, bounded leases and

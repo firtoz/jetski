@@ -5,7 +5,8 @@
     "noEmit": true,
     "paths": {
       "@firtoz/jetski/sdk": ["./src/sdk.ts"],
-      "@firtoz/jetski/node": ["./src/node.ts"]
+      "@firtoz/jetski/node": ["./src/node.ts"],
+      "@firtoz/jetski/providers/boxd-hosts": ["./src/providers/boxd-hosts.ts"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "examples/**/*.ts"]

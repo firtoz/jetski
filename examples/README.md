@@ -3,7 +3,7 @@
 Each numbered folder has its own runnable entry point, dependency manifest and
 short setup instructions. Each entry point is TypeScript, with `npm run typecheck`
 and direct Node execution. No custom JSON plan/configuration files are needed.
-The convenience API is a **local unpublished draft**, not part of npm 0.1.1.
+These source APIs and the boxd adapter are not part of published npm 0.1.1.
 
 | Example                                               | Demonstrates                                             |
 | ----------------------------------------------------- | -------------------------------------------------------- |
@@ -12,6 +12,8 @@ The convenience API is a **local unpublished draft**, not part of npm 0.1.1.
 | [03-hello-world-r2](03-hello-world-r2/)               | The same one-shot workload with remote R2 objects.       |
 | [04-files-and-checkpoints](04-files-and-checkpoints/) | Restore a checkpoint into a new sandbox.                 |
 | [05-warm-pool](05-warm-pool/)                         | Sequential same-owner sessions sharing reusable compute. |
+
+[06-boxd](06-boxd/) adds SDK-only boxd hosts through a provider factory.
 
 See [the shared API](../docs/simple-api.md) for lifecycle and recovery semantics.
 Operator configuration and qualification/recovery harnesses remain below.

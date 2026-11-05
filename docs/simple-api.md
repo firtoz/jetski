@@ -160,8 +160,11 @@ trusted operator escape hatch and requires coordinated lifecycle access.
 
 ## Replaceable components and advanced examples
 
-The Node factory accepts Boat, adopted SSH, or custom host provider/transport
-pairs. Storage can be local, S3-compatible, or a custom `CheckpointStore`.
+The Node factory accepts Boat, adopted SSH, custom host provider/transport
+pairs, or a provider factory. A factory receives the persisted `poolId`, state
+and approved images; [boxd](boxd.md) uses this extension without a mandatory SDK
+dependency. Explicit `poolId` is also available for preconfigured host bootstrap,
+and reopening a directory with a different pool is rejected. Storage can be local, S3-compatible, or a custom `CheckpointStore`.
 Transactional state, scheduler, host lifecycle, resources and error reporting are
 injectable. Custom adapters declare stable IDs for configuration binding and must
 satisfy the existing conformance contracts. These hooks do not bypass publication,

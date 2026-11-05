@@ -17,6 +17,7 @@ runtime deliberately.
 
 - [Architecture and contracts](design.md): replaceable boundaries and core guarantees.
 - [Boat hosts](boat.md): provisioning and bootstrap; SSH adoption is in the standalone guide.
+- [boxd hosts](boxd.md): optional SDK-only Node adapter and measured comparison (source preview).
 - [Checkpoint storage](storage.md) and [native R2 bindings](storage-r2.md): adapter contracts.
 - [Runtime selection](runtime-selection.md): Podman, optional gVisor and fallback policy.
 - [Networking](networking.md): egress and isolation boundaries.

@@ -15,10 +15,17 @@ facade, including distinct-sandbox checkpoint restore, and an embedded Node
 controller with Boat/SSH, local/S3 storage, SQLite state, owner-bound scheduling
 and verified shutdown. Source setup uses `npm install` with the existing automatic
 build; released packages are prebuilt. See [API and recovery boundaries](simple-api.md).
-These source APIs are not yet included in the published 0.1.1 package. Local acceptance:366 tests, build,
-typecheck and lint pass. All five examples use TypeScript with strict standalone
+These source APIs are not yet included in the published 0.1.1 package. Local acceptance:370 tests, build,
+typecheck and lint pass. All six examples use TypeScript with strict standalone
 typechecks; compile-only contracts check valid/invalid public API calls. Protocol fixtures are not new hosted
 Boat/R2 or physical-host replacement qualification.
+
+## boxd source qualification
+
+The optional [boxd SDK adapter](boxd.md) uses the same controller/runtime/storage
+contracts. The finite [comparison](boxd-boat-benchmarks.md) records performance,
+source-deleted recovery, provider cleanup and explicit unsupported paths. It does
+not change production clients or publish a package.
 
 ## Read selectively
 

@@ -31,7 +31,26 @@ import type { HostConfig } from "./server/hosts.js";
 import { SqliteState } from "./state/sqlite.js";
 import { gzipMemoryCodec } from "./storage/memory-codecs.js";
 
+export type NodeHostAdapters = {
+  provider: HostProvider;
+  transport: HostTransport;
+  streamTransport?: HostStreamTransport;
+  idlePriceSource?: IdlePriceSource;
+  close?: () => void | Promise<void>;
+};
+export type NodeHostFactoryContext = {
+  state: StateStore;
+  poolId: string;
+  approvedImages: readonly string[];
+};
 export type NodeProvider =
+  | {
+      kind: "factory";
+      id: string;
+      create(
+        context: NodeHostFactoryContext,
+      ): NodeHostAdapters | Promise<NodeHostAdapters>;
+    }
   | (Omit<Extract<HostConfig, { kind: "boat" }>, "tokenEnv"> & {
       token: string;
     })
@@ -72,6 +91,8 @@ export type NodeOptions = SessionOptions & {
   image?: string;
   approvedImages?: string[];
   owner?: string;
+  /** Stable host bootstrap identity; existing state must retain the same pool. */
+  poolId?: string;
   hostLifecycle?: HostLifecycle;
   hostsPerOwner?: number;
   workloadResources?: ManagerOptions["workloadResources"];
@@ -132,9 +153,10 @@ function configuration(
         ),
       } as Json;
       break;
+    case "factory":
     case "custom":
       identifier(options.provider.id);
-      provider = { kind: "custom", id: options.provider.id };
+      provider = { kind: options.provider.kind, id: options.provider.id };
       break;
   }
   let objects: Json;
@@ -433,6 +455,7 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
   const options = { ...input },
     storage = input.storage ?? { kind: "local" as const };
   if (!options.dataDirectory) throw Error("dataDirectory is required");
+  if (options.poolId !== undefined) identifier(options.poolId);
   const images = [
     ...(options.approvedImages ?? (options.image ? [options.image] : [])),
   ];
@@ -466,7 +489,8 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
         if (
           prior.version !== 1 ||
           prior.configuration !== seal ||
-          (options.owner && options.owner !== prior.owner)
+          (options.owner && options.owner !== prior.owner) ||
+          (options.poolId !== undefined && options.poolId !== prior.poolId)
         )
           throw Error(
             "Controller configuration/owner does not match this data directory",
@@ -477,7 +501,7 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
       const value: Identity = {
         version: 1,
         owner,
-        poolId: crypto.randomUUID(),
+        poolId: identifier(options.poolId ?? crypto.randomUUID()),
         configuration: seal,
       };
       tx.put("node/identity", value);
@@ -486,9 +510,18 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
     const selected = await objects(directory, storage);
     cleanup.unshift(selected.close);
     let hosts;
-    if (options.provider.kind === "custom") {
-      hosts = options.provider;
-      if (options.provider.close) cleanup.unshift(options.provider.close);
+    if (
+      options.provider.kind === "custom" ||
+      options.provider.kind === "factory"
+    ) {
+      if (options.provider.kind === "factory") {
+        hosts = await options.provider.create({
+          state,
+          poolId: identity.poolId,
+          approvedImages: Object.freeze([...images]),
+        });
+      } else hosts = options.provider;
+      if (hosts.close) cleanup.unshift(hosts.close);
     } else {
       const { standaloneHosts } = await import("./server/hosts.js");
       let config: HostConfig,

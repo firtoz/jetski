@@ -486,3 +486,57 @@ test("new sandbox resumes an independent retained checkpoint without running the
     await controller.close();
   }
 });
+
+test("provider factories receive the persisted pool and state without allocating on open", async (t) => {
+  const dataDirectory = await directory(t),
+    host = hostFixture();
+  let calls = 0,
+    closed = 0;
+  const provider = {
+    kind: "factory" as const,
+    id: "qualified-test-provider",
+    create: async (
+      context: import("../src/node.js").NodeHostFactoryContext,
+    ) => {
+      calls++;
+      assert.equal(context.poolId, "explicit-pool");
+      assert.deepEqual(context.approvedImages, [image]);
+      assert.ok(Object.isFrozen(context.approvedImages));
+      assert.equal(
+        await context.state
+          .transaction((tx) => tx.get<{ poolId: string }>("node/identity"))
+          .then((v) => v?.poolId),
+        "explicit-pool",
+      );
+      return {
+        provider: host.provider.provider,
+        transport: host.provider.transport,
+        close: () => {
+          closed++;
+        },
+      };
+    },
+  };
+  const controller = await openJetski({
+    dataDirectory,
+    provider,
+    image,
+    poolId: "explicit-pool",
+  });
+  assert.equal(host.starts, 0);
+  assert.equal(calls, 1);
+  await controller.close();
+  assert.equal(closed, 1);
+  const reopened = await openJetski({ dataDirectory, provider, image });
+  await reopened.close();
+  assert.equal(calls, 2);
+  await assert.rejects(
+    openJetski({ dataDirectory, provider, image, poolId: "different-pool" }),
+    /could not open/,
+  );
+  assert.equal(calls, 2, "identity mismatch prevents adapter creation");
+  await assert.rejects(
+    openJetski({ dataDirectory, provider, image, poolId: "" }),
+    /Invalid identifier/,
+  );
+});
