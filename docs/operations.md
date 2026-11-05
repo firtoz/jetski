@@ -14,7 +14,9 @@ recovery additionally requires the documented compatible runtime/platform.
 Use Node from `.nvmrc` for the npm server. SSH-managed hosts need an OpenSSH client
 on the controller; the container includes it. The controller needs no local Podman,
 gVisor, Python or elevated privileges: those run on dedicated execution machines.
-Protect configuration, SSH keys, SQLite, logs and storage credentials. Use TLS at
+Protect configuration, SSH keys, SQLite, logs and storage credentials. For bearer
+rotation, temporarily configure two different token environment variables for the
+same owner, deploy updated clients, then remove the old credential and restart. Use TLS at
 a reverse proxy for remote API access. Explicit `host: "0.0.0.0"` is for container
 networking or a controlled private network, not authorization to expose plain HTTP.
 The container runs UID1000; provision its persistent data mount for that UID.

@@ -80,8 +80,10 @@ if (values.version) {
   const directory = resolve(config.dataDirectory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const releaseController = await acquireControllerLock(directory);
-  const state = new SqliteState(join(directory, "state.sqlite"));
+  let closeState = () => {};
   try {
+    const state = new SqliteState(join(directory, "state.sqlite"));
+    closeState = () => state.close();
     const { provider, transport, streamTransport, idlePriceSource } =
       await standaloneHosts(
         state,
@@ -231,7 +233,7 @@ if (values.version) {
     process.on("SIGINT", () => void stop());
     process.on("SIGTERM", () => void stop());
   } catch (error) {
-    state.close();
+    closeState();
     await releaseController();
     throw error;
   }

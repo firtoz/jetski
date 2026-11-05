@@ -93,8 +93,6 @@ export function serverConfig(value: unknown): ServerConfig {
     if (Object.keys(p).some((k) => !["owner", "tokenEnv"].includes(k)))
       throw Error("Unknown principal field");
   }
-  if (new Set(c.principals.map((p) => p.owner)).size !== c.principals.length)
-    throw Error("Duplicate owner");
   if (!c.hostProvider || !["boat", "ssh"].includes(c.hostProvider.kind))
     throw Error("Host provider required");
   const exact = (v: object, allowed: string[]) => {

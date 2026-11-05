@@ -29,6 +29,16 @@ const config = {
 };
 test("configuration fails closed on typo, unpinned image, unsafe adapter and conflicting listeners", () => {
   assert.equal(serverConfig(config).poolId, "example");
+  assert.equal(
+    serverConfig({
+      ...config,
+      principals: [
+        ...config.principals,
+        { owner: "alice", tokenEnv: "ROTATED_TOKEN" },
+      ],
+    }).principals.length,
+    2,
+  );
   for (const bad of [
     { ...config, automaticCollecton: true },
     { ...config, approvedImages: ["linux:latest"] },
