@@ -34,8 +34,12 @@ export async function fixtureBrowser(tls?: { spki: string; hostname: string }) {
       `--user-data-dir=${directory}`,
       "about:blank",
     ],
-    { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"] },
+    { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] },
   );
+  let diagnostics = "";
+  child.stderr?.on("data", (bytes: Buffer) => {
+    diagnostics = (diagnostics + bytes.toString()).slice(-8192);
+  });
   let closed = false;
   const stopped = new Promise<void>((resolve) =>
     child.once("close", () => {
@@ -85,13 +89,18 @@ export async function fixtureBrowser(tls?: { spki: string; hostname: string }) {
     method: string,
     params: Record<string, unknown> = {},
     sessionId?: string,
+    timeoutMs = 15000,
   ): Promise<Record<string, unknown>> =>
     new Promise((resolve, reject) => {
       const id = ++serial;
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(Error(`Browser request timed out: ${method}`));
-      }, 15000);
+        reject(
+          Error(
+            `Browser request timed out: ${method}; owned browser diagnostics: ${diagnostics.slice(-2048)}`,
+          ),
+        );
+      }, timeoutMs);
       pending.set(id, {
         resolve: (value) => {
           clearTimeout(timer);
@@ -122,7 +131,8 @@ export async function fixtureBrowser(tls?: { spki: string; hostname: string }) {
     await rm(directory, { recursive: true, force: true });
   };
   try {
-    const version = await call("Browser.getVersion");
+    // Only cold launch gets a longer bound; workload CDP calls retain 15 seconds.
+    const version = await call("Browser.getVersion", {}, undefined, 45000);
     console.log("Disposable browser:", version.product);
     const target = await call("Target.createTarget", { url: "about:blank" });
     const attached = await call("Target.attachToTarget", {
