@@ -41,3 +41,10 @@ daemon unavailable; no desktop changes). Npm CLI session is privately authorized
 at release-20261105/npmrc; do not print its contents. Name admission still pending.
 Next: source CI/container qualification, first registry admission, release/tag/image
 publication, configure narrowly bound trusted publishing and client staging adoption.
+
+First candidate bba182c CI42001545252 exposed container-fixture cleanup EACCES
+(image UID1000 differs from runner) masking an earlier error; restart probe also
+needed bounded readiness observation. Fix only the fixture, preserve failed log,
+then reuse all unaffected checks. New-name staged registry request failed400
+"Version uniqueness check failed unexpectedly"; not treated as proof of availability
+or successful publication. Direct name admission remains pending after green CI.

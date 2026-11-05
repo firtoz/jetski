@@ -60,28 +60,53 @@ try {
     name,
   );
   const health = () => run("exec", name, "node", "healthcheck.mjs");
-  let ready = false;
-  for (let i = 0; i < 30; i++) {
-    try {
-      health();
-      ready = true;
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 1000));
+  const waitReady = async () => {
+    for (let i = 0; i < 30; i++) {
+      try {
+        health();
+        return;
+      } catch {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
     }
-  }
-  assert.ok(ready, "Controller readiness");
+    throw Error("Controller did not become ready");
+  };
+  await waitReady();
   assert.equal(run("exec", name, "id", "-u").trim(), "1000");
   run("stop", "--time", "30", name);
   run("start", name);
-  health();
+  await waitReady();
   run("stop", "--time", "30", name);
   console.log(
     "Unprivileged read-only/network-disabled container starts, probes, stops and restarts without allocating a host",
   );
+} catch (error) {
+  try {
+    console.error(run("logs", name));
+  } catch {}
+  throw error;
 } finally {
   try {
     run("rm", "-f", name);
   } catch {}
-  await rm(dir, { recursive: true, force: true });
+  // CI runner and image use different UIDs. Remove only this owned fixture's
+  // children as their creating user; never mask the original failure with EACCES.
+  try {
+    run(
+      "run",
+      "--rm",
+      "--network",
+      "none",
+      "-v",
+      `${dir}/data:/data`,
+      "--entrypoint",
+      "/bin/sh",
+      name,
+      "-c",
+      "rm -rf /data/*",
+    );
+  } catch {}
+  await rm(dir, { recursive: true, force: true }).catch((error) =>
+    console.error("Fixture cleanup failed", error.code),
+  );
 }
