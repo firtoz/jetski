@@ -40,7 +40,7 @@ Without a service, import `openJetski` or `runSandbox` from
 `@firtoz/jetski/node`. The Node helper embeds the same lifecycle controller,
 SQLite state and an independent maintenance loop; it opens no HTTP listener.
 It does not run workloads on the controller machine. See the executable
-[Boat](../examples/02-hello-world-boat/) and [R2](../examples/03-hello-world-r2/)
+[Boat](../examples/02-hello-world-boat/), [boxd](../examples/06-boxd/) and [R2](../examples/03-hello-world-r2/)
 examples for complete configuration.
 
 `runSandbox(options, argv)` runs one command and closes the controller before
@@ -190,3 +190,8 @@ observe existing work after reconnecting. The explicit SDK exposes the same help
 with a sandbox ID. Neither repeats the original mutation. Failed/uncertain outcomes
 remain typed errors, and observation timeout does not cancel work. See
 [failure recovery](failure-recovery.md) for diagnostics and quarantine limits.
+
+Provider configuration is a discriminated union keyed by `kind`. Built-in
+validation and dispatch have compile-time exhaustiveness checks: adding a provider
+requires updating each affected branch. Adapter cleanup is shared by built-in,
+custom and factory providers.

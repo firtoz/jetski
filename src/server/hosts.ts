@@ -5,6 +5,7 @@ import type {
   RuntimeStorageMode,
   StateStore,
 } from "../core/contracts.js";
+import { assertNever } from "../core/exhaustive.js";
 import {
   HOST_LIFECYCLE_LIMITS,
   type HostLifecycle,
@@ -138,60 +139,62 @@ export async function standaloneHosts(
       throw error;
     }
   }
-  if (config.kind !== "boat") throw Error("Unsupported machine host provider");
-  if (
-    !/^[A-Z][A-Z0-9_]{0,127}$/.test(config.tokenEnv) ||
-    !environment[config.tokenEnv]
-  )
-    throw Error("Boat credential environment variable missing or invalid");
-  const [
-    { BoatApi, BoatHostProvider },
-    { BoatTransport },
-    { BoatBootstrap },
-    { BoatStreamTransport },
-    { BoatIdlePriceSource },
-  ] = await Promise.all([
-    import("../providers/boat.js"),
-    import("../transport/boat.js"),
-    import("../providers/boat-bootstrap.js"),
-    import("../transport/boat-stream.js"),
-    import("../providers/boat-pricing.js"),
-  ]);
-  validateRuntimePolicy(config.runtime ?? PODMAN_RUNTIME);
-  validateWorkloadInit(config.workloadInit);
-  const api = new BoatApi(environment[config.tokenEnv]!);
-  const idle = hostLifecycle(lifecycle).idle;
-  const transport = new BoatTransport(state, api);
-  const bootstrap = new BoatBootstrap(
-    state,
-    api,
-    poolId,
-    approvedImages,
-    config.networkMode,
-    config.storageMode,
-    config.runtime,
-    config.workloadInit,
-    config.networkFilter,
-  );
-  return {
-    transport,
-    ...(idle.mode === "adaptive"
-      ? {
-          idlePriceSource: new BoatIdlePriceSource(
-            api,
-            config.machine ?? "small",
-            idle.maxIdleSpendMicros,
-          ),
-        }
-      : {}),
-    streamTransport: new BoatStreamTransport(state, api),
-    provider: new BoatHostProvider(
+  if (config.kind === "boat") {
+    if (
+      !/^[A-Z][A-Z0-9_]{0,127}$/.test(config.tokenEnv) ||
+      !environment[config.tokenEnv]
+    )
+      throw Error("Boat credential environment variable missing or invalid");
+    const [
+      { BoatApi, BoatHostProvider },
+      { BoatTransport },
+      { BoatBootstrap },
+      { BoatStreamTransport },
+      { BoatIdlePriceSource },
+    ] = await Promise.all([
+      import("../providers/boat.js"),
+      import("../transport/boat.js"),
+      import("../providers/boat-bootstrap.js"),
+      import("../transport/boat-stream.js"),
+      import("../providers/boat-pricing.js"),
+    ]);
+    validateRuntimePolicy(config.runtime ?? PODMAN_RUNTIME);
+    validateWorkloadInit(config.workloadInit);
+    const api = new BoatApi(environment[config.tokenEnv]!);
+    const idle = hostLifecycle(lifecycle).idle;
+    const transport = new BoatTransport(state, api);
+    const bootstrap = new BoatBootstrap(
       state,
       api,
+      poolId,
+      approvedImages,
+      config.networkMode,
+      config.storageMode,
+      config.runtime,
+      config.workloadInit,
+      config.networkFilter,
+    );
+    return {
       transport,
-      config.machine ?? "small",
-      Date.now,
-      bootstrap,
-    ),
-  };
+      ...(idle.mode === "adaptive"
+        ? {
+            idlePriceSource: new BoatIdlePriceSource(
+              api,
+              config.machine ?? "small",
+              idle.maxIdleSpendMicros,
+            ),
+          }
+        : {}),
+      streamTransport: new BoatStreamTransport(state, api),
+      provider: new BoatHostProvider(
+        state,
+        api,
+        transport,
+        config.machine ?? "small",
+        Date.now,
+        bootstrap,
+      ),
+    };
+  }
+  return assertNever(config);
 }

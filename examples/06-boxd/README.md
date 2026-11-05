@@ -1,13 +1,13 @@
-# Jetski on boxd, through the SDK
+# Hello world directly on boxd
 
-Source preview: this adapter is not in npm 0.1.1. It uses the optional
-`@boxd-sh/sdk` internally: no CLI, shell integrations, agent skills or daemon.
-An existing boxd account/API key is required. New accounts may encounter the
-vendor's CLI-onboarding gate before its console exposes API keys; Jetski does not
-perform that onboarding or install the CLI for you.
+The same one-shot API as [hello world on Boat](../02-hello-world-boat/).
+Only the `provider` block differs; command execution, storage and cleanup are identical.
+No standalone server, custom JSON config or boxd CLI is required by Jetski.
+Uses the local source preview; published npm 0.1.1 does not include this API.
+Requires Node 24.22.1+ and an existing boxd account/API key. Hosts can incur charges.
 
-Run `npm install` once in the repository root (it builds the source), then from
-this self-contained example folder:
+Run `npm install` once in the repository root (it builds Jetski automatically).
+Then, from this folder:
 
 ```sh
 npm install
@@ -17,27 +17,22 @@ npm run typecheck
 npm start
 ```
 
-Requires Node 24.22.1+. Machines can incur charges. The example provisions owned,
-isolated boxd VMs, installs the same rootless Podman host runtime used by Jetski,
-runs `echo`, durably saves and releases its workload, then deletes released owned
-VMs on `close()`. An uncertain save does not authorize forced deletion.
+The image must contain `echo` and satisfy the runtime's image contract. Set
+`region` to your chosen boxd region and `namespace` to a stable identity for that
+organization/endpoint/region. Use a different data directory for another provider
+or account; an existing controller's identity cannot silently change. The optional
+`@boxd-sh/sdk` dependency is installed by this folder's package manifest.
 
-`dataDirectory` and local checkpoint objects live on this script machine, **not
-boxd**. Use the same S3/R2 storage options as the other embedded examples for
-remote checkpoints; metadata still needs its own backup.
+`dataDirectory` and `storage: { kind: "local" }` mean this script's machine:
+SQLite metadata is in `./.jetski/state.sqlite` and checkpoint objects in
+`./.jetski/objects`, relative to the process working directory. They are independent
+of boxd's disposable disk/cache. For remote objects, use the same
+[R2 storage configuration](../03-hello-world-r2/) as Boat; metadata still needs backup.
 
-`boxd-personal-fra` is a stable adapter identity for one organization, endpoint
-and region. Choose a different identity/data directory for another namespace.
-The built-in client uses `maxRetries: 0`; the adapter journals creates and observes
-uncertain outcomes by their original names instead of blindly replaying them.
-Credentials stay on the controller, outside workloads. Advanced compositions can still supply a client through `boxdHostFactory`.
-The factory obtains persisted pool identity and state from `openJetski`.
-
-The default bootstrap selects Python/rootless Podman. Shared `runtime`,
-`networkMode`, `storageMode` and `workloadInit` options are also available; see
-the [parity work](../../docs/goals/boat-boxd-parity.md) for qualification status.
-Provider SSH and automatic suspend remain disabled; coordinated native idle
-sleep is an explicit controller lifecycle policy. This is the Node gRPC SDK path;
-the SDK's web entry lacks the duplex stream this adapter needs. Native boxd
-memory/forking, gVisor on boxd and Worker embedding are not qualified by this
-example. See [support and measurements](../../docs/boxd.md).
+`runSandbox()` captures output, durably saves, releases the workload and retires
+owned hosts before returning. An uncertain save/cleanup rejects and preserves
+recovery state; do not blindly rerun. For multiple sessions and warm reuse, use
+`openJetski()` as in the [warm-pool example](../05-warm-pool/), with this provider block.
+Credentials stay on the controller, outside workloads. Bootstrap runs on allocated
+hosts, not your laptop. See [failure recovery](../../docs/failure-recovery.md) and
+[boxd capabilities and limits](../../docs/boxd.md).

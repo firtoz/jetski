@@ -1,4 +1,5 @@
 import { identifier } from "../core/contracts.js";
+import { assertNever } from "../core/exhaustive.js";
 import { hostLifecycle } from "../core/host-lifecycle.js";
 import { workloadResources } from "../core/resources.js";
 import {
@@ -95,7 +96,11 @@ export function serverConfig(value: unknown): ServerConfig {
     if (Object.keys(p).some((k) => !["owner", "tokenEnv"].includes(k)))
       throw Error("Unknown principal field");
   }
-  if (!c.hostProvider || !["boat", "boxd", "ssh"].includes(c.hostProvider.kind))
+  const providerKinds = { boat: true, boxd: true, ssh: true } satisfies Record<
+    ServerConfig["hostProvider"]["kind"],
+    true
+  >;
+  if (!c.hostProvider || !Object.hasOwn(providerKinds, c.hostProvider.kind))
     throw Error("Host provider required");
   const exact = (v: object, allowed: string[]) => {
     if (Object.keys(v).some((k) => !allowed.includes(k)))
@@ -134,7 +139,7 @@ export function serverConfig(value: unknown): ServerConfig {
     machineRuntimeOptions(c.hostProvider);
   } else if (c.hostProvider.kind === "boxd") {
     validateBoxdHostConfig(c.hostProvider);
-  } else {
+  } else if (c.hostProvider.kind === "ssh") {
     exact(c.hostProvider, ["kind", "hosts"]);
     if (!Array.isArray(c.hostProvider.hosts) || !c.hostProvider.hosts.length)
       throw Error("SSH inventory required");
@@ -160,6 +165,8 @@ export function serverConfig(value: unknown): ServerConfig {
       c.hostProvider.hosts.length
     )
       throw Error("Duplicate SSH host");
+  } else {
+    assertNever(c.hostProvider);
   }
   if (c.storage) {
     if (c.storage.kind === "local") exact(c.storage, ["kind"]);

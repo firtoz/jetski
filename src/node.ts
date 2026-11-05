@@ -1,3 +1,5 @@
+import { assertNever } from "./core/exhaustive.js";
+
 export {
   OperationOutcomeError,
   type OperationWaitOptions,
@@ -179,6 +181,8 @@ function configuration(
           : {}),
       };
       break;
+    default:
+      assertNever(options.provider);
   }
   let objects: Json;
   switch (storage.kind) {
@@ -530,40 +534,52 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
     });
     const selected = await objects(directory, storage);
     cleanup.unshift(selected.close);
-    let hosts;
-    if (
-      options.provider.kind === "custom" ||
-      options.provider.kind === "factory"
-    ) {
-      if (options.provider.kind === "factory") {
+    let hosts: NodeHostAdapters;
+    switch (options.provider.kind) {
+      case "factory":
         hosts = await options.provider.create({
           state,
           poolId: identity.poolId,
           approvedImages: Object.freeze([...images]),
         });
-      } else hosts = options.provider;
-      if (hosts.close) cleanup.unshift(hosts.close);
-    } else {
-      const { standaloneHosts } = await import("./server/hosts.js");
-      let config: HostConfig,
-        environment: NodeJS.ProcessEnv = {};
-      if (
-        options.provider.kind === "boat" ||
-        options.provider.kind === "boxd"
-      ) {
-        const { token, ...rest } = options.provider;
-        config = { ...rest, tokenEnv: "JETSKI_NODE_PROVIDER" };
-        environment = { JETSKI_NODE_PROVIDER: token };
-      } else config = options.provider;
-      hosts = await standaloneHosts(
-        state,
-        config,
-        identity.poolId,
-        images,
-        environment,
-        options.hostLifecycle,
-      );
+        break;
+      case "custom":
+        hosts = options.provider;
+        break;
+      case "boat":
+      case "boxd":
+      case "ssh": {
+        const { standaloneHosts } = await import("./server/hosts.js");
+        let config: HostConfig,
+          environment: NodeJS.ProcessEnv = {};
+        switch (options.provider.kind) {
+          case "boat":
+          case "boxd": {
+            const { token, ...rest } = options.provider;
+            config = { ...rest, tokenEnv: "JETSKI_NODE_PROVIDER" };
+            environment = { JETSKI_NODE_PROVIDER: token };
+            break;
+          }
+          case "ssh":
+            config = options.provider;
+            break;
+          default:
+            assertNever(options.provider);
+        }
+        hosts = await standaloneHosts(
+          state,
+          config,
+          identity.poolId,
+          images,
+          environment,
+          options.hostLifecycle,
+        );
+        break;
+      }
+      default:
+        assertNever(options.provider);
     }
+    if (hosts.close) cleanup.unshift(hosts.close);
     const manager = new SandboxManager(
       state,
       hosts.provider,

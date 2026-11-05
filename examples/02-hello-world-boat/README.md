@@ -1,6 +1,7 @@
 # Hello world directly on Boat
 
 A self-contained embedded example. No standalone server or custom JSON config.
+Compare [hello world on boxd](../06-boxd/): only the provider block differs.
 Uses the local, unpublished API; published 0.1.1 does not include this helper.
 Requires Node 24.22.1+ and an existing Boat account. Running it can incur host charges.
 

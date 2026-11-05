@@ -1,24 +1,24 @@
-import { openJetski } from "@firtoz/jetski/node";
+import { runSandbox } from "@firtoz/jetski/node";
 
-const jetski = await openJetski({
-  provider: {
-    kind: "boxd",
-    token: env("BOXD_API_KEY"),
-    namespace: "boxd-personal-fra",
-    region: "fra",
+const result = await runSandbox(
+  {
+    provider: {
+      kind: "boxd",
+      token: env("BOXD_API_KEY"),
+      namespace: "my-boxd-org-fra",
+      region: "fra",
+    },
+    image: env("JETSKI_IMAGE"),
+    // Controller state on the machine running this script, relative to its working directory.
+    dataDirectory: "./.jetski",
+    // Checkpoint objects also stay here: ./.jetski/objects, not on the execution host.
+    storage: { kind: "local" },
   },
-  image: env("JETSKI_IMAGE"),
-  // Metadata and local checkpoint objects live on this script's machine, not boxd.
-  dataDirectory: "./.jetski",
-});
-try {
-  const sandbox = await jetski.create();
-  process.stdout.write(
-    (await sandbox.exec(["echo", "Hello from Jetski on boxd!"])).stdout,
-  );
-} finally {
-  await jetski.close();
-}
+  ["echo", "Hello, world!"],
+);
+
+process.stdout.write(result.stdout);
+
 function env(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Set ${name} before running this example`);

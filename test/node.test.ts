@@ -579,3 +579,38 @@ test("readiness unknown preserves queued work and the original physical allocati
   }
   assert.equal(host.hosts.size, 0);
 });
+
+test("embedded built-in boxd client is closed without allocating a machine", async (t) => {
+  const { Boxd } = await import("@boxd-sh/sdk");
+  const descriptor = Object.getOwnPropertyDescriptor(Boxd.prototype, "close");
+  const original = Boxd.prototype.close;
+  let closes = 0;
+  Object.defineProperty(Boxd.prototype, "close", {
+    configurable: true,
+    writable: true,
+    value: async function (this: InstanceType<typeof Boxd>) {
+      closes++;
+      return original.call(this);
+    },
+  });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(Boxd.prototype, "close", descriptor);
+    else Reflect.deleteProperty(Boxd.prototype, "close");
+  });
+  const dataDirectory = await directory(t);
+  const controller = await openJetski({
+    provider: {
+      kind: "boxd",
+      token: "fixture-no-network",
+      namespace: "test-fra",
+      region: "fra",
+    },
+    dataDirectory,
+    image,
+  });
+  assert.deepEqual(await controller.list(), []);
+  assert.equal(closes, 0);
+  await controller.close();
+  await controller.close();
+  assert.equal(closes, 1);
+});

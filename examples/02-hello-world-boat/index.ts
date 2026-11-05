@@ -6,7 +6,7 @@ const result = await runSandbox(
     image: env("JETSKI_IMAGE"),
     // Controller state on the machine running this script, relative to its working directory.
     dataDirectory: "./.jetski",
-    // Checkpoint objects also stay here: ./.jetski/objects, NOT on the Boat disk.
+    // Checkpoint objects also stay here: ./.jetski/objects, not on the execution host.
     storage: { kind: "local" },
   },
   ["echo", "Hello, world!"],

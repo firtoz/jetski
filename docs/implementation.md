@@ -15,7 +15,7 @@ facade, including distinct-sandbox checkpoint restore, and an embedded Node
 controller with Boat/SSH, local/S3 storage, SQLite state, owner-bound scheduling
 and verified shutdown. Source setup uses `npm install` with the existing automatic
 build; released packages are prebuilt. See [API and recovery boundaries](simple-api.md).
-These source APIs are not yet included in the published 0.1.1 package. Local acceptance:385 tests, build,
+These source APIs are not yet included in the published 0.1.1 package. Local acceptance:386 tests, build,
 typecheck and lint pass. All six examples use TypeScript with strict standalone
 typechecks; compile-only contracts check valid/invalid public API calls. Protocol fixtures are not new hosted
 Boat/R2 or physical-host replacement qualification.
