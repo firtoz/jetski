@@ -32,7 +32,8 @@ after restart. An authoritative forward generation change starts a fresh attempt
 and retains a supersession receipt; a regressed or invalid fence fails closed.
 The collector independently enforces object grace, complete reachability and all
 reader/writer fences. Maintenance does not expire acknowledged checkpoint history.
-The option defaults to false until release qualification is complete.
+The option defaults to false. Enable it only after qualifying your adapter and
+backup/recovery procedure; it never expires acknowledged checkpoint history.
 
 Install the prebuilt version: `npm install --global @firtoz/jetski@0.1.0` using Node
 from `.nvmrc`. Source-build instructions are in CONTRIBUTING.md. Prepare a dedicated
@@ -74,8 +75,9 @@ jetski exec SANDBOX_UUID --id COMMAND_UUID -- /bin/sh -c 'printf hello'
 
 A server worker progresses queued work without an open browser. Its durable pool
 ledger reserves one host per owner by default and queues excess assignments.
-Unknown host effects quarantine the assignment; automatic recovery of every
-interrupted lifecycle stage is still being implemented. Do not retry uncertain
+Unknown host effects quarantine the assignment. Not every uncertain remote
+effect can be automatically reconciled; inspect the persisted operation and use
+the explicit recovery paths below. Do not retry uncertain
 commands with a new command ID. Host-side administrative commands have an
 independent deadline watchdog: loss of the control process does not remove their
 timeout. This bounds the command process group; it does not prove a container
@@ -243,8 +245,9 @@ terminal-input reads bounded JSON from stdin with `--id` for replay identity.
 Initial rows/columns default to 24/80 (each 1–4096); they are applied before the
 workload starts and bound to terminal identity. CLI terminal-start accepts
 --rows and --columns. Public gateway configuration is described below; broader
-host-restart qualification remains open. These endpoints are experimental: pty reports implemented
-API support, while releaseQualified stays false until the full release gates pass.
+host-loss continuity requires the separately documented recovery contract. The
+pty capability reports implemented API support; the legacy releaseQualified flag
+remains false and is not an operator or runtime-security certification.
 
 
 Host workers hold private lifetime locks before publishing running receipts.

@@ -9,8 +9,9 @@ without requiring a new VM or provider snapshot for every session.
 
 First cloud-qualified with **Boat**. Also supports explicitly adopted Linux hosts
 through SSH. Available as a portable TypeScript core/SDK, an optional Node.js HTTP
-service and a thin CLI. This is a pre-release with completed hosted qualification;
-there is no npm release or managed Jetski hosting service.
+service and a thin CLI. The 0.1 line targets self-hosted single-controller
+deployments; see [operations](docs/operations.md) for supported scope and recovery
+requirements. There is no managed Jetski hosting service.
 
 ## Why use it?
 

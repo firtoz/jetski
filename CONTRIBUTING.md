@@ -21,3 +21,6 @@ fencing and verified publication take precedence over optimizations. Add focused
 checks for changed behavior and reuse unchanged qualification. See docs/design.md
 and docs/qualification.md. Do not commit credentials, private receipts or application
 integrations. Releases follow docs/releases.md.
+
+New dependencies and extracted source require license/provenance review. Document
+adapter capabilities honestly and retain failed qualification evidence.

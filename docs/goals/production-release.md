@@ -16,8 +16,8 @@ runtime changes or protected client/GC data modifications.
 ## Finite gates
 
 - [x] Audit actual gaps and freeze supported scope/limitations.
-- [ ] Prebuilt versioned package/container, clean artifact consumer checks.
-- [ ] Tagged release workflow, provenance/integrity and dependency security.
+- [x] Prebuilt package/container implementation; clean artifact consumer checks.
+- [x] Tagged workflow/provenance/integrity implementation; production audit clean.
 - [x] Controller exclusivity, config validation, bounded admission and health/logging.
 - [x] Backup/restore/upgrade/security/support runbooks and quickstart.
 - [ ] Build/typecheck/tests/lint, one disposable CI release candidate pass.
@@ -53,3 +53,9 @@ Registry confirmed E403 jet-ski is too similar to jetski. Use authorized scoped
 @firtoz/jetski0.1.0; CLI remainsjetski and storage namespacejetski/v1 is preserved.
 All9 jobs passed at5388caf / CI42001976206, including fixed container qualification.
 Only package/import documentation metadata is renamed for final source CI.
+
+Finalization status is maintained privately at
+/home/frtn/.local/state/jetski-qa/release-20261105/current.md so recording CI or
+publication completion does not create another source-only release cycle. Source
+implementation is frozen; only concrete release failures reopen it. Public docs
+retain operational limits; no hard byte quotas, HA or universal compatibility claim.
