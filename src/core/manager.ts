@@ -171,6 +171,8 @@ export type ManagerOptions = {
   /** Store tiny complete output channels in durable transactional metadata. Opt-in. */
   inlineCommandOutputBytes?: number;
   hostsPerOwner?: number;
+  /** Retained sandbox identities per owner, including deleted history. */
+  maxSandboxesPerOwner?: number;
   /** New host allocations snapshot this policy; existing slots keep theirs. */
   hostLifecycle?: HostLifecycle;
   idlePriceSource?: IdlePriceSource;
@@ -190,6 +192,7 @@ export class SandboxManager {
   private readonly outputs: CommandOutputStore;
   private readonly activeOwners = new Set<string>();
   private readonly images: Set<string>;
+  private readonly maxSandboxesPerOwner: number;
   private readonly resources: WorkloadResources;
   private readonly maintenance: CheckpointMaintenance | undefined;
   readonly history: CheckpointHistory;
@@ -229,6 +232,13 @@ export class SandboxManager {
       typeof options.eagerCheckpointCapture !== "boolean"
     )
       throw Error("Invalid eager capture policy");
+    this.maxSandboxesPerOwner = options.maxSandboxesPerOwner ?? 10000;
+    if (
+      !Number.isSafeInteger(this.maxSandboxesPerOwner) ||
+      this.maxSandboxesPerOwner < 1 ||
+      this.maxSandboxesPerOwner > 1000000
+    )
+      throw Error("Invalid sandbox identity bound");
     this.timings = options.timings;
     if (options.timings) {
       objects = observeCheckpointStore(objects, options.timings);
@@ -500,6 +510,12 @@ export class SandboxManager {
       throw new Error("UUID required");
     return value;
   }
+  private checkAdmissionIn(tx: Transaction, owner: string) {
+    if (
+      tx.scan<Sandbox>(`sandbox/${owner}/`).length >= this.maxSandboxesPerOwner
+    )
+      throw Error("Owner sandbox identity bound reached");
+  }
   async create(
     owner: string,
     id: string,
@@ -528,6 +544,7 @@ export class SandboxManager {
           this.pool.enqueueIn(tx, owner, id, operationId, { image });
         return previous;
       }
+      this.checkAdmissionIn(tx, owner);
       const record: Sandbox = {
         id,
         owner,
@@ -602,6 +619,7 @@ export class SandboxManager {
       if (operation.phase !== "queued")
         throw Error("Copy admission unavailable");
       this.operations.claimIn(tx, fence, operationId);
+      this.checkAdmissionIn(tx, owner);
       const record: Sandbox = {
         id,
         owner,

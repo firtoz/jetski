@@ -6,8 +6,15 @@ export class SqliteState implements StateStore {
   private active = false;
   constructor(path: string) {
     this.db = new DatabaseSync(path);
+    const version = Number(
+      this.db.prepare("PRAGMA user_version").get()?.user_version,
+    );
+    if (version > 1) {
+      this.db.close();
+      throw Error("Unsupported state format; use a compatible release");
+    }
     this.db.exec(
-      "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;",
+      "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT; PRAGMA user_version=1;",
     );
   }
   async transaction<T>(body: (tx: Transaction) => T): Promise<T> {

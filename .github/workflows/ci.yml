@@ -84,11 +84,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Install exact Git commit in an independent consumer
-        run: |
-          mkdir -p "$RUNNER_TEMP/jetski-consumer"
-          npm install --prefix "$RUNNER_TEMP/jetski-consumer" "git+https://github.com/firtoz/jetski.git#${{ github.sha }}"
-          node --input-type=module -e 'import {createRequire} from "node:module";import {pathToFileURL} from "node:url";const require=createRequire(process.argv[1]+"/package.json");for(const name of ["jetski/core","jetski/sdk","jetski/transport/http","jetski/transport/websocket","jetski/server/preview-fetch"]){const m=await import(pathToFileURL(require.resolve(name)).href);if(!Object.keys(m).length)throw Error("Missing entrypoint");}' "$RUNNER_TEMP/jetski-consumer"
+      - name: Qualify prebuilt artifact in an independent consumer
+        run: node scripts/qualify-package.mjs
+      - run: npm audit --omit=dev
+      - name: Qualify unprivileged container startup, health and restart
+        run: node scripts/qualify-container.mjs
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
@@ -98,9 +98,9 @@ jobs:
           npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/jetski-package"
           cd "$RUNNER_TEMP/jetski-bun-consumer"
           printf '%s' '{"name":"artifact-consumer","private":true,"type":"module"}' > package.json
-          bun add --ignore-scripts "$RUNNER_TEMP/jetski-package/jetski-0.0.0.tgz"
+          bun add --ignore-scripts "$RUNNER_TEMP/jetski-package/jet-ski-0.1.0.tgz"
           bun install --frozen-lockfile --ignore-scripts
-          bun --eval 'import {SandboxManager} from "jetski/core";import {JetskiClient} from "jetski/sdk";import {loadBoatBootstrapAssets} from "jetski/host-assets";if(!SandboxManager||!JetskiClient||!(await loadBoatBootstrapAssets()).installer.length)throw Error("Artifact import failed")'
+          bun --eval 'import {SandboxManager} from "jet-ski/core";import {JetskiClient} from "jet-ski/sdk";import {loadBoatBootstrapAssets} from "jet-ski/host-assets";if(!SandboxManager||!JetskiClient||!(await loadBoatBootstrapAssets()).installer.length)throw Error("Artifact import failed")'
       - uses: actions/upload-artifact@v4
         with:
           name: jetski-package

@@ -32,6 +32,8 @@ const { values, positionals } = parseArgs({
     "memory-chunk-bytes": { type: "string" },
     "no-memory-reuse": { type: "boolean" },
     origin: { type: "string" },
+    help: { type: "boolean" },
+    version: { type: "boolean" },
   },
 });
 const command = positionals[0];
@@ -39,174 +41,200 @@ function required(value: string | undefined, name: string): string {
   if (!value) throw new Error(`${name} is required`);
   return value;
 }
-if (command === "serve") {
-  const config = JSON.parse(
+if (values.version) {
+  const { RELEASE_VERSION } = await import("./version.js");
+  process.stdout.write(RELEASE_VERSION + "\n");
+} else if (values.help || !command) {
+  process.stdout.write(
+    "Jetski: durable sandboxes on reusable compute\nUsage: jetski serve --config PATH | capabilities | list | get ID | create --id UUID --operation UUID --image DIGEST | exec ID --id UUID -- COMMAND | stop ID --operation UUID | resume ID --operation UUID\nDocs: https://github.com/firtoz/jetski#readme\n",
+  );
+} else if (command === "check-config") {
+  const { serverConfig } = await import("./server/config.js");
+  serverConfig(
+    JSON.parse(await readFile(required(values.config, "--config"), "utf8")),
+  );
+  process.stdout.write(
+    "Configuration structure valid; no host or credential connectivity tested\n",
+  );
+} else if (command === "serve") {
+  const rawConfig = JSON.parse(
     await readFile(required(values.config, "--config"), "utf8"),
-  ) as {
-    dataDirectory: string;
-    poolId: string;
-    approvedImages: string[];
-    workloadResources?: import("./core/resources.js").WorkloadResources;
-    automaticCollection?: boolean;
-    port?: number;
-    hostsPerOwner?: number;
-    hostLifecycle?: import("./core/host-lifecycle.js").HostLifecycle;
-    checkpointPackBytes?: number;
-    checkpointFrameBytes?: number;
-    commandStartWaitMs?: number;
-    inlineCommandOutputBytes?: number;
-    sshGateway?: {
-      hostKeyPath: string;
-      host?: string;
-      port: number;
-      maxConnections?: number;
-      principals: Array<{ owner: string; publicKey: string }>;
-    };
-    preview?: {
-      host?: string;
-      port: number;
-      routes: import("./server/preview.js").PreviewRoute[];
-      controlOrigins: string[];
-    };
-    storage?: import("./server/storage.js").StorageConfig;
-    hostProvider: import("./server/hosts.js").HostConfig;
-    principals: Array<{ owner: string; tokenEnv: string }>;
-  };
+  );
+  const { serverConfig } = await import("./server/config.js");
+  const config = serverConfig(rawConfig);
   const [
     { SandboxManager },
     { standaloneHosts },
     { SqliteState },
+    { acquireControllerLock },
     { standaloneStorage },
     { createHttpServer, bearerAuthentication, startWorker },
   ] = await Promise.all([
     import("./core/manager.js"),
     import("./server/hosts.js"),
     import("./state/sqlite.js"),
+    import("./server/controller-lock.js"),
     import("./server/storage.js"),
     import("./server/http.js"),
   ]);
   const directory = resolve(config.dataDirectory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  const releaseController = await acquireControllerLock(directory);
   const state = new SqliteState(join(directory, "state.sqlite"));
-  const { provider, transport, streamTransport, idlePriceSource } =
-    await standaloneHosts(
-      state,
-      config.hostProvider,
-      config.poolId,
-      config.approvedImages,
-      process.env,
-      config.hostLifecycle,
-    );
-  const storage = await standaloneStorage(directory, config.storage);
-  const manager = new SandboxManager(
-    state,
-    provider,
-    transport,
-    storage.store,
-    {
-      poolId: config.poolId,
-      memoryCodecs: new Map([
-        ["identity", identityMemoryCodec],
-        ["gzip", gzipMemoryCodec],
-      ]),
-      ...(idlePriceSource ? { idlePriceSource } : {}),
-      ...(streamTransport ? { streamTransport } : {}),
-      approvedImages: config.approvedImages,
-      ...(config.workloadResources !== undefined
-        ? { workloadResources: config.workloadResources }
-        : {}),
-      hostsPerOwner: config.hostsPerOwner ?? 1,
-      ...(config.hostLifecycle === undefined
-        ? {}
-        : { hostLifecycle: config.hostLifecycle }),
-      ...(config.inlineCommandOutputBytes !== undefined
-        ? { inlineCommandOutputBytes: config.inlineCommandOutputBytes }
-        : {}),
-      ...(config.commandStartWaitMs !== undefined
-        ? { commandStartWaitMs: config.commandStartWaitMs }
-        : {}),
-      ...(config.checkpointFrameBytes !== undefined
-        ? { checkpointFrameBytes: config.checkpointFrameBytes }
-        : {}),
-      ...(config.checkpointPackBytes !== undefined
-        ? { checkpointPackBytes: config.checkpointPackBytes }
-        : {}),
-      ...(config.automaticCollection !== undefined
-        ? { automaticCollection: config.automaticCollection }
-        : {}),
-    },
-  );
-  const authenticate = bearerAuthentication(
-    config.principals.map((principal) => ({
-      owner: principal.owner,
-      token: required(process.env[principal.tokenEnv], principal.tokenEnv),
-    })),
-  );
-  const server = createHttpServer(manager, authenticate, {
-    sshGateway: !!config.sshGateway,
-    previews: !!config.preview,
-    previewRoutes: config.preview?.routes ?? [],
-  });
-  let sshGateway:
-    | ReturnType<typeof import("./server/ssh.js").createSshGateway>
-    | undefined;
-  if (config.sshGateway) {
-    const { createSshGateway } = await import("./server/ssh.js");
-    const ssh = config.sshGateway;
-    sshGateway = createSshGateway(manager, {
-      hostKey: await readFile(ssh.hostKeyPath),
-      principals: ssh.principals,
-      ...(ssh.maxConnections === undefined
-        ? {}
-        : { maxConnections: ssh.maxConnections }),
-    });
-    await new Promise<void>((resolve, reject) => {
-      sshGateway!.server.once("error", reject);
-      sshGateway!.server.listen(ssh.port, ssh.host ?? "127.0.0.1", resolve);
-    });
-  }
-  let preview:
-    | ReturnType<typeof import("./server/preview.js").createPreviewServer>
-    | undefined;
-  if (config.preview) {
-    const { createPreviewServer } = await import("./server/preview.js");
-    preview = createPreviewServer(manager, authenticate, {
-      ...config.preview,
-      sessions: manager.previewSessions,
-    });
-    await new Promise<void>((resolve, reject) => {
-      preview!.server.once("error", reject);
-      preview!.server.listen(
-        config.preview!.port,
-        config.preview!.host ?? "127.0.0.1",
-        resolve,
+  try {
+    const { provider, transport, streamTransport, idlePriceSource } =
+      await standaloneHosts(
+        state,
+        config.hostProvider,
+        config.poolId,
+        config.approvedImages,
+        process.env,
+        config.hostLifecycle,
       );
+    const storage = await standaloneStorage(directory, config.storage);
+    const manager = new SandboxManager(
+      state,
+      provider,
+      transport,
+      storage.store,
+      {
+        poolId: config.poolId,
+        memoryCodecs: new Map([
+          ["identity", identityMemoryCodec],
+          ["gzip", gzipMemoryCodec],
+        ]),
+        ...(idlePriceSource ? { idlePriceSource } : {}),
+        ...(streamTransport ? { streamTransport } : {}),
+        approvedImages: config.approvedImages,
+        ...(config.workloadResources !== undefined
+          ? { workloadResources: config.workloadResources }
+          : {}),
+        hostsPerOwner: config.hostsPerOwner ?? 1,
+        maxSandboxesPerOwner: config.maxSandboxesPerOwner ?? 10000,
+        events: {
+          emit: (event) => process.stderr.write(JSON.stringify(event) + "\n"),
+        },
+        ...(config.hostLifecycle === undefined
+          ? {}
+          : { hostLifecycle: config.hostLifecycle }),
+        ...(config.inlineCommandOutputBytes !== undefined
+          ? { inlineCommandOutputBytes: config.inlineCommandOutputBytes }
+          : {}),
+        ...(config.commandStartWaitMs !== undefined
+          ? { commandStartWaitMs: config.commandStartWaitMs }
+          : {}),
+        ...(config.checkpointFrameBytes !== undefined
+          ? { checkpointFrameBytes: config.checkpointFrameBytes }
+          : {}),
+        ...(config.checkpointPackBytes !== undefined
+          ? { checkpointPackBytes: config.checkpointPackBytes }
+          : {}),
+        ...(config.automaticCollection !== undefined
+          ? { automaticCollection: config.automaticCollection }
+          : {}),
+      },
+    );
+    const authenticate = bearerAuthentication(
+      config.principals.map((principal) => ({
+        owner: principal.owner,
+        token: required(process.env[principal.tokenEnv], principal.tokenEnv),
+      })),
+    );
+    const { ServiceHealth } = await import("./server/health.js");
+    const health = new ServiceHealth();
+    const server = createHttpServer(manager, authenticate, {
+      health: () => health.snapshot(),
+      sshGateway: !!config.sshGateway,
+      previews: !!config.preview,
+      previewRoutes: config.preview?.routes ?? [],
     });
-  }
-  const stopWorker = startWorker(manager, () =>
-    process.stderr.write(
-      "Reconciliation failed; inspect persisted operation status\n",
-    ),
-  );
-  server.listen(config.port ?? 8788, "127.0.0.1", () =>
-    process.stdout.write(
-      JSON.stringify({ listening: server.address() }) + "\n",
-    ),
-  );
-  let stopping = false;
-  const stop = async () => {
-    if (stopping) return;
-    stopping = true;
-    await preview?.close();
-    await sshGateway?.close();
-    await stopWorker();
-    server.close(() => {
+    let sshGateway:
+      | ReturnType<typeof import("./server/ssh.js").createSshGateway>
+      | undefined;
+    if (config.sshGateway) {
+      const { createSshGateway } = await import("./server/ssh.js");
+      const ssh = config.sshGateway;
+      sshGateway = createSshGateway(manager, {
+        hostKey: await readFile(ssh.hostKeyPath),
+        principals: ssh.principals,
+        ...(ssh.maxConnections === undefined
+          ? {}
+          : { maxConnections: ssh.maxConnections }),
+      });
+      await new Promise<void>((resolve, reject) => {
+        sshGateway!.server.once("error", reject);
+        sshGateway!.server.listen(ssh.port, ssh.host ?? "127.0.0.1", resolve);
+      });
+    }
+    let preview:
+      | ReturnType<typeof import("./server/preview.js").createPreviewServer>
+      | undefined;
+    if (config.preview) {
+      const { createPreviewServer } = await import("./server/preview.js");
+      preview = createPreviewServer(manager, authenticate, {
+        ...config.preview,
+        sessions: manager.previewSessions,
+      });
+      await new Promise<void>((resolve, reject) => {
+        preview!.server.once("error", reject);
+        preview!.server.listen(
+          config.preview!.port,
+          config.preview!.host ?? "127.0.0.1",
+          resolve,
+        );
+      });
+    }
+    const stopWorker = startWorker(
+      manager,
+      () => {
+        health.failed();
+        process.stderr.write(
+          JSON.stringify({
+            type: "reconciliation.failed",
+            at: Date.now(),
+            action: "inspect persisted operations",
+          }) + "\n",
+        );
+      },
+      1000,
+      (successful) => {
+        if (successful) health.succeeded();
+      },
+    );
+    server.on("error", () => {
+      health.failed();
+      process.stderr.write("HTTP listener failed\n");
+      process.exitCode = 1;
+      void stop();
+    });
+    server.listen(config.port ?? 8788, config.host ?? "127.0.0.1", () =>
+      process.stdout.write(
+        JSON.stringify({ listening: server.address() }) + "\n",
+      ),
+    );
+    let stopping = false;
+    const stop = async () => {
+      if (stopping) return;
+      stopping = true;
+      health.stop();
+      const closed = new Promise<void>((resolve) =>
+        server.close(() => resolve()),
+      );
+      await preview?.close();
+      await sshGateway?.close();
+      await stopWorker();
+      await closed;
       state.close();
       storage.close();
-    });
-  };
-  process.on("SIGINT", () => void stop());
-  process.on("SIGTERM", () => void stop());
+      await releaseController();
+    };
+    process.on("SIGINT", () => void stop());
+    process.on("SIGTERM", () => void stop());
+  } catch (error) {
+    state.close();
+    await releaseController();
+    throw error;
+  }
 } else if (command === "forward") {
   const { forwardTcp } = await import("./client/forward.js");
   const config = JSON.parse(
@@ -273,6 +301,9 @@ if (command === "serve") {
         required(positionals[2], "grant ID"),
         required(values.operation, "--operation"),
       );
+      break;
+    case "health":
+      result = await client.health();
       break;
     case "capabilities":
       result = await client.capabilities();

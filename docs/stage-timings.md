@@ -4,7 +4,7 @@
 `{stage, elapsedMs, outcome}`. Durations use a monotonic clock. The portable core
 measures host control, cached resume, transfer/publication, pre-cleanup verification
 and storage operations without importing a provider or filesystem module.
-`observeCheckpointStore` is also available independently from `jetski/core`.
+`observeCheckpointStore` is also available independently from `jet-ski/core`.
 
 A Boat transport can receive the same `timings` option. This explicitly enables
 host diagnostics through its trusted control environment and reports allowlisted

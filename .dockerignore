@@ -1,0 +1,14 @@
+**
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/**
+!host/**
+!host-rust/install.py
+!scripts/build-host-assets.mjs
+!scripts/container-health.mjs
+!LICENSE
+!NOTICE
+
+**/__pycache__
+**/*.pyc

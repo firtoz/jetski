@@ -25,7 +25,8 @@ Inspect the worktree and exact-SHA CI before trusting a recorded result.
   separately reserved recovery budget. No operator-desktop runtime changes.
 - Preserve the separate November 1, 2026, 12:20 UTC real-grace GC experiment:
   do not change its clock, checkpoint references, active generation or reservation.
-- No production cutover, npm publication or public hosted-compute offering.
+- No production cutover or public hosted-compute offering. Npm publication is
+  authorized by the November 5 [self-hosted release](goals/production-release.md).
 - Preserve acknowledged checkpoints and one authoritative writer during adoption;
   start with new staging workspaces. Keep legacy migration in the client.
 - Uncertain saves retain/quarantine the source. No unverified release, silent
@@ -92,6 +93,12 @@ expand the acceptance matrix without a concrete missing requirement or observed
 failure. Then freeze the candidate artifact and execute one consolidated acceptance
 pass, reusing valid existing evidence. Fix failures and repeat only affected checks.
 The already-running hosted comparison may finish and must clean its owned hosts.
+
+## Current release work
+
+November 5: the [production self-hosted release](goals/production-release.md)
+supersedes the original npm-publication exclusion. Preserve the qualified lifecycle
+and follow its finite packaging/operator/release gates.
 
 ## Next steps
 

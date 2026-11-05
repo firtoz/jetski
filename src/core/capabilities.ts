@@ -23,3 +23,14 @@ export type ApiCapabilities = {
   tcpForwarding: boolean;
   cancellationScope: "command";
 };
+
+/** Controller observations, not proof of provider health or checkpoint durability. */
+export type ApiHealth = {
+  version: string;
+  apiVersion: 1;
+  ready: boolean;
+  stopping: boolean;
+  lastSuccess: number | null;
+  lastFailure: number | null;
+  sandboxes: Record<string, number>;
+};

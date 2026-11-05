@@ -2,7 +2,7 @@
 
 Local storage remains the default and lives on the control-plane disk. It does not
 protect against loss of that disk. The S3 adapter is implemented behind
-`jetski/storage/s3`. Live R2 passed the bounded storage and checkpoint-recovery
+`jet-ski/storage/s3`. Live R2 passed the bounded storage and checkpoint-recovery
 checks below on October 31, 2026. **Physical-host replacement, provider outage and
 real-grace collection remain unqualified.** The SDK and portable core do not import
 the AWS SDK.
@@ -68,7 +68,7 @@ loaded through explicit subpaths or the selected standalone configuration.
 
 ## Shared conformance runner
 
-`jetski/testing/storage` exports `qualifyStorage(openSession)`. It runs the same
+`jet-ski/testing/storage` exports `qualifyStorage(openSession)`. It runs the same
 bounded checks against a supplied adapter factory, closes and reopens the client,
 and returns a report with individual checks, adapter-call counts and cleanup status.
 Call counts are adapter methods, not billable provider requests. Elapsed time is a

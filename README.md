@@ -26,8 +26,8 @@ there is no npm release or managed Jetski hosting service.
 - **Reconnect safely:** persisted operation identities and resumable output let a
   client observe existing work after interruption without blindly rerunning it.
 - **Bring your infrastructure:** replace host, storage, transactional state,
-  scheduling, identity, transport and observability adapters. Importing `jetski/core`
-  or `jetski/sdk` does not load SSH servers, SQLite or provider SDKs.
+  scheduling, identity, transport and observability adapters. Importing `jet-ski/core`
+  or `jet-ski/sdk` does not load SSH servers, SQLite or provider SDKs.
 - **Use familiar interfaces:** command execution, files, PTYs, SSH access,
   authenticated HTTP/WebSocket previews and TCP forwarding.
 
@@ -76,12 +76,34 @@ bytes plus retained session files and acknowledged output.
 
 ## Get started
 
-Use the Node version in [`.nvmrc`](.nvmrc). From a checkout:
+Use Node from [`.nvmrc`](.nvmrc). Install the prebuilt package (the CLI is `jetski`):
 
 ```sh
-npm ci
-npm run build
+npm install --global jet-ski@0.1.0
+jetski --version
+jetski --help
 ```
+
+For an SDK application: `npm install --save-exact jet-ski@0.1.0`, then import
+`JetskiClient` from `jet-ski/sdk` or compose `SandboxManager` from `jet-ski/core`.
+Registry users do not need TypeScript or a source build. See [contributing](CONTRIBUTING.md)
+for checkout instructions, [operations](docs/operations.md) for deployment/backup,
+and [releases](docs/releases.md) for versions, containers and upgrades.
+
+A versioned Linux amd64 controller image is built as `ghcr.io/firtoz/jetski:v0.1.0`.
+Use its verified digest from the GitHub release once published; keep configuration
+read-only and `/data` on a persistent volume owned by UID1000. Example:
+
+```sh
+docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+  -p 127.0.0.1:8788:8788 --env-file /private/jetski.env \
+  -v /private/server.json:/etc/jetski/server.json:ro \
+  -v /private/jetski-data:/data ghcr.io/firtoz/jetski:v0.1.0
+```
+
+Set `dataDirectory: "/data"` and `host: "0.0.0.0"` in that container's configuration.
+Use a dedicated controller volume and TLS reverse proxy for remote access; never
+mount a local runtime socket. Workloads execute on the configured remote hosts.
 
 ### 1. Configure a host and storage
 
@@ -107,7 +129,7 @@ SSH retirement releases Jetski's allocation; it never powers off or deletes the 
 ### 2. Start the service
 
 ```sh
-node dist/cli.js serve --config /absolute/path/server.json
+jetski serve --config /absolute/path/server.json
 ```
 
 The API binds loopback on port 8788. Remote clients need an operator-managed HTTPS
@@ -155,15 +177,14 @@ and [OpenAPI](docs/openapi.json).
 | Scheduling               | Standalone worker; injectable platform scheduling                    |
 | Identity / observability | Owner-scoped bearer auth, gateway keys; injectable policy/event sink |
 
-For npm clients before publication, pin a reviewed full Git commit:
-`npm install git+https://github.com/firtoz/jetski.git#<full-commit-sha>`.
-The prepare hook builds JavaScript and declarations. Bun consumers should use a
-built release `.tgz` pinned by URL and lockfile digest, with lifecycle scripts
-disabled; Git-source preparation is not qualified for Bun.
+Pin the registry version in your lockfile, or install the GitHub release `.tgz`
+after verifying SHA256SUMS. Both contain built JavaScript, declarations and host
+assets. Lifecycle scripts can be disabled. Git-source installs are contributor
+workflows; the prepare hook needs build dependencies and is not qualified for Bun.
 
-Embedded clients compose `SandboxManager` from `jetski/core` and supply state,
+Embedded clients compose `SandboxManager` from `jet-ski/core` and supply state,
 provider, host transport, storage and scheduling. No standalone service is required.
-`jetski/host-assets` supplies bundled bootstrap source without filesystem reads;
+`jet-ski/host-assets` supplies bundled bootstrap source without filesystem reads;
 see [embedded bootstrap](docs/boat.md) and [native R2 storage](docs/storage-r2.md).
 
 ## Does it replace Boat?
@@ -292,8 +313,8 @@ To opt in, follow the [gVisor configuration guide](docs/gvisor-runtime.md), then
 [portable memory setup](docs/portable-memory.md):
 
 ```sh
-node dist/cli.js suspend SANDBOX_ID --operation OPERATION_UUID --memory-codec gzip
-node dist/cli.js resume-memory SANDBOX_ID --operation ANOTHER_OPERATION_UUID
+jetski suspend SANDBOX_ID --operation OPERATION_UUID --memory-codec gzip
+jetski resume-memory SANDBOX_ID --operation ANOTHER_OPERATION_UUID
 ```
 
 Observe each persisted operation to completion. Compatible runtime/image/helper

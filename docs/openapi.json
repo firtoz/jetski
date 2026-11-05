@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Jetski API",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "description": "Implementation preview. This document covers implemented routes only; the v1 release acceptance matrix is not complete."
   },
   "security": [
@@ -2327,6 +2327,22 @@
         "responses": {
           "200": {
             "description": "Assigned runtime kind, memorySuspendVersion and portableMemoryVersion; version fields are 1 when supported and null otherwise."
+          }
+        }
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "summary": "Authenticated, owner-scoped controller and scheduler readiness; never allocates compute",
+        "responses": {
+          "200": {
+            "description": "Ready with release version, scheduler timestamps and owner-scoped sandbox phase counts"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "503": {
+            "description": "Scheduler stale, failed or controller stopping"
           }
         }
       }

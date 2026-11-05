@@ -97,6 +97,9 @@ export class JetskiClient {
       { operationId },
     );
   }
+  health(): Promise<import("./core/capabilities.js").ApiHealth> {
+    return this.request("/v1/health");
+  }
   capabilities(): Promise<import("./core/capabilities.js").ApiCapabilities> {
     return this.request("/v1/capabilities");
   }

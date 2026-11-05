@@ -1,0 +1,92 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag on main with green CI
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: npm-release
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - name: Require exact version tag, main ancestry and completed green source CI
+        run: |
+          node --input-type=module -e 'import p from "./package.json" with {type:"json"};if(process.env.TAG!==`v${p.version}`)throw Error("Tag/version mismatch")'
+          git merge-base --is-ancestor HEAD origin/main
+          sha=$(git rev-parse HEAD)
+          result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$sha" --json conclusion --jq 'map(select(.conclusion=="success"))|length')
+          test "$result" -gt 0
+          echo "SOURCE_SHA=$sha" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/qualify-package.mjs
+      - run: npm audit --omit=dev
+      - name: Pack immutable artifact and checksums
+        run: |
+          mkdir release
+          npm pack --ignore-scripts --pack-destination release
+          cp docs/openapi.json release/openapi.json
+          printf '%s\n' "$SOURCE_SHA" > release/SOURCE_SHA
+          (cd release && sha256sum *.tgz openapi.json SOURCE_SHA > SHA256SUMS)
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: image
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ghcr.io/firtoz/jetski:${{ env.TAG }}
+          provenance: mode=max
+          sbom: true
+      - name: Record image identity
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          printf 'ghcr.io/firtoz/jetski@%s\n' "$DIGEST" > release/IMAGE
+          (cd release && sha256sum IMAGE >> SHA256SUMS)
+      - name: Publish through npm trusted identity or verify identical existing version
+        run: |
+          name=$(node -p 'require("./package.json").name')
+          version=$(node -p 'require("./package.json").version')
+          existing=$(npm view "$name@$version" dist.integrity --json 2>/dev/null || true)
+          if [ -n "$existing" ] && [ "$existing" != 'null' ]; then
+            EXISTING="$existing" node --input-type=module -e 'import{readFileSync,readdirSync}from"node:fs";import{createHash}from"node:crypto";let f=readdirSync("release").find(f=>f.endsWith(".tgz"));let h="sha512-"+createHash("sha512").update(readFileSync("release/"+f)).digest("base64");if(h!==JSON.parse(process.env.EXISTING))throw Error("Registry artifact differs; do not overwrite")'
+          else
+            npm publish release/*.tgz --access public --provenance --ignore-scripts
+          fi
+      - name: Publish immutable GitHub release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists; inspect immutable assets rather than overwrite"; exit 1
+          fi
+          gh release create "$TAG" release/* --verify-tag --title "Jetski $TAG" --notes-file docs/release-notes.md

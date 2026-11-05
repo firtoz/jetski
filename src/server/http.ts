@@ -18,6 +18,7 @@ import {
   TerminalInputNotFound,
   terminalGeometry,
 } from "../core/terminal-input.js";
+import { RELEASE_VERSION } from "../version.js";
 
 export type Principal = { owner: string };
 export type Authenticate = (
@@ -82,6 +83,12 @@ export function createHttpServer(
   manager: SandboxManager,
   authenticate: Authenticate,
   options: {
+    health?: () => {
+      ready: boolean;
+      stopping: boolean;
+      lastSuccess: number | null;
+      lastFailure: number | null;
+    };
     sshGateway?: boolean;
     previews?: boolean;
     previewRoutes?: import("./preview.js").PreviewRoute[];
@@ -94,10 +101,38 @@ export function createHttpServer(
         send(response, 401, { error: "unauthorized" });
         return;
       }
+      if (options.health?.().stopping) {
+        send(response, 503, { error: "controller_stopping" });
+        return;
+      }
       const url = new URL(request.url ?? "/", "http://localhost");
       const parts = url.pathname.split("/").filter(Boolean);
       if (parts[0] !== "v1") {
         send(response, 404, { error: "not_found" });
+        return;
+      }
+      if (
+        parts.length === 2 &&
+        parts[1] === "health" &&
+        request.method === "GET"
+      ) {
+        const health = options.health?.() ?? {
+          ready: true,
+          stopping: false,
+          lastSuccess: null,
+          lastFailure: null,
+        };
+        // State access is local and read-only; health probes never allocate hosts.
+        const sandboxes = await manager.list(principal.owner);
+        const phases: Record<string, number> = {};
+        for (const sandbox of sandboxes)
+          phases[sandbox.phase] = (phases[sandbox.phase] ?? 0) + 1;
+        send(response, health.ready ? 200 : 503, {
+          version: RELEASE_VERSION,
+          apiVersion: 1,
+          ...health,
+          sandboxes: phases,
+        });
         return;
       }
       if (
@@ -724,6 +759,8 @@ export function createHttpServer(
   server.requestTimeout = 30_000;
   server.headersTimeout = 10_000;
   server.maxHeadersCount = 100;
+  server.maxConnections = 256;
+  server.keepAliveTimeout = 5000;
   return server;
 }
 
@@ -732,20 +769,24 @@ export function startWorker(
   manager: SandboxManager,
   onError: (error: unknown) => void,
   intervalMs = 1000,
+  onCycle?: (successful: boolean) => void,
 ): () => Promise<void> {
   let stopped = false,
     running: Promise<void> | undefined;
   const tick = () => {
     if (stopped || running) return;
     running = (async () => {
+      let successful = true;
       for (const owner of await manager.owners()) {
         try {
           await manager.reconcile(owner);
           await manager.maintain(owner);
         } catch (error) {
+          successful = false;
           onError(error);
         }
       }
+      onCycle?.(successful);
     })()
       .catch(onError)
       .finally(() => {
