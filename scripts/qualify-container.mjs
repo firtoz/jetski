@@ -3,7 +3,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -40,7 +47,10 @@ try {
   };
   await writeFile(join(dir, "config.json"), JSON.stringify(config));
   run("build", "-t", name, ".");
-  assert.match(run("run", "--rm", name, "--version"), /^0\.1\.0/);
+  const version = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ).version;
+  assert.equal(run("run", "--rm", name, "--version").trim(), version);
   run(
     "run",
     "-d",

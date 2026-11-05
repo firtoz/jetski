@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { promisify } from "node:util";
 import { SandboxManager } from "../src/core/manager.js";
 import { serverConfig } from "../src/server/config.js";
 import { acquireControllerLock } from "../src/server/controller-lock.js";
@@ -282,4 +284,72 @@ test("actual CLI controller stops and restarts without provider activity or stal
   exit = once(child, "exit");
   child.kill("SIGTERM");
   assert.deepEqual(await exit, [0, null]);
+});
+
+test("installed CLI command observation preserves channel and cursors without executing work", async (t) => {
+  const calls: string[] = [];
+  const server = createServer((req, res) => {
+    assert.equal(req.method, "GET");
+    assert.equal(req.headers.authorization, "Bearer " + "t".repeat(32));
+    calls.push(req.url!);
+    res.setHeader("content-type", "application/json");
+    res.end(
+      JSON.stringify(
+        req.url!.includes("/output?")
+          ? { base64: "AP8=", nextOffset: 7, terminal: true }
+          : { phase: "succeeded", exitCode: 0 },
+      ),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const run = (...args: string[]) =>
+    promisify(execFile)(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts", ...args],
+      {
+        env: {
+          ...process.env,
+          JETSKI_URL: `http://127.0.0.1:${address.port}`,
+          JETSKI_TOKEN: "t".repeat(32),
+        },
+      },
+    );
+  const sandbox = randomUUID(),
+    command = randomUUID();
+  assert.deepEqual(
+    JSON.parse((await run("command-status", sandbox, "--id", command)).stdout),
+    { phase: "succeeded", exitCode: 0 },
+  );
+  const output = JSON.parse(
+    (
+      await run(
+        "command-output",
+        sandbox,
+        "--id",
+        command,
+        "--channel",
+        "stderr",
+        "--offset",
+        "5",
+        "--bytes",
+        "2",
+      )
+    ).stdout,
+  );
+  assert.deepEqual([...Buffer.from(output.base64, "base64")], [0, 255]);
+  assert.equal(output.nextOffset, 7);
+  const url = new URL(calls[1]!, "http://localhost");
+  assert.equal(url.searchParams.get("channel"), "stderr");
+  assert.equal(url.searchParams.get("offset"), "5");
+  assert.equal(url.searchParams.get("bytes"), "2");
+  await assert.rejects(
+    run("command-output", sandbox, "--id", command, "--channel", "invalid"),
+  );
+  assert.equal(calls.length, 2);
 });

@@ -26,6 +26,8 @@ const { values, positionals } = parseArgs({
     rows: { type: "string" },
     columns: { type: "string" },
     offset: { type: "string" },
+    channel: { type: "string" },
+    bytes: { type: "string" },
     "state-dir": { type: "string" },
     checkpoint: { type: "string" },
     "memory-codec": { type: "string" },
@@ -484,6 +486,25 @@ if (values.version) {
         required(positionals[2], "command ID"),
       );
       break;
+    case "command-status":
+      result = await client.commandStatus(
+        required(positionals[1], "sandbox ID"),
+        required(values.id, "--id"),
+      );
+      break;
+    case "command-output": {
+      const channel = values.channel ?? "stdout";
+      if (channel !== "stdout" && channel !== "stderr")
+        throw Error("Invalid output channel");
+      result = await client.commandOutput(
+        required(positionals[1], "sandbox ID"),
+        required(values.id, "--id"),
+        channel,
+        Number(values.offset ?? 0),
+        Number(values.bytes ?? 65536),
+      );
+      break;
+    }
     case "exec":
       result = await client.request(
         `/v1/sandboxes/${required(positionals[1], "sandbox ID")}/commands`,

@@ -80,18 +80,18 @@ bytes plus retained session files and acknowledged output.
 Use Node from [`.nvmrc`](.nvmrc). Install the prebuilt package (the CLI is `jetski`):
 
 ```sh
-npm install --global @firtoz/jetski@0.1.0
+npm install --global @firtoz/jetski@0.1.1
 jetski --version
 jetski --help
 ```
 
-For an SDK application: `npm install --save-exact @firtoz/jetski@0.1.0`, then import
+For an SDK application: `npm install --save-exact @firtoz/jetski@0.1.1`, then import
 `JetskiClient` from `@firtoz/jetski/sdk` or compose `SandboxManager` from `@firtoz/jetski/core`.
 Registry users do not need TypeScript or a source build. See [contributing](CONTRIBUTING.md)
 for checkout instructions, [operations](docs/operations.md) for deployment/backup,
 and [releases](docs/releases.md) for versions, containers and upgrades.
 
-A versioned Linux amd64 controller image is built as `ghcr.io/firtoz/jetski:v0.1.0`.
+A versioned Linux amd64 controller image is built as `ghcr.io/firtoz/jetski:v0.1.1`.
 Use its verified digest from the GitHub release once published; keep configuration
 read-only and `/data` on a persistent volume owned by UID1000. Example:
 
@@ -99,7 +99,7 @@ read-only and `/data` on a persistent volume owned by UID1000. Example:
 docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges \
   -p 127.0.0.1:8788:8788 --env-file /private/jetski.env \
   -v /private/server.json:/etc/jetski/server.json:ro \
-  -v /private/jetski-data:/data ghcr.io/firtoz/jetski:v0.1.0
+  -v /private/jetski-data:/data ghcr.io/firtoz/jetski:v0.1.1
 ```
 
 Set `dataDirectory: "/data"` and `host: "0.0.0.0"` in that container's configuration.
@@ -142,23 +142,55 @@ operations independently of browser connections.
 In another shell, supply `JETSKI_TOKEN` matching the service's API token and
 `JETSKI_URL=http://127.0.0.1:8788`. Use the reviewed image digest from your config:
 
+Create and keep a private ID plan **once**, before any API call. This uses Node's
+built-in modules, not TypeScript or a repository checkout:
+
 ```sh
-# Set IMAGE to an allowlisted OCI image@sha256:... value first.
-npx tsx examples/durable-workspace.ts init /private/path/demo.json "$IMAGE"
-npx tsx examples/durable-workspace.ts create /private/path/demo.json
-npx tsx examples/durable-workspace.ts write /private/path/demo.json
-npx tsx examples/durable-workspace.ts stop /private/path/demo.json
-npx tsx examples/durable-workspace.ts resume /private/path/demo.json
-npx tsx examples/durable-workspace.ts read /private/path/demo.json
-npx tsx examples/durable-workspace.ts finish /private/path/demo.json
+mkdir -m 700 "$HOME/.jetski-example"
+node --input-type=module - "$HOME/.jetski-example/ids.env" <<'JS'
+import { randomUUID } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+const names = ['SANDBOX', 'CREATE', 'WRITE', 'SAVE', 'RESUME', 'FINISH'];
+writeFileSync(process.argv[2], names.map(name =>
+  `JETSKI_${name}='${randomUUID()}'`).join('\n') + '\n',
+  { flag: 'wx', mode: 0o600 });
+JS
+. "$HOME/.jetski-example/ids.env"
 ```
 
-The [executable SDK example](examples/durable-workspace.ts) persists IDs before
-network effects, writes a text file, publishes a checkpoint, resumes and verifies
-its bytes, then durably stops again. Each step is explicit. Keep its plan after
-errors: reissue the same step/identity to observe its receipt; an uncertain outcome
-requires observation, not a fresh command ID. `finish` releases the assignment;
-normal idle/lifetime maintenance retires owned hosts. It retains checkpoint history.
+Run one step at a time. Repeat each `operation` observation until its phase is
+`succeeded` before advancing. Preserve the plan on errors; never regenerate IDs
+for uncertain work.
+
+```sh
+jetski create --id "$JETSKI_SANDBOX" --operation "$JETSKI_CREATE" --image "$IMAGE"
+jetski operation "$JETSKI_SANDBOX" --id "$JETSKI_CREATE"
+
+# After create succeeds, write a persistent file and observe the same command.
+jetski exec "$JETSKI_SANDBOX" --id "$JETSKI_WRITE" -- /bin/sh -c 'printf "hello from Jetski\n" > /workspace/hello.txt'
+jetski command-status "$JETSKI_SANDBOX" --id "$JETSKI_WRITE"
+# Continue only after phase=succeeded and exitCode=0.
+
+jetski stop "$JETSKI_SANDBOX" --operation "$JETSKI_SAVE"
+jetski operation "$JETSKI_SANDBOX" --id "$JETSKI_SAVE"
+
+# After stop succeeds, restore and wait for readiness.
+jetski resume "$JETSKI_SANDBOX" --operation "$JETSKI_RESUME"
+jetski operation "$JETSKI_SANDBOX" --id "$JETSKI_RESUME"
+# After resume succeeds, this prints the saved line.
+jetski file-read "$JETSKI_SANDBOX" /workspace/hello.txt
+
+jetski stop "$JETSKI_SANDBOX" --operation "$JETSKI_FINISH"
+jetski operation "$JETSKI_SANDBOX" --id "$JETSKI_FINISH"
+```
+
+The final stop publishes files and releases the assignment; keep the server worker
+running for idle retirement. Checkpoint history remains retained. If a step is
+failed, uncertain or quarantined, preserve the plan and inspect its existing
+receipt. `command-output SANDBOX --id COMMAND --channel stdout --offset 0` returns
+bounded base64 output with the next cursor for reconnects. See the
+[SDK source-checkout example](examples/durable-workspace.ts) for an automated
+observer using the same operation identities.
 
 For direct CLI use, create with `create --id UUID --operation UUID --image DIGEST`,
 execute with `exec SANDBOX --id COMMAND_UUID -- /bin/sh -c 'printf hello'`, and use

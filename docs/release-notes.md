@@ -1,10 +1,9 @@
-Jetski 0.1.0 is the first packaged self-hosted release: portable durable sandbox
-coordination, Boat and adopted SSH hosts, rootless Podman and optional gVisor,
-verified filesystem checkpoints and qualified compatible process recovery.
+Jetski 0.1.1 fixes the first-release onboarding walkthrough: installed CLI users
+can create, execute, inspect command status/output, save and restore without a
+source checkout or TypeScript tooling. It adds thin command-status/command-output
+CLI mappings to the existing SDK/API and makes artifact checks version-independent.
 
-Includes a prebuilt TypeScript SDK/CLI/server, Linux amd64 controller image,
-owner-scoped health, structured lifecycle observations, controller exclusion,
-configuration validation and bounded retained sandbox admission. No hosted service,
-HA controller, universal S3 compatibility, hard storage quota or zero-loss promise.
-See docs/operations.md for backup, shutdown and recovery requirements; existing
-benchmarks and qualification reports describe actual tested scope and limitations.
+Host runtimes, checkpoint formats, storage adapters and embedded lifecycle code are
+unchanged from0.1.0. Existing qualified evidence remains applicable; the focused
+CLI checks and standard source/release CI cover this patch. See docs/operations.md
+for the single-controller deployment boundary, backup/recovery and resource limits.
