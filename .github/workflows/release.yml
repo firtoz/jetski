@@ -91,7 +91,7 @@ jobs:
             echo "Upload already acknowledged; observe automated review without republishing"
           else
             node --input-type=module -e 'import{readFileSync}from"node:fs";const r=JSON.parse(readFileSync("/tmp/jetski-registry.json"));if(r.error?.code!=="E404")throw Error("Registry lookup failed; refusing uncertain publication")'
-            npm publish release/*.tgz --access public --provenance --ignore-scripts
+            npm publish ./release/*.tgz --access public --provenance --ignore-scripts
           fi
           node --input-type=module <<'JS'
           import {readFileSync,readdirSync} from "node:fs";
