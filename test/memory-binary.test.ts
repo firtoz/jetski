@@ -3,7 +3,10 @@ import { test } from "node:test";
 import type { Json } from "../src/core/contracts.js";
 import type { CapturedMemory } from "../src/core/memory-capture.js";
 import type { HostLease } from "../src/core/pool.js";
-import { BoatApi } from "../src/providers/boat.js";
+import {
+  BoatApi,
+  BoatDownloadRangeUnsupported,
+} from "../src/providers/boat.js";
 import {
   boatMemoryImport,
   boatMemorySource,
@@ -163,3 +166,51 @@ test("provider memory uploads reject paths outside generation/checkpoint scope",
       /Invalid memory upload path/,
     );
 });
+
+for (const knownUnsupported of [true, false])
+  test(`binary read fallback is limited to an explicit unsupported range; known=${knownUnsupported}`, async () => {
+    let ranges = 0,
+      controls = 0;
+    const api = {
+      openDownload: async () => ({
+        read: async () => {
+          ranges++;
+          if (knownUnsupported) throw new BoatDownloadRangeUnsupported();
+          throw Error("corrupt range metadata");
+        },
+        close: async () => {},
+      }),
+    } as unknown as BoatApi;
+    const source = boatMemorySource(
+      api,
+      lease.machineId,
+      lease,
+      id,
+      capture,
+      async (action, payload) => {
+        if (action === "memory-source")
+          return {
+            path: `/tmp/jetski-memory-exports/${base}/memory.pack`,
+            sha256: capture.sha256,
+            bytes: capture.bytes,
+          };
+        if (action === "memory-source-close") return { closed: true };
+        controls++;
+        return {
+          offset: payload.offset!,
+          bytes: payload.bytes!,
+          base64: "AgI=",
+        };
+      },
+    );
+    if (knownUnsupported) {
+      assert.deepEqual(await source.read(2, 2), new Uint8Array([2, 2]));
+      assert.deepEqual(await source.read(2, 2), new Uint8Array([2, 2]));
+      assert.equal(ranges, 1);
+      assert.equal(controls, 2);
+    } else {
+      await assert.rejects(source.read(2, 2), /corrupt range/);
+      assert.equal(controls, 0);
+    }
+    await source.close?.();
+  });

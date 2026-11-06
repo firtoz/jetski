@@ -52,7 +52,8 @@ test("upload finish survives lost ACK and shutdown settles before generation adv
   let loseAck = true,
     unavailable = false,
     publications = 0,
-    calls = 0;
+    calls = 0,
+    loseBeginAck = true;
   const request = async (
     _lease: import("../src/core/pool.js").HostLease,
     action: string,
@@ -81,10 +82,31 @@ test("upload finish survives lost ACK and shutdown settles before generation adv
     }
     return { ...receipt };
   };
-  let uploads = new UploadCoordinator(state, operations, request);
+  const uncertainBegin: typeof request = async (...args) => {
+    const receipt = await request(...args);
+    if (args[1] === "file-write-begin" && loseBeginAck) {
+      loseBeginAck = false;
+      throw Error("lost begin ACK");
+    }
+    return receipt;
+  };
+  let uploads = new UploadCoordinator(state, operations, uncertainBegin);
+  await assert.rejects(uploads.begin(scope, id, spec), /lost begin ACK/);
+  const initial = await state.transaction((tx) =>
+    tx.get<{ initialized?: boolean }>(
+      `upload/${scope.owner}/${scope.sandbox}/${id}`,
+    ),
+  );
+  assert.equal(initial?.initialized, undefined);
   await uploads.begin(scope, id, spec);
   await assert.rejects(uploads.finish(scope, id), /incomplete/);
+  const chunkCalls = calls;
   await uploads.chunk(scope, id, 0, "eA==", "b".repeat(64));
+  assert.equal(
+    calls,
+    chunkCalls + 1,
+    "known initialization removes a redundant pre-chunk begin",
+  );
   await assert.rejects(uploads.finish(scope, id), /lost ACK/);
   assert.equal((await operations.get(scope, id))?.phase, "uncertain");
   await uploads.begin(scope, incomplete, spec);

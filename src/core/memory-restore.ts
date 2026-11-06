@@ -7,9 +7,14 @@ import {
   type Fence,
   identifier,
   type Json,
+  type ObjectInfo,
   type StateStore,
   scopeKey,
 } from "./contracts.js";
+import {
+  type MemoryRestoreConcurrency,
+  memoryRestoreConcurrency,
+} from "./memory-contracts.js";
 import type { HostLease } from "./pool.js";
 import {
   type PortableMemoryManifest,
@@ -35,6 +40,10 @@ type RestoreRecord = Fence & {
   image: string;
   resources: WorkloadResources;
   stage: "filesystem" | "memory" | "native" | "fallback" | "done";
+  /** Version-one uses separate bounded rows, avoiding quadratic metadata writes. */
+  objectJournal?: true;
+  /** Early journals retain their explicit progress without changing authority. */
+  objectProgress?: Record<string, "started" | "complete">;
   portable: boolean | null;
   preserved: boolean | null;
   reason: string | null;
@@ -55,12 +64,16 @@ const object = (value: unknown): value is Record<string, Json> =>
  * carry the same immutable manifest identity; native uncertainty is only observed.
  * This coordinator never starts a replacement application as silent fallback. */
 export class PortableMemoryRestore {
+  private readonly objectConcurrency: MemoryRestoreConcurrency;
   constructor(
     private state: StateStore,
     private registry: CheckpointRegistry,
     private objects: CheckpointStore,
     private timings?: StageTimingSink,
-  ) {}
+    concurrency: MemoryRestoreConcurrency = 1,
+  ) {
+    this.objectConcurrency = memoryRestoreConcurrency(concurrency);
+  }
   private key(fence: Fence, id: string) {
     return `portable-restore/${scopeKey(fence)}/${id}`;
   }
@@ -80,6 +93,45 @@ export class PortableMemoryRestore {
       tx.put(key, next);
     });
     return next;
+  }
+  private async objectProgress(
+    record: RestoreRecord,
+    id: string,
+    stage?: "started" | "complete",
+  ) {
+    if (!record.objectJournal) {
+      if (stage && record.objectProgress !== undefined)
+        record = await this.advance(record, {
+          objectProgress: { ...record.objectProgress, [id]: stage },
+        });
+      return { record, progress: record.objectProgress?.[id] };
+    }
+    const progress = await this.state.transaction((tx) => {
+      const key = this.key(record, record.id);
+      if (canonical(tx.get(key) ?? null) !== canonical(record))
+        throw Error("Portable restore journal changed");
+      this.registry.requireReaderIn(
+        tx,
+        record,
+        record.reader,
+        record.checkpointId,
+      );
+      const objectKey = `${key}/object/${identifier(id)}`;
+      const previous = tx.get<"started" | "complete">(objectKey);
+      if (
+        previous !== undefined &&
+        previous !== "started" &&
+        previous !== "complete"
+      )
+        throw Error("Invalid portable object progress");
+      if (stage) {
+        if (previous === "complete" && stage !== "complete")
+          throw Error("Portable object progress regression");
+        tx.put(objectKey, stage);
+      }
+      return stage ?? previous;
+    });
+    return { record, progress };
   }
   private async complete(
     record: RestoreRecord,
@@ -160,6 +212,7 @@ export class PortableMemoryRestore {
         image,
         resources,
         stage: "filesystem",
+        objectJournal: true,
         portable: null,
         preserved: null,
         reason: null,
@@ -247,13 +300,16 @@ export class PortableMemoryRestore {
         try {
           if (sink && sink.chunkBytes !== HOST_IMPORT_CHUNK_BYTES)
             throw Error("Invalid memory import bound");
-          for (const source of portableMemoryObjects(manifest)) {
-            let reply = validate(
-              await request("memory-import-status", {
-                checkpointId,
-                objectId: source.id,
-              }),
-            );
+          const transfer = async (
+            source: ObjectInfo,
+          ): Promise<{ record: RestoreRecord; reason: string | null }> => {
+            let current = record;
+
+            const { progress } = await this.objectProgress(current, source.id);
+            const journaled =
+              current.objectJournal || current.objectProgress !== undefined;
+            if (progress === "complete")
+              return { record: current, reason: null };
             const receipt = (value: Record<string, Json>) => {
               const part = value.object;
               if (
@@ -268,8 +324,35 @@ export class PortableMemoryRestore {
                 throw Error("Invalid portable object cursor");
               return part.offset;
             };
-            let offset = receipt(reply);
-            if (offset === source.bytes) continue;
+            // Only a fresh journal entry proves no upload has been admitted.
+            // Persist intent before the first write. Restarted/legacy entries
+            // observe the host's durable cursor; unknown native effects never replay.
+            let offset = 0;
+            if (!journaled || progress === "started") {
+              offset = receipt(
+                validate(
+                  await request("memory-import-status", {
+                    checkpointId,
+                    objectId: source.id,
+                  }),
+                ),
+              );
+            } else {
+              ({ record: current } = await this.objectProgress(
+                current,
+                source.id,
+                "started",
+              ));
+            }
+            if (offset === source.bytes) {
+              if (journaled)
+                ({ record: current } = await this.objectProgress(
+                  current,
+                  source.id,
+                  "complete",
+                ));
+              return { record: current, reason: null };
+            }
             const bytes = new Uint8Array(source.bytes);
             let count = 0;
             try {
@@ -281,11 +364,7 @@ export class PortableMemoryRestore {
               }
             } catch (error) {
               if ((await this.objects.head(source)) === undefined) {
-                record = await this.advance(record, {
-                  stage: "fallback",
-                  reason: "memory-object-missing",
-                });
-                break;
+                return { record: current, reason: "memory-object-missing" };
               }
               throw error;
             }
@@ -293,11 +372,7 @@ export class PortableMemoryRestore {
               count !== source.bytes ||
               (await digest(bytes)) !== source.sha256
             ) {
-              record = await this.advance(record, {
-                stage: "fallback",
-                reason: "memory-object-integrity",
-              });
-              break;
+              return { record: current, reason: "memory-object-integrity" };
             }
             while (offset < bytes.length) {
               const chunk = bytes.subarray(
@@ -329,7 +404,7 @@ export class PortableMemoryRestore {
                   throw Error("Portable import acknowledgement mismatch");
                 offset = expected;
               } catch (error) {
-                reply = validate(
+                const reply = validate(
                   await request("memory-import-status", {
                     checkpointId,
                     objectId: source.id,
@@ -340,7 +415,45 @@ export class PortableMemoryRestore {
                 offset = observed;
               }
             }
-          }
+            if (journaled)
+              ({ record: current } = await this.objectProgress(
+                current,
+                source.id,
+                "complete",
+              ));
+
+            return { record: current, reason: null };
+          };
+          // Binary sinks use a shared staging path; legacy journals update a
+          // shared record. Only independent control objects opt into parallelism.
+          const concurrency =
+            record.objectJournal && !sink ? this.objectConcurrency : 1;
+          const sources = portableMemoryObjects(manifest);
+          await timeStage(this.timings, "memory.objects_transfer", async () => {
+            for (let index = 0; index < sources.length; index += concurrency) {
+              const outcomes = await Promise.allSettled(
+                sources.slice(index, index + concurrency).map(transfer),
+              );
+              // Drain every started write before fallback, native admission or
+              // closing the shared reader/sink. Never leave a hidden writer.
+              const failed = outcomes.find(
+                (value) => value.status === "rejected",
+              );
+              if (failed?.status === "rejected") throw failed.reason;
+              const complete = outcomes.flatMap((value) =>
+                value.status === "fulfilled" ? [value.value] : [],
+              );
+              record = complete[0]!.record;
+              const fallback = complete.find((value) => value.reason !== null);
+              if (fallback) {
+                record = await this.advance(record, {
+                  stage: "fallback",
+                  reason: fallback.reason,
+                });
+                break;
+              }
+            }
+          });
         } finally {
           await sink?.close();
         }

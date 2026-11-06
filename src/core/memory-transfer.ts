@@ -213,7 +213,11 @@ export class PortableMemoryTransfer {
               readChunkBytes: source.readChunkBytes,
               read: async (start, count) => {
                 metrics.sourceRequests++;
-                const part = await source.read(start, count);
+                const part = await timeStage(
+                  this.timings,
+                  "memory.source_read",
+                  () => source.read(start, count),
+                );
                 metrics.sourceBytes += part.length;
                 return part;
               },

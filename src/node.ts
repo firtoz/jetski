@@ -33,6 +33,7 @@ import type { HostLifecycle, IdlePriceSource } from "./core/host-lifecycle.js";
 import type { HostStreamTransport } from "./core/host-stream.js";
 import { type ManagerOptions, SandboxManager } from "./core/manager.js";
 import { identityMemoryCodec } from "./core/memory-chunk-codec.js";
+import type { MemoryRestoreConcurrency } from "./core/memory-contracts.js";
 import type { HostTransport } from "./core/transport.js";
 import { managerApi } from "./node/manager-api.js";
 import { validateBoxdHostConfig } from "./providers/boxd-config.js";
@@ -113,6 +114,7 @@ export type NodeOptions = SessionOptions & {
   hostStartupConcurrency?: number;
   /** Bounded durable copy work per scheduler turn (1..256, default16). */
   checkpointCopyBatchObjects?: number;
+  memoryRestoreConcurrency?: MemoryRestoreConcurrency;
   workloadResources?: ManagerOptions["workloadResources"];
   events?: ManagerOptions["events"];
   timings?: ManagerOptions["timings"];
@@ -596,6 +598,7 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
           images,
           environment,
           options.hostLifecycle,
+          options.timings,
         );
         break;
       }
@@ -619,6 +622,9 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
           : {}),
         ...(options.checkpointCopyBatchObjects !== undefined
           ? { checkpointCopyBatchObjects: options.checkpointCopyBatchObjects }
+          : {}),
+        ...(options.memoryRestoreConcurrency !== undefined
+          ? { memoryRestoreConcurrency: options.memoryRestoreConcurrency }
           : {}),
         ...(hosts.streamTransport
           ? { streamTransport: hosts.streamTransport }

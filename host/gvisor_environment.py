@@ -5,6 +5,8 @@ Workload UID 1000 maps to a subordinate host ID, never the runtime account.
 """
 
 import copy
+from timing import stage
+from gvisor_rootfs import FilesystemSync
 import hashlib
 import json
 import os
@@ -623,24 +625,38 @@ def prepare_images(account, images, run):
             or not source.is_relative_to(storage)
         ):
             raise ValueError("gvisor_image_mount_unconfirmed")
-        copied = run(
-            ["unshare", "/bin/cp", "-a", "--reflink=auto", "--", str(source), str(destination)]
-        )
-        if copied["exitCode"] != 0:
-            raise ValueError("gvisor_image_copy_unconfirmed")
-        # Create mount destinations as namespace-root, without following any
-        # image-provided symlink through the host filesystem.
-        prepared = run(
-            [
-                "unshare",
-                "/usr/bin/python3",
-                "-I",
-                "/opt/jetski/gvisor_rootfs.py",
-                str(destination),
-            ]
-        )
-        if prepared["exitCode"] != 0:
-            raise ValueError("gvisor_mountpoint_preparation_failed")
+        # The filesystem error-observation FD precedes every copied byte. Keep
+        # image/tree checks, and do not publish a proof after any barrier error.
+        with FilesystemSync(directory) as barrier:
+            with stage("bootstrap.rootfs_copy"):
+                copied = run(
+                    [
+                        "unshare",
+                        "/bin/cp",
+                        "-a",
+                        "--reflink=auto",
+                        "--",
+                        str(source),
+                        str(destination),
+                    ]
+                )
+                if copied["exitCode"] != 0:
+                    raise ValueError("gvisor_image_copy_unconfirmed")
+            with stage("bootstrap.rootfs_verify_sync"):
+                arguments = [
+                    "unshare",
+                    "/usr/bin/python3",
+                    "-I",
+                    "/opt/jetski/gvisor_rootfs.py",
+                    str(destination),
+                ]
+                if barrier is not None:
+                    arguments.append("filesystem-barrier")
+                prepared = run(arguments)
+                if prepared["exitCode"] != 0:
+                    raise ValueError("gvisor_mountpoint_preparation_failed")
+                if barrier is not None:
+                    barrier.sync(destination)
         proof["images"][image] = str(destination)
     # Proof is root-owned and private, not workload data. Only bootstrap writes it.
     fd, temporary = tempfile.mkstemp(prefix=".gvisor-images-", dir=IMAGE_PROOF.parent)

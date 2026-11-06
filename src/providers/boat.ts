@@ -15,6 +15,13 @@ import {
 } from "../core/transport.js";
 import { sequentialCheckpointDownload } from "../transport/checkpoint-download.js";
 
+/** A known read-only capability limitation, never a mutation retry signal. */
+export class BoatDownloadRangeUnsupported extends Error {
+  constructor() {
+    super("Boat download range unsupported");
+  }
+}
+
 export const BOAT_MACHINE_TYPES = ["small", "default", "large"] as const;
 export type BoatMachineType = (typeof BOAT_MACHINE_TYPES)[number];
 // Leave a full hour inside the documented 24-hour provider key retention window,
@@ -201,12 +208,10 @@ export class BoatApi {
               `bytes ${offset}-${offset + count - 1}/${length}`
             )
               throw Error("Boat download range mismatch");
-          } else if (
-            response.status !== 200 ||
-            offset !== 0 ||
-            count !== length
-          )
-            throw Error("Boat download range unsupported");
+          } else if (response.status === 200) {
+            if (offset !== 0 || count !== length)
+              throw new BoatDownloadRangeUnsupported();
+          } else throw Error("Boat download failed");
           const encoding = response.headers.get("content-encoding"),
             size = response.headers.get("content-length");
           if (

@@ -6,6 +6,7 @@ import type {
   StateStore,
 } from "../core/contracts.js";
 import { PODMAN_RUNTIME, type RuntimePolicy } from "../core/runtime-policy.js";
+import type { StageTimingSink } from "../core/timing.js";
 import type { BoatApi } from "./boat.js";
 import {
   BOAT_BOOTSTRAP_MODULES,
@@ -24,6 +25,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
     runtime: RuntimePolicy = PODMAN_RUNTIME,
     workloadInit?: readonly string[],
     networkFilter: NetworkFilterBackend = "auto",
+    timings?: StageTimingSink,
   ) {
     super(
       state,
@@ -49,6 +51,7 @@ export class BoatBootstrap extends EmbeddedBoatBootstrap {
       runtime,
       workloadInit,
       networkFilter,
+      timings,
     );
   }
 }

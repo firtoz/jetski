@@ -110,6 +110,12 @@ export function observeHostTimings(
       const value = JSON.parse(line.slice("JETSKI-STAGE/1:".length));
       if (
         ![
+          "bootstrap.runtime_install",
+          "bootstrap.image_pull",
+          "bootstrap.image_mapping",
+          "bootstrap.rootfs",
+          "bootstrap.rootfs_copy",
+          "bootstrap.rootfs_verify_sync",
           "archive.capture",
           "archive.restore",
           "archive.extract",

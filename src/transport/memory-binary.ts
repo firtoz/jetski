@@ -8,7 +8,10 @@ import {
   HOST_IMPORT_CHUNK_BYTES,
   type MemoryImportSink,
 } from "../core/transport.js";
-import type { BoatApi } from "../providers/boat.js";
+import {
+  type BoatApi,
+  BoatDownloadRangeUnsupported,
+} from "../providers/boat.js";
 
 type Request = (action: string, payload: Record<string, Json>) => Promise<Json>;
 const record = (value: Json): value is Record<string, Json> =>
@@ -58,7 +61,17 @@ export function boatMemorySource(
         return api.openDownload(host, path, capture.bytes);
       })();
       const bound = await opening;
-      if (bound) return bound.read(offset, bytes);
+      if (bound) {
+        try {
+          return await bound.read(offset, bytes);
+        } catch (error) {
+          if (!(error instanceof BoatDownloadRangeUnsupported)) throw error;
+          // This is a rejected READ capability, not an uncertain write. The
+          // immutable pack remains fenced and every returned chunk is verified.
+          await bound.close();
+          opening = Promise.resolve(undefined);
+        }
+      }
       const v = await request("memory-export-read", {
         checkpointId: id,
         offset,

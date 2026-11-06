@@ -15,6 +15,7 @@ import {
   validateRuntimePolicy,
   validateWorkloadInit,
 } from "../core/runtime-policy.js";
+import { type StageTimingSink, timeStage } from "../core/timing.js";
 import { BoatControlChannel } from "../transport/boat-channel.js";
 import {
   bindHostBackend,
@@ -41,6 +42,7 @@ const digest = (value: Uint8Array) =>
 /** Injected immutable source assets; no controller filesystem or credentials in the bundle. */
 export class EmbeddedBoatBootstrap {
   private readonly channel: BoatControlChannel;
+  private assets: Promise<BoatBootstrapAssets> | undefined;
   constructor(
     private readonly state: StateStore,
     api: BoatApi,
@@ -53,6 +55,7 @@ export class EmbeddedBoatBootstrap {
     private readonly runtime: RuntimePolicy = PODMAN_RUNTIME,
     private readonly workloadInit?: readonly string[],
     private readonly networkFilter: NetworkFilterBackend = "auto",
+    private readonly timings?: StageTimingSink,
   ) {
     if (!NETWORK_FILTER_BACKENDS.includes(networkFilter))
       throw Error("Unsupported network filter backend");
@@ -90,12 +93,16 @@ export class EmbeddedBoatBootstrap {
     )
       throw Error("Approved digest-pinned images required");
     this.images = [...images];
-    this.channel = new BoatControlChannel(state, api, 600);
+    this.channel = new BoatControlChannel(state, api, 600, undefined, timings);
   }
   async ensure(host: string): Promise<void> {
     identifier(host);
     await bindHostBackend(this.state, host, this.backend);
-    const assets = await this.loadAssets();
+    // One immutable source version per controller. Readiness must not start
+    // following edits to a development checkout after hosts have been prepared.
+    const assets = await (this.assets ??= Promise.resolve()
+      .then(() => this.loadAssets())
+      .then((value) => structuredClone(value)));
     if (
       Object.keys(assets.files).length !== BOAT_BOOTSTRAP_MODULES.length ||
       Object.keys(assets.files).some(
@@ -175,6 +182,7 @@ export class EmbeddedBoatBootstrap {
       "-i",
       "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
       "DEBIAN_FRONTEND=noninteractive",
+      ...(this.timings ? ["JETSKI_HOST_TIMING=1"] : []),
       "python3",
       "-I",
       "-c",
@@ -204,18 +212,21 @@ finally:
       ...rootProgram,
       secureParent,
     ]);
-    await this.channel.run(host, Buffer.alloc(0), [...rootProgram, prepare]);
+    await timeStage(this.timings, "bootstrap.prerequisites", () =>
+      this.channel.run(host, Buffer.alloc(0), [...rootProgram, prepare]),
+    );
     if (this.networkMode === "public-egress") {
-      await this.channel.run(host, Buffer.alloc(0), [
-        ...rootProgram,
-        BOAT_PUBLIC_NETWORK_PREREQUISITES,
-      ]);
+      await timeStage(this.timings, "bootstrap.network", () =>
+        this.channel.run(host, Buffer.alloc(0), [
+          ...rootProgram,
+          BOAT_PUBLIC_NETWORK_PREREQUISITES,
+        ]),
+      );
     }
     const program = `exec(bytes.fromhex("${installer.toString("hex")}"))`;
-    const output = await this.channel.run(host, bundle, [
-      ...rootProgram,
-      program,
-    ]);
+    const output = await timeStage(this.timings, "bootstrap.install", () =>
+      this.channel.run(host, bundle, [...rootProgram, program]),
+    );
     const receipt = JSON.parse(output.trim().split("\n").at(-1)!);
     if (
       receipt.version !== 1 ||

@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { HostTransport } from "../src/core/transport.js";
-import { BoatApi, BoatHostProvider } from "../src/providers/boat.js";
+import {
+  BoatApi,
+  BoatDownloadRangeUnsupported,
+  BoatHostProvider,
+} from "../src/providers/boat.js";
 import { SqliteState } from "../src/state/sqlite.js";
 
 test("Boat allocation preserves request identity across loss and restart; retirement is owned and observed", async (t) => {
@@ -264,4 +268,27 @@ test("a long physical lease never extends uncertain allocation replay past key r
     1,
     "provider idempotency expiry cannot create another paid VM",
   );
+});
+
+test("only an ignored HTTP range is a capability fallback; server errors stay failures", async () => {
+  for (const status of [200, 403, 500]) {
+    const api = new BoatApi("fixture", async (url) => {
+      if (String(url).endsWith("/files/download-url"))
+        return Response.json({
+          method: "GET",
+          url: "https://downloads.example/immutable",
+          expiresAt: new Date(Date.now() + 60000).toISOString(),
+        });
+      return new Response(new Uint8Array(8), { status });
+    });
+    const source = await api.openDownload("bx_fixture", "/tmp/immutable", 8);
+    await assert.rejects(source.read(0, 2), (error) => {
+      assert.equal(
+        error instanceof BoatDownloadRangeUnsupported,
+        status === 200,
+      );
+      return true;
+    });
+    await source.close();
+  }
 });

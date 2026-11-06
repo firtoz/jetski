@@ -116,6 +116,7 @@ export function serverConfig(value: unknown): ServerConfig {
       "storageMode",
       "runtime",
       "workloadInit",
+      "archiveReads",
     ]);
     if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(c.hostProvider.tokenEnv))
       throw Error("Invalid provider credential variable");
@@ -136,6 +137,11 @@ export function serverConfig(value: unknown): ServerConfig {
       throw Error("Invalid storage mode");
     validateRuntimePolicy(c.hostProvider.runtime ?? PODMAN_RUNTIME);
     validateWorkloadInit(c.hostProvider.workloadInit);
+    if (
+      c.hostProvider.archiveReads !== undefined &&
+      typeof c.hostProvider.archiveReads !== "boolean"
+    )
+      throw Error("Invalid archive read policy");
     machineRuntimeOptions(c.hostProvider);
   } else if (c.hostProvider.kind === "boxd") {
     validateBoxdHostConfig(c.hostProvider);

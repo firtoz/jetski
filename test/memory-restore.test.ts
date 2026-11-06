@@ -111,7 +111,11 @@ const lease: HostLease = {
   generation: 2,
 };
 const resources = { memoryMb: 512, cpus: 1 };
-async function setup(t: { after: (f: () => Promise<void>) => void }) {
+async function setup(
+  t: { after: (f: () => Promise<void>) => void },
+  objectCount = 1,
+  concurrency: 1 | 2 | 4 = 1,
+) {
   const dir = await mkdtemp(join(tmpdir(), "jetski-memory-restore-"));
   let state = new SqliteState(join(dir, "state.sqlite"));
   t.after(async () => {
@@ -121,11 +125,27 @@ async function setup(t: { after: (f: () => Promise<void>) => void }) {
   const store = new LocalCheckpointStore(join(dir, "objects"));
   let registry = new CheckpointRegistry(state, store);
   await registry.initialize(fence);
-  const root = fixture();
+  let root = fixture();
+  if (objectCount > 1) {
+    const portable = portableMemoryRoot(root)!;
+    root = composePortableMemoryRoot(portable.filesystem, {
+      ...portable.memory,
+      files: Array.from({ length: objectCount }, (_, i) => ({
+        ...portable.memory.files[0]!,
+        path: i === 0 ? "pages.img" : `pages${i}.img`,
+        chunks: portable.memory.files[0]!.chunks.map((c) => ({
+          ...c,
+          object: { ...c.object, id: i === 0 ? "memory" : `memory-${i}` },
+        })),
+      })),
+    });
+  }
   await registry.admit(fence, "writer", "writer");
   for (const [object, bytes] of [
     [fsObject, fsBytes],
-    [memoryObject, memoryBytes],
+    ...portableMemoryRoot(root)!.memory.files.flatMap((f) =>
+      f.chunks.map((c) => [c.object, memoryBytes] as const),
+    ),
   ] as const)
     await store.put(
       object,
@@ -138,13 +158,16 @@ async function setup(t: { after: (f: () => Promise<void>) => void }) {
   const manifest = portableMemoryRoot(root)!.memory,
     sha256 = hash(Buffer.from(canonical(manifest)));
   let phase = "receiving",
-    offset = 0,
     finishes = 0,
     supported = true,
     loseChunk = false,
     loseFinish = false,
     uncertain = false,
-    rejected = false;
+    rejected = false,
+    failObjectStatus = false,
+    objectStatuses = 0;
+  const offsets = new Map<string, number>();
+  let beforeChunk: ((id: string) => Promise<void>) | undefined;
   const calls: string[] = [];
   const receipt = () => ({
     id: root.id,
@@ -176,14 +199,22 @@ async function setup(t: { after: (f: () => Promise<void>) => void }) {
         if (rejected) phase = "rejected";
         return receipt();
       case "memory-import-status":
+        if (p.objectId) {
+          objectStatuses++;
+          if (failObjectStatus) {
+            failObjectStatus = false;
+            throw Error("status connection lost");
+          }
+        }
         return {
           ...receipt(),
           ...(p.objectId
             ? {
                 object: {
-                  id: memoryObject.id,
-                  offset,
-                  complete: offset === memoryBytes.length,
+                  id: String(p.objectId),
+                  offset: offsets.get(String(p.objectId)) ?? 0,
+                  complete:
+                    offsets.get(String(p.objectId)) === memoryBytes.length,
                 },
               }
             : {}),
@@ -191,14 +222,17 @@ async function setup(t: { after: (f: () => Promise<void>) => void }) {
       case "memory-import-chunk": {
         const b = Buffer.from(String(p.base64), "base64");
         assert.deepEqual(b, memoryBytes);
+        const objectId = String(p.objectId);
+        await beforeChunk?.(objectId);
+        const offset = offsets.get(objectId) ?? 0;
         assert.equal(p.offset, offset);
         assert.equal(p.sha256, hash(b));
-        offset += b.length;
+        offsets.set(objectId, offset + b.length);
         if (loseChunk) {
           loseChunk = false;
           throw Error("lost chunk ACK");
         }
-        return { id: memoryObject.id, offset, complete: true };
+        return { id: objectId, offset: offset + b.length, complete: true };
       }
       case "memory-import-finish":
         finishes++;
@@ -220,7 +254,8 @@ async function setup(t: { after: (f: () => Promise<void>) => void }) {
     request,
     calls,
     registry: () => registry,
-    coordinator: () => new PortableMemoryRestore(state, registry, store),
+    coordinator: () =>
+      new PortableMemoryRestore(state, registry, store, undefined, concurrency),
     reopen() {
       state.close();
       state = new SqliteState(join(dir, "state.sqlite"));
@@ -232,17 +267,46 @@ async function setup(t: { after: (f: () => Promise<void>) => void }) {
       loseFinish?: boolean;
       uncertain?: boolean;
       rejected?: boolean;
+      failObjectStatus?: boolean;
     }) {
       supported = v.supported ?? supported;
       loseChunk = v.loseChunk ?? loseChunk;
       loseFinish = v.loseFinish ?? loseFinish;
       uncertain = v.uncertain ?? uncertain;
       rejected = v.rejected ?? rejected;
+      failObjectStatus = v.failObjectStatus ?? failObjectStatus;
     },
     observeRestored() {
       phase = "restored";
     },
+    beforeChunk: (callback: (id: string) => Promise<void>) => {
+      beforeChunk = callback;
+    },
     finishes: () => finishes,
+    objectStatuses: () => objectStatuses,
+    journal: () =>
+      state.transaction(
+        (tx) => tx.scan<Record<string, Json>>("portable-restore/")[0]!.value,
+      ),
+    progress: () =>
+      state.transaction((tx) =>
+        Object.fromEntries(
+          tx
+            .scan<string>("portable-restore/")
+            .filter((row) => row.key.includes("/object/"))
+            .map((row) => [row.key.split("/").at(-1)!, row.value]),
+        ),
+      ),
+    legacyJournal: () =>
+      state.transaction((tx) => {
+        const row = tx.scan<Record<string, Json>>("portable-restore/")[0]!;
+        const {
+          objectProgress: _progress,
+          objectJournal: _version,
+          ...record
+        } = row.value;
+        tx.put(row.key, record);
+      }),
     run() {
       return this.coordinator().restore(
         fence,
@@ -315,4 +379,110 @@ test("missing memory bytes cannot enter native restore and require explicit fall
   });
   assert(f.calls.includes("memory-import-abort"));
   assert.equal(f.finishes(), 0);
+});
+
+test("fresh memory objects omit redundant status calls and retain durable verified completion", async (t) => {
+  const f = await setup(t);
+  assert.equal((await f.run()).memoryPreserved, true);
+  assert.equal(f.objectStatuses(), 0);
+  assert.deepEqual(await f.progress(), { memory: "complete" });
+});
+
+for (const legacy of [false, true])
+  test(`restart observes an uncertain object write instead of replaying bytes; legacy=${legacy}`, async (t) => {
+    const f = await setup(t);
+    f.configure({ loseChunk: true, failObjectStatus: true });
+    await assert.rejects(f.run(), /status connection lost/);
+    assert.equal(f.finishes(), 0);
+    assert.deepEqual(await f.progress(), { memory: "started" });
+    await assert.rejects(f.registry().retire(fence, "save"), /protected/);
+    if (legacy) await f.legacyJournal();
+    f.reopen();
+    assert.equal((await f.run()).memoryPreserved, true);
+    assert.equal(f.finishes(), 1);
+    assert.equal(
+      f.calls.filter((action) => action === "memory-import-chunk").length,
+      1,
+    );
+    assert.equal(
+      f.objectStatuses(),
+      2,
+      "failed observation plus restart observation",
+    );
+  });
+
+test("parallel restore admits independent writes together and drains all before native execution", {
+  timeout: 5000,
+}, async (t) => {
+  const f = await setup(t, 2, 2);
+  let entered = 0;
+  let ready!: () => void, release!: () => void;
+  const both = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.beforeChunk(async () => {
+    if (++entered === 2) ready();
+    await gate;
+  });
+  const work = f.run();
+  await both;
+  assert.equal(f.finishes(), 0);
+  assert.equal(f.objectStatuses(), 0);
+  await assert.rejects(f.registry().retire(fence, "save"), /protected/);
+  release();
+  assert.equal((await work).memoryPreserved, true);
+  assert.deepEqual(await f.progress(), {
+    memory: "complete",
+    "memory-1": "complete",
+  });
+});
+
+test("a failed parallel write waits for other in-flight writes and resumes only the uncertain object", {
+  timeout: 5000,
+}, async (t) => {
+  const f = await setup(t, 2, 2);
+  let release!: () => void, ready!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.beforeChunk(async (id) => {
+    if (id === "memory") throw Error("chunk transport lost");
+    ready();
+    await gate;
+  });
+  let settled = false;
+  const work = f.run();
+  void work
+    .finally(() => {
+      settled = true;
+    })
+    .catch(() => {});
+  await waiting;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  assert.equal(f.finishes(), 0);
+  release();
+  await assert.rejects(work, /chunk transport lost/);
+  assert.deepEqual(await f.progress(), {
+    memory: "started",
+    "memory-1": "complete",
+  });
+  f.beforeChunk(async () => {});
+  f.reopen();
+  assert.equal((await f.run()).memoryPreserved, true);
+  assert.equal(
+    f.objectStatuses(),
+    2,
+    "failure observation plus uncertain-object restart observation",
+  );
+  assert.equal(
+    f.calls.filter((action) => action === "memory-import-chunk").length,
+    3,
+  );
 });

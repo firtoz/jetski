@@ -1,6 +1,17 @@
 import { identifier, type Json } from "./contracts.js";
 import type { MemoryChunkCodec } from "./portable-memory-format.js";
 
+export const MEMORY_RESTORE_CONCURRENCIES = [1, 2, 4] as const;
+export type MemoryRestoreConcurrency =
+  (typeof MEMORY_RESTORE_CONCURRENCIES)[number];
+export function memoryRestoreConcurrency(
+  value: number = 1,
+): MemoryRestoreConcurrency {
+  if (!(MEMORY_RESTORE_CONCURRENCIES as readonly number[]).includes(value))
+    throw Error("Memory restore concurrency must be 1, 2 or 4");
+  return value as MemoryRestoreConcurrency;
+}
+
 /** Local acceleration receipt; the independently retained FS root is authoritative. */
 export type MemoryCheckpointReceipt = {
   checkpointId: string;

@@ -148,11 +148,17 @@ test("Boat bootstrap journals code and policy, resumes uncertainty and rejects c
   await embedded.ensure("bx_boot");
   assert.equal(calls, completedCalls);
   files["control.py"] = Buffer.from("changed source");
-  await assert.rejects(embedded.ensure("bx_boot"), /identity changed/);
+  await embedded.ensure("bx_boot"); // frozen snapshot ignores later caller edits
+  const changed = () =>
+    new EmbeddedBoatBootstrap(state, api, "pool", [image], async () => ({
+      files,
+      installer,
+    }));
+  await assert.rejects(changed().ensure("bx_boot"), /identity changed/);
   delete files["control.py"];
-  await assert.rejects(embedded.ensure("bx_boot"), /module set mismatch/);
+  await assert.rejects(changed().ensure("bx_boot"), /module set mismatch/);
   files["unexpected.py"] = Buffer.from("unexpected source");
-  await assert.rejects(embedded.ensure("bx_boot"), /module set mismatch/);
+  await assert.rejects(changed().ensure("bx_boot"), /module set mismatch/);
   assert.equal(calls, completedCalls);
   await assert.rejects(
     new BoatBootstrap(state, api, "different", [image]).ensure("bx_boot"),
@@ -192,6 +198,27 @@ test("standalone Boat selection requires explicit credentials and approved image
     { BOAT_KEY: "fixture" },
   );
   assert.equal(hosts.provider.capabilities().kind, "machine-host");
+  assert.equal(hosts.transport.memorySource, undefined);
+  const fast = await standaloneHosts(
+    state,
+    { kind: "boat", tokenEnv: "BOAT_KEY", archiveReads: true },
+    "pool",
+    [image],
+    { BOAT_KEY: "fixture" },
+  );
+  assert.equal(typeof fast.transport.memorySource, "function");
+  assert.equal(typeof fast.transport.checkpointSource, "function");
+  assert.equal(fast.transport.memoryImport, undefined);
+  await assert.rejects(
+    standaloneHosts(
+      state,
+      { kind: "boat", tokenEnv: "BOAT_KEY", archiveReads: "yes" as never },
+      "pool",
+      [image],
+      { BOAT_KEY: "fixture" },
+    ),
+    /archive read policy/,
+  );
 });
 
 test("optional gVisor policy rejects unsupported host/network combinations before effects", () => {

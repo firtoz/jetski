@@ -53,6 +53,8 @@ import type {
   SandboxRuntimeCapabilities,
 } from "./memory-contracts.js";
 import {
+  type MemoryRestoreConcurrency,
+  memoryRestoreConcurrency,
   type PortableMemoryOptions,
   portableMemoryOptions,
 } from "./memory-contracts.js";
@@ -164,6 +166,8 @@ export type ManagerOptions = {
   poolId: string;
   /** Trusted bounded codecs for portable capture; identity is always available. */
   memoryCodecs?: ReadonlyMap<MemoryChunkCodec, MemoryChunkCodecAdapter>;
+  /** Independent control-protocol object writes. Binary sinks remain serial. */
+  memoryRestoreConcurrency?: MemoryRestoreConcurrency;
   streamTransport?: HostStreamTransport;
   approvedImages: string[];
   /** Operator policy for new sandboxes; existing records retain their limits. */
@@ -200,6 +204,7 @@ export type ManagerOptions = {
  * identity boundary. Private host-control methods are never public API routes. */
 export class SandboxManager {
   private readonly pool: PoolJournal;
+  private readonly restoreConcurrency: MemoryRestoreConcurrency;
   private readonly hostStartupConcurrency: number;
   private readonly copyBatchObjects: number;
   private readonly operations: OperationJournal;
@@ -255,6 +260,9 @@ export class SandboxManager {
       this.maxSandboxesPerOwner > 1000000
     )
       throw Error("Invalid sandbox identity bound");
+    this.restoreConcurrency = memoryRestoreConcurrency(
+      options.memoryRestoreConcurrency,
+    );
     this.timings = options.timings;
     if (options.timings) {
       objects = observeCheckpointStore(objects, options.timings);
@@ -847,6 +855,7 @@ export class SandboxManager {
       this.checkpoints,
       this.objects,
       this.timings,
+      this.restoreConcurrency,
     ).restore(
       {
         owner: sandbox.owner,

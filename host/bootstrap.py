@@ -6,6 +6,7 @@ The JSON config is supplied by the operator; images must be approved OCI digests
 """
 
 import argparse
+from timing import stage
 import json
 import os
 import pathlib
@@ -127,6 +128,24 @@ def configure_storage(account, mode):
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def ensure_approved_image(run, image):
+    """Only immutable approved references enter the cache; local-store errors
+    are not cache misses. Runtime-specific preparation still runs afterward."""
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0-9]{64}", image):
+        raise ValueError("approved_image_digest_required")
+    result = run(["image", "exists", image])
+    if result["exitCode"] == 0:
+        return "cached"
+    if result["exitCode"] != 1:
+        raise RuntimeError("approved_image_cache_unavailable")
+    result = run(["pull", image])
+    if result["exitCode"]:
+        raise RuntimeError("approved_image_pull_failed")
+    if run(["image", "exists", image])["exitCode"]:
+        raise RuntimeError("approved_image_cache_unavailable")
+    return "pulled"
 
 
 def bootstrap(config):
@@ -251,16 +270,17 @@ def bootstrap(config):
     if policy["kind"] == "gvisor":
         from gvisor_install import install
 
-        install()
+        with stage("bootstrap.runtime_install"):
+            install()
     proof = preflight(config, account, run)
     write_workload_identity(account, proof)
     for image in config["images"]:
-        result = run(["pull", image])
-        if result["exitCode"]:
-            raise RuntimeError("approved_image_pull_failed")
-        DEFAULT_BACKEND.prepare_image(
-            run, image, PREPARED_USER_NAMESPACE, proof["uidMappings"], proof["gidMappings"]
-        )
+        with stage("bootstrap.image_pull"):
+            ensure_approved_image(run, image)
+        with stage("bootstrap.image_mapping"):
+            DEFAULT_BACKEND.prepare_image(
+                run, image, PREPARED_USER_NAMESPACE, proof["uidMappings"], proof["gidMappings"]
+            )
     source = pathlib.Path(__file__).resolve().parent
     if policy["kind"] == "gvisor":
         from gvisor_environment import prepare_images
@@ -277,7 +297,8 @@ def bootstrap(config):
         from gvisor_apparmor import configure as configure_namespace_policy
 
         configure_namespace_policy()
-        prepare_images(account, config["images"], run)
+        with stage("bootstrap.rootfs"):
+            prepare_images(account, config["images"], run)
     binaries = ["command-supervisor", "tcp-relay"]
     if config.get("networkMode") == "public-egress":
         binaries.append("network-keeper")

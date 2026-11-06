@@ -19,6 +19,7 @@ import {
   validateRuntimePolicy,
   validateWorkloadInit,
 } from "../core/runtime-policy.js";
+import type { StageTimingSink } from "../core/timing.js";
 import type { HostTransport } from "../core/transport.js";
 import type { BoatMachineType } from "../providers/boat.js";
 import {
@@ -41,6 +42,8 @@ export type HostConfig =
       storageMode?: RuntimeStorageMode;
       runtime?: RuntimePolicy;
       workloadInit?: readonly string[];
+      /** Optional verified binary archive downloads; control fallback remains fenced. */
+      archiveReads?: boolean;
     };
 /** Selected adapters only. Boat installs on allocated machines, never locally. */
 export async function standaloneHosts(
@@ -50,6 +53,7 @@ export async function standaloneHosts(
   approvedImages: string[],
   environment = process.env,
   lifecycle?: HostLifecycle,
+  timings?: StageTimingSink,
 ): Promise<{
   provider: HostProvider;
   transport: HostTransport;
@@ -162,7 +166,11 @@ export async function standaloneHosts(
     validateWorkloadInit(config.workloadInit);
     const api = new BoatApi(environment[config.tokenEnv]!);
     const idle = hostLifecycle(lifecycle).idle;
-    const transport = new BoatTransport(state, api);
+    const transport = new BoatTransport(state, api, undefined, {
+      ...(config.archiveReads === undefined
+        ? {}
+        : { archiveReads: config.archiveReads }),
+    });
     const bootstrap = new BoatBootstrap(
       state,
       api,
@@ -173,6 +181,7 @@ export async function standaloneHosts(
       config.runtime,
       config.workloadInit,
       config.networkFilter,
+      timings,
     );
     return {
       transport,

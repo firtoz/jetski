@@ -19,6 +19,9 @@ export async function publicApiTypes(
   remote: Jetski,
 ) {
   const opened: Promise<NodeJetski> = openJetski(options);
+  openJetski({ ...options, memoryRestoreConcurrency: 2 });
+  // @ts-expect-error restore concurrency is a bounded closed set
+  openJetski({ ...options, memoryRestoreConcurrency: 8 });
   const prepared = await embedded.prepareHosts({
     count: 2,
     operationId: "persisted-uuid",

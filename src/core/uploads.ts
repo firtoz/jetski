@@ -24,6 +24,7 @@ export type UploadStatus = UploadSpec & {
   phase: "receiving" | "finishing" | "committed" | "aborted" | "uncertain";
 };
 type Record = UploadStatus & {
+  initialized?: true;
   owner: string;
   sandbox: string;
   generation: number;
@@ -121,6 +122,21 @@ export class UploadCoordinator {
           : (value.phase as UploadStatus["phase"]),
     };
   }
+  private async initialize(record: Record): Promise<UploadStatus> {
+    const result = await this.host(record, "file-write-begin");
+    await this.state.transaction((tx) => {
+      const current = tx.get<Record>(key(record, record.id));
+      if (
+        !current ||
+        current.generation !== record.generation ||
+        canonical(current.lease) !== canonical(record.lease)
+      )
+        throw Error("Upload initialization authority changed");
+      if (current.phase === "receiving" && !current.initialized)
+        tx.put(key(record, record.id), { ...current, initialized: true });
+    });
+    return result;
+  }
   async begin(
     scope: Scope,
     id: string,
@@ -165,7 +181,7 @@ export class UploadCoordinator {
       return next;
     });
     if (record.phase !== "receiving") return publicStatus(record);
-    return this.host(record, "file-write-begin");
+    return this.initialize(record);
   }
   async status(scope: Scope, id: string): Promise<UploadStatus> {
     const record = await this.record(scope, id);
@@ -200,7 +216,7 @@ export class UploadCoordinator {
         throw Error("Upload cannot receive bytes");
       return record;
     });
-    await this.host(record, "file-write-begin");
+    if (!record.initialized) await this.initialize(record);
     return this.host(record, "file-write-chunk", { offset, base64, sha256 });
   }
   async finish(scope: Scope, id: string): Promise<UploadStatus> {

@@ -209,3 +209,76 @@ class ImportedParentTests(unittest.TestCase):
                 env.prepare_imported({}, "image", 512, 1)
             limits.rmdir.assert_not_called()
             env.prepare.assert_not_called()
+
+
+class FilesystemBarrierTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = pathlib.Path(self.temp.name)
+        self.image = self.root / "image"
+        self.image.mkdir()
+
+    def barrier(self, result=0):
+        from unittest.mock import MagicMock
+
+        call = MagicMock(return_value=result)
+        return call, patch("gvisor_rootfs.ctypes.CDLL", return_value=SimpleNamespace(syncfs=call))
+
+    def test_barrier_fd_precedes_copy_and_closes_only_after_checked_sync(self):
+        from gvisor_rootfs import FilesystemSync
+
+        call, library = self.barrier()
+        with patch("gvisor_rootfs.platform.release", return_value="6.14.0"), library:
+            with FilesystemSync(self.root) as barrier:
+                self.assertIsNotNone(barrier)
+                fd = barrier.fd
+                self.assertEqual(os.fstat(fd).st_dev, self.root.stat().st_dev)
+                (self.image / "bytes").write_bytes(b"binary\0\xff exact")
+                (self.image / "link").symlink_to("bytes")
+                with patch("gvisor_rootfs.os.fsync") as per_file:
+                    sync_tree(self.image, per_file=False)
+                    per_file.assert_not_called()
+                barrier.sync(self.image)
+                call.assert_called_once_with(fd)
+            with self.assertRaises(OSError):
+                os.fstat(fd)
+        self.assertEqual((self.image / "bytes").read_bytes(), b"binary\0\xff exact")
+        self.assertEqual(os.readlink(self.image / "link"), "bytes")
+
+    def test_failed_or_missing_barrier_cannot_publish_success(self):
+        import errno
+        from gvisor_rootfs import FilesystemSync
+
+        for code in (errno.EIO, errno.ENOSPC):
+            call, library = self.barrier(-1)
+            with (
+                patch("gvisor_rootfs.platform.release", return_value="6.14.0"),
+                library,
+                patch("gvisor_rootfs.ctypes.get_errno", return_value=code),
+            ):
+                with self.assertRaises(OSError) as observed:
+                    with FilesystemSync(self.root) as barrier:
+                        barrier.sync(self.image)
+                self.assertEqual(observed.exception.errno, code)
+                call.assert_called_once()
+        _, library = self.barrier()
+        with patch("gvisor_rootfs.platform.release", return_value="6.14.0"), library:
+            with self.assertRaisesRegex(ValueError, "sync_missing"):
+                with FilesystemSync(self.root):
+                    pass
+
+    def test_old_kernels_keep_per_file_path_and_validation_rejects_special_files(self):
+        from gvisor_rootfs import FilesystemSync
+
+        with (
+            patch("gvisor_rootfs.platform.release", return_value="5.4.0"),
+            patch("gvisor_rootfs.ctypes.CDLL") as library,
+        ):
+            with FilesystemSync(self.root) as barrier:
+                self.assertIsNone(barrier)
+                sync_tree(self.image)
+            library.assert_not_called()
+        os.mkfifo(self.image / "fifo")
+        with self.assertRaisesRegex(ValueError, "unsupported_gvisor_image_member"):
+            sync_tree(self.image, per_file=False)

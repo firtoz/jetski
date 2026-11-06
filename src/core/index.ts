@@ -27,7 +27,12 @@ export type {
   PortableMemoryOptions,
   SandboxRuntimeCapabilities,
 } from "./memory-contracts.js";
-export { portableMemoryOptions } from "./memory-contracts.js";
+export {
+  MEMORY_RESTORE_CONCURRENCIES,
+  type MemoryRestoreConcurrency,
+  memoryRestoreConcurrency,
+  portableMemoryOptions,
+} from "./memory-contracts.js";
 export * from "./observability.js";
 export * from "./operations.js";
 export {
