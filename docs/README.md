@@ -11,13 +11,13 @@ runtime deliberately.
 - [Runnable examples](../examples/README.md): hello world, Boat, R2, files and warm reuse.
 - [Where data lives](storage-locations.md): controller disk, execution host, cache and R2.
 - [Simple API](simple-api.md): shared methods, lifecycle and error handling.
-  Source convenience helpers are available on main, not in npm 0.1.1.
+  Convenience helpers are included in `@firtoz/jetski@0.2.0`.
 
 ## Build an application
 
 - [Architecture and contracts](design.md): replaceable boundaries and core guarantees.
 - [Boat hosts](boat.md): provisioning and bootstrap; SSH adoption is in the standalone guide.
-- [boxd hosts](boxd.md): SDK-only embedded/standalone configuration (source preview).
+- [boxd hosts](boxd.md): SDK-only embedded/standalone configuration (optional peer dependency).
 - [Provider parity](provider-parity-benchmarks.md): matched runtime timings, interactive access and replacement recovery.
 - [Checkpoint storage](storage.md) and [native R2 bindings](storage-r2.md): adapter contracts.
 - [Runtime selection](runtime-selection.md): Podman, optional gVisor and fallback policy.

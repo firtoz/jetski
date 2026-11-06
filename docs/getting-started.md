@@ -6,13 +6,12 @@ container runtime on your laptop to control Boat workloads.
 
 ## Run directly from a Node application
 
-The new local draft exposes `runSandbox` for one command and `openJetski` for a
-longer-lived application. These helpers are **not in published 0.1.1 yet**.
+The released package exposes `runSandbox` for one command and `openJetski` for a
+longer-lived application.
 
-From the repository root, using Node 24.22.1 or newer:
+Using Node 24.22.1 or newer, run from the example folder:
 
 ```sh
-npm install
 cd examples/02-hello-world-boat
 npm install
 export BOAT_API_TOKEN=your-boat-token
@@ -21,14 +20,12 @@ npm run typecheck
 npm start
 ```
 
-The root `npm install` installs development dependencies and builds Jetski
-through its existing `prepare` script. No separate build command is needed for
-initial setup. The example's `npm install` links that local package. This is only
-for trying the unpublished API from a source checkout; normal package consumers
-install a prebuilt release and do not clone or build Jetski.
+The example installs the prebuilt `@firtoz/jetski@0.2.0` package from npm. No
+root install, compiler invocation or custom JSON configuration is needed to run
+it. `npm run typecheck` is an optional strict check of your example code.
 
-No custom JSON configuration or separately running server is needed. After editing
-Jetski's TypeScript source, run `npm run build` from the root to refresh the build.
+For your own application, run `npm install --save-exact @firtoz/jetski@0.2.0`.
+No separately running server is needed for embedded usage.
 
 The script creates a sandbox, runs `echo`, saves its files, releases its assignment
 and retires its owned host before returning `Hello, world!`. Creating hosts can incur provider
@@ -56,14 +53,14 @@ send authenticated requests. Closing a client does not stop the server.
 The published release supports installation with:
 
 ```sh
-npm install --global @firtoz/jetski@0.1.1
+npm install --global @firtoz/jetski@0.2.0
 ```
 
 Follow the [README setup](../README.md#get-started) and
 [standalone configuration](standalone.md) to configure the host adapter, approved
 image, private data directory and authentication, then start `jetski serve`.
-The [minimal server-backed example](../examples/01-hello-world/) uses the new local
-convenience facade; published explicit CLI/API operations are in the standalone guide.
+The [minimal server-backed example](../examples/01-hello-world/) uses the released
+convenience facade; explicit CLI/API operations are in the standalone guide.
 
 Here, local storage means the **server's** disk, regardless of where the client runs.
 A containerized server needs a persistent volume. See [where data lives](storage-locations.md).

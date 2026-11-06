@@ -1,8 +1,8 @@
 # Releases and upgrades
 
-v0.1 is a narrow self-hosted release, not a hosted-compute service or universal
+v0.2 is a narrow self-hosted release, not a hosted-compute service or universal
 provider certification. See operations.md, SECURITY.md and qualification.md for
-supported boundaries. Only the newest patch in the0.1 line receives fixes; there
+supported boundaries. Only the newest patch in the 0.2 line receives fixes; there
 is no SLA or automatic host-runtime updater. APIs use `/v1`; host-control protocol,
 checkpoint manifests and memory compatibility have their own explicit versions.
 Do not infer compatibility from an S3-shaped API or a matching sandbox name.
@@ -10,7 +10,7 @@ Do not infer compatibility from an S3-shaped API or a matching sandbox name.
 SQLite uses format1 (`PRAGMA user_version`). Existing format0 key/value stores
 adopt this marker without rewriting records; unknown newer versions fail closed.
 A future breaking format must ship a documented explicit migrator and restore
-procedure. In the0.x line, incompatible API changes require a minor bump; bug fixes
+procedure. In the 0.x line, incompatible API changes require a minor bump; bug fixes
 preserve acknowledged checkpoint interpretation. Do not upgrade runtime versions
 under a retained memory checkpoint and assume process compatibility.
 

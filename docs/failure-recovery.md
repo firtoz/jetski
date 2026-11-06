@@ -1,6 +1,6 @@
 # Failure observation and recovery
 
-These convenience APIs are source previews, not part of npm 0.1.1.
+These convenience APIs are included in `@firtoz/jetski@0.2.0`.
 Jetski distinguishes an operation that is still pending from a failed or uncertain
 remote effect. An observation timeout does not cancel work or grant permission
 to issue it again. Persist sandbox and operation IDs before admission using

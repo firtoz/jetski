@@ -2,7 +2,7 @@
 
 November 5, 2026. Both providers ran the same Jetski lifecycle and passed twenty
 exact checkpoint cycles plus one source-deleted R2 recovery per provider.
-The optional [boxd adapter](boxd.md) is a source preview, not in npm 0.1.1.
+The optional [boxd adapter](boxd.md) is included in `@firtoz/jetski@0.2.0`.
 [Machine-readable measurements](benchmarks/boxd-boat-2026-11-05.json).
 
 ## End-to-end timings

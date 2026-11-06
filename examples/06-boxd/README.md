@@ -3,11 +3,10 @@
 The same one-shot API as [hello world on Boat](../02-hello-world-boat/).
 Only the `provider` block differs; command execution, storage and cleanup are identical.
 No standalone server, custom JSON config or boxd CLI is required by Jetski.
-Uses the local source preview; published npm 0.1.1 does not include this API.
+Uses the released `@firtoz/jetski@0.2.0` package.
 Requires Node 24.22.1+ and an existing boxd account/API key. Hosts can incur charges.
 
-Run `npm install` once in the repository root (it builds Jetski automatically).
-Then, from this folder:
+From this folder (no root install or Jetski build required):
 
 ```sh
 npm install

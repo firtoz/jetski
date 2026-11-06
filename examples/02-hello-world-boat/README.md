@@ -2,11 +2,10 @@
 
 A self-contained embedded example. No standalone server or custom JSON config.
 Compare [hello world on boxd](../06-boxd/): only the provider block differs.
-Uses the local, unpublished API; published 0.1.1 does not include this helper.
+Uses the released `@firtoz/jetski@0.2.0` package.
 Requires Node 24.22.1+ and an existing Boat account. Running it can incur host charges.
 
-Run `npm install` once in the repository root (it builds Jetski automatically).
-Then, from this folder:
+From this folder (no root install or Jetski build required):
 
 ```sh
 npm install

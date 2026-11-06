@@ -6,6 +6,10 @@ const p = JSON.parse(
 );
 const { RELEASE_VERSION } = await import("../dist/version.js");
 assert.equal(p.version, RELEASE_VERSION);
+const api = JSON.parse(
+  await readFile(new URL("../docs/openapi.json", import.meta.url)),
+);
+assert.equal(api.info.version, p.version);
 assert.equal(p.private, false);
 assert.match(p.version, /^\d+\.\d+\.\d+$/);
 for (const path of Object.values(p.exports)) {

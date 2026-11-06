@@ -2,7 +2,7 @@
 
 November 5, 2026. Both machine providers now pass the same changed-path Jetski
 qualification: Podman and gVisor, public egress, interactive transports and R2
-recovery. These APIs are source previews, not in npm 0.1.1.
+recovery. These APIs are included in `@firtoz/jetski@0.2.0`.
 [Machine-readable results](benchmarks/provider-parity-2026-11-05.json).
 The [earlier baseline](boxd-boat-benchmarks.md) remains separate evidence with a
 lighter workload; do not combine its rows with these.

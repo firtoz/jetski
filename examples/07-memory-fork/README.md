@@ -49,7 +49,8 @@ introductory examples because it records and checks a complete fork workflow.
 
 ## Run from this checkout
 
-These APIs are newer than published 0.1.1. Build the checkout first, then:
+Uses the released `@firtoz/jetski@0.2.0` package. No root install or Jetski build
+is required:
 
 ```sh
 cd examples/07-memory-fork

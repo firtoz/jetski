@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Jetski API",
-    "version": "0.1.0",
-    "description": "Implementation preview. This document covers implemented routes only; the v1 release acceptance matrix is not complete."
+    "version": "0.2.0",
+    "description": "Implemented Jetski HTTP API. Host-control protocol, checkpoint formats and runtime compatibility are independently versioned. See the operations and qualification guides for supported boundaries."
   },
   "security": [
     {

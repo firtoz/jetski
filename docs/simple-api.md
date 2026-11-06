@@ -1,9 +1,8 @@
-# Simple application API (source preview)
+# Simple application API
 
-These helpers are available from the source checkout, not published 0.1.1.
-Examples use `file:../..` for development. Run `npm install` in the repository
-root once; its `prepare` script builds Jetski automatically. Each numbered example
-then runs independently. A future release can use a pinned npm version.
+Install `@firtoz/jetski@0.2.0` for the embedded Node controller or server-backed
+SDK. Each numbered example pins that release and runs independently with
+`npm install`; no Jetski source build or sibling link is required.
 
 ## TypeScript
 

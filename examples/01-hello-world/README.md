@@ -4,9 +4,8 @@ Create a sandbox, run `echo`, then durably stop it. Requires an existing Jetski
 server and an operator-approved image. Creating a sandbox can allocate billable
 compute on that server. This example does not provision a controller.
 
-This local draft uses the sibling SDK through `file:../..`; its convenience API
-is not in published 0.1.1. Run `npm install` once in the repository root
-(it builds Jetski automatically), then from this folder:
+Uses the released `@firtoz/jetski@0.2.0` SDK. From this folder
+(no root install or Jetski build required):
 
 ```sh
 npm install
@@ -29,9 +28,7 @@ before dispatch. Keep errors/IDs and inspect receipts instead of rerunning the
 whole example. Binary command output is available as `stdoutBytes`/`stderrBytes`;
 text access is strict UTF-8. Use the lower-level streaming SDK for large outputs.
 
-A published version will replace the development link with a pinned registry
-dependency; only this unpublished draft needs the source-checkout setup. Nonzero command
-exits reject with captured output available on the error cause; `check: false`
+Nonzero command exits reject with captured output available on the error cause; `check: false`
 lets callers handle an exit code explicitly.
 
 Storage location: [where data lives](../../docs/storage-locations.md). “Local”

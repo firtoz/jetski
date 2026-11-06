@@ -36,7 +36,7 @@ reader/writer fences. Maintenance does not expire acknowledged checkpoint histor
 The option defaults to false. Enable it only after qualifying your adapter and
 backup/recovery procedure; it never expires acknowledged checkpoint history.
 
-Install the prebuilt version: `npm install --global @firtoz/jetski@0.1.1` using Node
+Install the prebuilt version: `npm install --global @firtoz/jetski@0.2.0` using Node
 from `.nvmrc`. Source-build instructions are in CONTRIBUTING.md. Prepare a dedicated
 Linux x86-64 host with rootless Podman prerequisites and GNU coreutils `timeout`.
 As an operator on that host,

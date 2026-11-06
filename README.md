@@ -9,29 +9,28 @@ without requiring a new VM or provider snapshot for every session.
 
 First cloud-qualified with **Boat**. Also supports explicitly adopted Linux hosts
 through SSH. Available as a portable TypeScript core/SDK, an optional Node.js HTTP
-service and a thin CLI. The 0.1 line targets self-hosted single-controller
+service and a thin CLI. The 0.2 line targets self-hosted single-controller
 deployments; see [operations](docs/operations.md) for supported scope and recovery
 requirements. There is no managed Jetski hosting service.
 
 [Documentation](docs/README.md) · [Getting started](docs/getting-started.md) ·
 [Examples](examples/README.md) · [Where data lives](docs/storage-locations.md)
 
-Source preview: an optional [SDK-only boxd adapter](docs/boxd.md) and
+An optional [SDK-only boxd adapter](docs/boxd.md) and
 [TypeScript example](examples/06-boxd/) add another machine-host choice. The
 [parity comparison](docs/provider-parity-benchmarks.md) covers both runtimes,
 interactive access and source-deleted R2 filesystem/process recovery.
-These additions are not in the published 0.1.1 package.
+Available in `@firtoz/jetski@0.2.0`.
 
 ## Recorded memory fork
 
 [Watch Chromium continue from one RAM + disk checkpoint in two independent sandboxes](examples/07-memory-fork/optimized-demo.mp4).
 The original remains at 4; branches reach 9 and 6 with separate file changes.
 The measured workflow fell from 17m36s to 5m53s, including cold preparation; branch
-resume operations fell from464s to48s. Three physical starts were used in each run.
+resume operations fell from 464s to 48s. Three physical starts were used in each run.
 See [the runnable TypeScript example](examples/07-memory-fork/),
 [performance defaults](docs/performance-tuning.md) and [measurements/limits](docs/chromium-transfer-performance.md).
-These source APIs are newer than published npm 0.1.1; the short movie explicitly
-labels accelerated waits and retains the actual elapsed clock.
+The short movie explicitly labels accelerated waits and retains the actual elapsed clock.
 
 ## Why use it?
 
@@ -100,18 +99,18 @@ bytes plus retained session files and acknowledged output.
 Use Node from [`.nvmrc`](.nvmrc). Install the prebuilt package (the CLI is `jetski`):
 
 ```sh
-npm install --global @firtoz/jetski@0.1.1
+npm install --global @firtoz/jetski@0.2.0
 jetski --version
 jetski --help
 ```
 
-For an SDK application: `npm install --save-exact @firtoz/jetski@0.1.1`, then import
+For an SDK application: `npm install --save-exact @firtoz/jetski@0.2.0`, then import
 `JetskiClient` from `@firtoz/jetski/sdk` or compose `SandboxManager` from `@firtoz/jetski/core`.
 Registry users do not need TypeScript or a source build. See [contributing](CONTRIBUTING.md)
 for checkout instructions, [operations](docs/operations.md) for deployment/backup,
 and [releases](docs/releases.md) for versions, containers and upgrades.
 
-A versioned Linux amd64 controller image is built as `ghcr.io/firtoz/jetski:v0.1.1`.
+A versioned Linux amd64 controller image is built as `ghcr.io/firtoz/jetski:v0.2.0`.
 Use its verified digest from the GitHub release once published; keep configuration
 read-only and `/data` on a persistent volume owned by UID1000. Example:
 
@@ -119,7 +118,7 @@ read-only and `/data` on a persistent volume owned by UID1000. Example:
 docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges \
   -p 127.0.0.1:8788:8788 --env-file /private/jetski.env \
   -v /private/server.json:/etc/jetski/server.json:ro \
-  -v /private/jetski-data:/data ghcr.io/firtoz/jetski:v0.1.1
+  -v /private/jetski-data:/data ghcr.io/firtoz/jetski:v0.2.0
 ```
 
 Set `dataDirectory: "/data"` and `host: "0.0.0.0"` in that container's configuration.
