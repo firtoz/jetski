@@ -41,8 +41,15 @@ checks every object before committing the root under the writer generation. A
 missing memory object prevents the combined recovery point from being acknowledged.
 Reader/writer/collector exclusion, pins and the minimum GC grace remain unchanged.
 Any chunk reused by a later retained root stays reachable after an earlier root
-retires. Filesystem-copy APIs copy only the filesystem projection into a new scope;
-they do not duplicate process identity or memory implicitly.
+retires. Checkpoint-copy APIs default to the filesystem projection into a new scope;
+they do not duplicate process identity or memory implicitly. Explicit
+`fromCheckpoint({sourceSandboxId, checkpointId, content: "memory"})` creates a
+stopped, same-owner copy of the complete disk/RAM graph. Object identities and
+publication metadata are rebound to the target under existing writer/reader
+fences; source objects remain unchanged. Call `resumeMemory()` separately on a
+compatible runtime. The [Chromium fork example](../examples/07-memory-fork/README.md)
+shows two fresh hosts continuing one JavaScript instance independently, with a
+recorded demonstration and its measured limits.
 
 The format parser establishes structural consistency, not execution authority.
 Restore must verify encoded objects, bounded decoded chunks, complete file hashes,

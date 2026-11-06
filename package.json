@@ -48,7 +48,8 @@
     "./providers/machine-bootstrap": "./dist/providers/machine-bootstrap.js",
     "./transport/boxd": "./dist/transport/boxd.js",
     "./providers/boxd-hosts": "./dist/providers/boxd-hosts.js",
-    "./providers/boxd-pricing": "./dist/providers/boxd-pricing.js"
+    "./providers/boxd-pricing": "./dist/providers/boxd-pricing.js",
+    "./transport/ssh-key": "./dist/transport/ssh-key.js"
   },
   "files": [
     "dist",

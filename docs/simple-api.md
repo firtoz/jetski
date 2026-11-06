@@ -195,3 +195,51 @@ Provider configuration is a discriminated union keyed by `kind`. Built-in
 validation and dispatch have compile-time exhaustiveness checks: adding a provider
 requires updating each affected branch. Adapter cleanup is shared by built-in,
 custom and factory providers.
+
+## Prepare hosts before demand
+
+Embedded callers can explicitly prepare idle hosts and their approved images:
+
+```ts
+const prepared = await jetski.prepareHosts({
+  count: 2,
+  operationId: "your-persisted-uuid",
+});
+const sandbox = await jetski.create(); // consumes a prepared owner-scoped host
+```
+
+Set `hostsPerOwner` high enough and optionally `hostStartupConcurrency` to bound
+parallel preparation. The default remains zero minimum warm capacity. This is a
+one-shot operation, not a pool that replenishes itself. Replaying its ID observes
+its recorded result even after the hosts have been consumed or retired; it does
+not promise they remain available forever. New requests need new persisted IDs.
+Capacity includes active and uncertain hosts; preparation never evicts a workload.
+
+The same host provider/bootstrap/runtime policy as ordinary placement is used.
+Approved OCI references stay digest-pinned. A local image-cache hit skips a registry
+pull, while missing images are pulled and rechecked; local-store errors fail closed.
+Runtime-specific rootfs preparation and normal placement verification still apply.
+Cache reuse is per host and never crosses owners. It is not an image-distribution
+cache shared among newly allocated machines.
+
+Preparation expires after at most 15 minutes (earlier near the host's drain limit).
+Observation timeout or abort does not undo an uncertain allocation: observe the
+same operation ID. Prepared hosts use ordinary idle/lifetime limits and cost money
+while retained. `close()` cancels undispatched preparation and retires positively
+released idle hosts; uncertain allocations are reported with recovery state retained.
+This convenience API is currently embedded Node/core only, not a new HTTP route.
+
+## Optional transfer tuning
+
+`openJetski({ ..., memoryRestoreConcurrency: 2 })` opts into independent memory
+object writes, using the shared closed set 1/2/4. Default 1 preserves existing
+resource pressure. All workers finish before native admission, fallback or reader
+closure; shared binary import sinks and legacy journals remain serial.
+
+Boat additionally accepts `provider: { kind: "boat", token, archiveReads: true }`
+for verified binary archive downloads. This is an optional transport binding, not
+a new checkpoint format or weaker publication policy. An explicitly ignored HTTP
+Range can use the same fenced control read; server/auth/integrity failures remain
+failures. Other host transports retain their own capability paths. See the
+[measured desktop tradeoffs](chromium-transfer-performance.md), especially coarse
+chunk reuse and the limits of per-host timings.

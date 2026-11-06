@@ -6,7 +6,11 @@
     "paths": {
       "@firtoz/jetski/sdk": ["./src/sdk.ts"],
       "@firtoz/jetski/node": ["./src/node.ts"],
-      "@firtoz/jetski/providers/boxd-hosts": ["./src/providers/boxd-hosts.ts"]
+      "@firtoz/jetski/providers/boxd-hosts": ["./src/providers/boxd-hosts.ts"],
+      "@firtoz/jetski/core": ["./src/core/index.ts"],
+      "@firtoz/jetski/client/forward": ["./src/client/forward.ts"],
+      "@firtoz/jetski/server/ssh": ["./src/server/ssh.ts"],
+      "@firtoz/jetski/transport/ssh-key": ["./src/transport/ssh-key.ts"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "examples/**/*.ts"]

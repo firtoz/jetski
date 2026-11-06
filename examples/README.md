@@ -2,7 +2,8 @@
 
 Each numbered folder has its own runnable entry point, dependency manifest and
 short setup instructions. Each entry point is TypeScript, with `npm run typecheck`
-and direct Node execution. No custom JSON plan/configuration files are needed.
+and direct Node execution for the introductory examples; the advanced recording
+demo uses tsx. No custom JSON plan/configuration files are needed.
 These source APIs and the boxd adapter are not part of published npm 0.1.1.
 
 | Example                                               | Demonstrates                                             |
@@ -13,6 +14,9 @@ These source APIs and the boxd adapter are not part of published npm 0.1.1.
 | [04-files-and-checkpoints](04-files-and-checkpoints/) | Restore a checkpoint into a new sandbox.                 |
 | [05-warm-pool](05-warm-pool/)                         | Sequential same-owner sessions sharing reusable compute. |
 | [06-boxd](06-boxd/)                                   | The same embedded hello world on boxd, without its CLI.  |
+
+[07-memory-fork](07-memory-fork/) is an advanced automated Chromium RAM + disk
+fork demo with three live desktop panels, real elapsed logs and MP4 recording.
 
 ## Compare Boat and boxd
 

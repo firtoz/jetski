@@ -4,6 +4,7 @@ coverage/
 .env*
 *.sqlite*
 .jetski/
+.jetski-memory-fork/
 __pycache__/
 *.pyc
 

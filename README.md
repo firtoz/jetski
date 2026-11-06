@@ -22,6 +22,17 @@ Source preview: an optional [SDK-only boxd adapter](docs/boxd.md) and
 interactive access and source-deleted R2 filesystem/process recovery.
 These additions are not in the published 0.1.1 package.
 
+## Recorded memory fork
+
+[Watch Chromium continue from one RAM + disk checkpoint in two independent sandboxes](examples/07-memory-fork/optimized-demo.mp4).
+The original remains at 4; branches reach 9 and 6 with separate file changes.
+The measured workflow fell from 17m36s to 5m53s, including cold preparation; branch
+resume operations fell from464s to48s. Three physical starts were used in each run.
+See [the runnable TypeScript example](examples/07-memory-fork/),
+[performance defaults](docs/performance-tuning.md) and [measurements/limits](docs/chromium-transfer-performance.md).
+These source APIs are newer than published npm 0.1.1; the short movie explicitly
+labels accelerated waits and retains the actual elapsed clock.
+
 ## Why use it?
 
 - **Reuse compute:** owner-exclusive pools, demand-created hosts, bounded leases and

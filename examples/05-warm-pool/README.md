@@ -1,7 +1,7 @@
 # Two sessions on a reusable host
 
 A self-contained embedded example. No standalone server or custom JSON config.
-Uses the local, unpublished API; published 0.1.1 does not include this helper.
+Uses the source API on main; published 0.1.1 does not include this helper.
 Requires Node 24.22.1+ and an existing Boat account. Running it can incur host charges.
 
 Run `npm install` once in the repository root (it builds Jetski automatically).
@@ -24,6 +24,12 @@ sandboxes intentionally. To continue existing work, use `jetski.get(id)`.
 Local checkpoints live on this controller's disk, independently of Boat hosts.
 They survive execution-host replacement, but not loss of the controller disk.
 For remote objects see [the R2 example](../03-hello-world-r2/).
+
+`prepareHosts({ count: 1 })` prepares one owner-scoped host and its approved image
+before the loop. This is paid work, not free startup time. It is a one-shot request,
+not automatic replenishment. A long-running app should retain its operation ID for
+recovery and call preparation ahead of expected demand. This short example closes
+the controller at the end. No host is created merely by opening the controller.
 
 `stop()` saves/releases each assignment while the controller remains open.
 A healthy idle host can serve the next same-owner session, subject to its lease

@@ -9,6 +9,9 @@ const jetski = await openJetski({
 });
 
 try {
+  // Paid one-shot preparation, including the approved image. A long-running app
+  // can do this before expected demand; it does not maintain a permanent pool.
+  await jetski.prepareHosts({ count: 1 });
   for (const name of ["first", "second"]) {
     const sandbox = await jetski.create();
     const result = await sandbox.exec([

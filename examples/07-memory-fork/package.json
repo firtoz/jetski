@@ -1,0 +1,17 @@
+{
+  "name": "jetski-example-07-memory-fork",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts",
+    "typecheck": "tsc --noEmit --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes --module NodeNext --target ES2023 --types node --skipLibCheck *.ts"
+  },
+  "dependencies": {
+    "@firtoz/jetski": "file:../.."
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "~5.9.3",
+    "tsx": "^4.20.6"
+  }
+}
