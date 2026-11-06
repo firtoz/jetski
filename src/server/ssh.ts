@@ -114,6 +114,7 @@ export function createSshGateway(
         }
       });
       client.on("ready", () => {
+        clearTimeout(deadline);
         const pending = sockets.get(`${info.ip}/${info.port}`);
         if (pending) clearTimeout(pending.timer);
         if (!scope) {

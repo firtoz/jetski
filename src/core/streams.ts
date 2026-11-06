@@ -196,6 +196,11 @@ export class StreamCoordinator {
   /** Called after quiescence, before source release. Every unresolved stream
    * still requires its own trusted terminal receipt; callers supply no proof. */
   async settleStopped(scope: Scope, lease: HostLease): Promise<void> {
+    return this.requireSettled(scope, lease);
+  }
+  /** Verify terminal stream receipts without stopping the workload or accepting
+   * EOF/cancellation acknowledgement as process-termination proof. */
+  async requireSettled(scope: Scope, lease: HostLease): Promise<void> {
     const records = await this.state.transaction((tx) =>
       tx
         .scan<StreamRecord>(`stream/${scopeKey(scope)}/`)

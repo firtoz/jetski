@@ -242,6 +242,7 @@ test("SSH gateway shutdown closes silent pre-header sockets", {
 test("SSH forwarding scopes targets, preserves binary data and supports remote-first half-close", {
   timeout: 15000,
 }, async (t) => {
+  const drainPayload = Buffer.alloc(2 * 1024 * 1024, 0x91);
   const identities = new Set<string>(),
     uploads: Buffer[] = [];
   const aborters = new Map<string, () => void>();
@@ -285,7 +286,7 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
           id,
           generation: 1,
           revoked: false,
-          available: id === "echo" || id === "half",
+          available: id === "echo" || id === "half" || id === "drain",
           port: 8080,
         };
       },
@@ -331,6 +332,7 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
             if (ended) throw Error("already ended");
             ended = true;
             if (exposure === "echo") output.end();
+            if (exposure === "drain") output.end(drainPayload);
             await new Promise((resolve) => setTimeout(resolve, 100));
             if (settled) throw Error("Interrupted before final receipt");
             settled = true;
@@ -480,6 +482,48 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
       }),
     );
   }
+  // A viewer shutdown must half-close and drain, not destroy its transport
+  // before the host's independently verified completion can arrive.
+  const drained = await forwardTcp({ ...config, exposure: "echo" });
+  t.after(() => drained.close());
+  const idleInput = connectSocket({
+    host: drained.host,
+    port: drained.port,
+    allowHalfOpen: true,
+  });
+  idleInput.on("error", () => {});
+  t.after(() => idleInput.destroy());
+  const echoed = once(idleInput, "data");
+  idleInput.write(Buffer.from("drain-without-client-fin"));
+  await echoed;
+  const drainId = tunnelIds.at(-1)!;
+  await drained.drain();
+  await outcomes.get(drainId);
+  await drained.done;
+  const drainResponse = await forwardTcp({ ...config, exposure: "drain" });
+  t.after(() => drainResponse.close());
+  const slowReader = connectSocket({
+    host: drainResponse.host,
+    port: drainResponse.port,
+  });
+  slowReader.on("error", () => {});
+  t.after(() => slowReader.destroy());
+  const responseChunks: Buffer[] = [];
+  slowReader.on("data", (bytes: Buffer) =>
+    responseChunks.push(Buffer.from(bytes)),
+  );
+  const responseClosed = once(slowReader, "close");
+  await once(slowReader, "connect");
+  slowReader.pause();
+  const responseDrain = drainResponse.drain();
+  setTimeout(() => slowReader.resume(), 100);
+  await responseDrain;
+  await responseClosed;
+  assert.deepEqual(
+    Buffer.concat(responseChunks),
+    drainPayload,
+    "drain must flush the final buffered output before destroying the local socket",
+  );
   const priorAdmissions = identities.size;
   const unrecorded = await forwardTcp({
     ...config,
@@ -598,4 +642,57 @@ test("SSH forwarding scopes targets, preserves binary data and supports remote-f
   const loss = assert.rejects(lost.done, /transport lost/);
   gateway.closeConnections();
   await loss;
+});
+
+test("authenticated SSH connections survive the login deadline", {
+  timeout: 22000,
+}, async (t) => {
+  const unavailable = async (): Promise<never> => {
+    throw Error("No workload requested");
+  };
+  const gateway = createSshGateway(
+    {
+      get: unavailable,
+      requireTerminal: unavailable,
+      terminalInput: unavailable,
+      terminalInputStatus: unavailable,
+      commandOutput: unavailable,
+      commandStatus: unavailable,
+    },
+    {
+      hostKey: Buffer.from(host.private),
+      principals: [{ owner: "alice", publicKey: alice.public }],
+    },
+  );
+  const client = new Client();
+  client.on("error", () => {});
+  t.after(async () => {
+    client.destroy();
+    await gateway.close();
+  });
+  await new Promise<void>((resolve) =>
+    gateway.server.listen(0, "127.0.0.1", resolve),
+  );
+  const address = gateway.server.address();
+  assert.ok(address && typeof address !== "string");
+  let closed = false;
+  client.once("close", () => {
+    closed = true;
+  });
+  const ready = once(client, "ready");
+  client.connect({
+    host: "127.0.0.1",
+    port: address.port,
+    username: "box",
+    privateKey: alice.private,
+    hostVerifier: (key: Buffer) =>
+      key.equals((utils.parseKey(host.public) as ParsedKey).getPublicSSH()),
+  });
+  await ready;
+  await new Promise((resolve) => setTimeout(resolve, 15750));
+  assert.equal(
+    closed,
+    false,
+    "login deadlines must not disconnect an authenticated transport",
+  );
 });

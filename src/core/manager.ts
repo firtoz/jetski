@@ -1542,6 +1542,10 @@ export class SandboxManager {
       throw Error("Memory suspend not supported by this host");
     if (portable && capabilities.portableMemoryVersion !== 1)
       throw Error("Portable memory not supported by this host");
+    // A known active/uncertain viewer is a precondition failure, not an admitted
+    // native checkpoint with uncertain completion. Host fencing still rechecks
+    // settled state after admission to cover races with new connections.
+    await this.streams?.requireSettled(scope, sandbox.lease);
     return this.shutdown.admit(scope, id, "suspend", portable);
   }
   async stop(scope: Scope, id: string, mode: ShutdownMode = "stop") {

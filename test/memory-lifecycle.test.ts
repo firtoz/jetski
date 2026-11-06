@@ -410,7 +410,15 @@ for (const failure of [
         return { version: 1, id: request.id, result };
       },
     };
-    const options = { poolId: "pool", approvedImages: [image] };
+    const options = {
+      poolId: "pool",
+      approvedImages: [image],
+      streamTransport: {
+        async open(): Promise<never> {
+          throw Error("No stream dispatched in this fixture");
+        },
+      },
+    };
     let manager = new SandboxManager(
       state,
       provider,
@@ -432,6 +440,21 @@ for (const failure of [
       assert.equal((await manager.get(scope))?.phase, "running");
       assert.equal(freezeEffects, 0);
       return;
+    }
+    if (failure === "none") {
+      const streams = manager.streams!;
+      const requireSettled = streams.requireSettled.bind(streams);
+      streams.requireSettled = async () => {
+        throw Error("Stream termination unverified");
+      };
+      await assert.rejects(
+        manager.suspend(scope, id, portableOptions),
+        /Stream termination unverified/,
+      );
+      assert.equal((await manager.get(scope))?.phase, "running");
+      assert.equal(await manager.operation(scope, id), undefined);
+      assert.equal(freezeEffects, 0);
+      streams.requireSettled = requireSettled;
     }
     await manager.suspend(scope, id, portableOptions);
     if (failure === "seal-ack" || failure === "upload") {
