@@ -114,16 +114,23 @@
                   },
                   "checkpointId": {
                     "type": "string"
+                  },
+                  "content": {
+                    "type": "string",
+                    "enum": ["filesystem", "memory"],
+                    "default": "filesystem"
                   }
                 },
                 "dependentRequired": {
                   "sourceSandbox": ["checkpointId"],
-                  "checkpointId": ["sourceSandbox"]
+                  "checkpointId": ["sourceSandbox"],
+                  "content": ["sourceSandbox", "checkpointId"]
                 }
               }
             }
           }
-        }
+        },
+        "description": "Checkpoint copies default to filesystem content. Explicit content=memory requires a retained portable-memory checkpoint, the same owner and source image. It publishes independently scoped disk and immutable RAM objects into a distinct stopped sandbox; resume-memory remains a separate, compatibility-gated operation. Memory state and external credentials are cloned: clients must reconnect external sessions and avoid duplicating non-idempotent side effects."
       }
     },
     "/v1/sandboxes/{sandboxId}": {

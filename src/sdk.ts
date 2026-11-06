@@ -7,6 +7,10 @@ import {
   sandboxSession,
   sessionDeadline,
 } from "./client/sandbox.js";
+import {
+  type CheckpointContent,
+  checkpointContent,
+} from "./core/checkpoint-content.js";
 
 export {
   type CommandResult,
@@ -548,6 +552,7 @@ export class JetskiClient {
     operationId: string,
     sourceSandbox: string,
     checkpointId: string,
+    content: CheckpointContent = "filesystem",
   ): Promise<import("./core/manager.js").Sandbox> {
     return this.request("/v1/sandboxes", "POST", {
       id,
@@ -555,6 +560,7 @@ export class JetskiClient {
       operationId,
       sourceSandbox,
       checkpointId,
+      ...(checkpointContent(content) === "memory" ? { content } : {}),
     });
   }
   runtimeCapabilities(sandbox: string): Promise<SandboxRuntimeCapabilities> {

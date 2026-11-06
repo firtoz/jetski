@@ -1,9 +1,11 @@
+import type { CheckpointContent } from "../core/checkpoint-content.js";
 import {
   decodeBase64,
   OUTPUT_CHUNK,
   OUTPUT_LIMIT,
 } from "../core/command-output.js";
 import type { Sandbox } from "../core/manager.js";
+import type { PortableMemoryOptions } from "../core/memory-contracts.js";
 import { MAX_FILE_UPLOAD_BYTES } from "../core/uploads.js";
 import type { JetskiClient } from "../sdk.js";
 import {
@@ -61,6 +63,8 @@ export type SandboxOperation = Readonly<{
     | "write"
     | "checkpoint"
     | "resume"
+    | "suspend"
+    | "resume-memory"
     | "delete"
     | "expose"
     | "revoke"
@@ -89,6 +93,8 @@ export type FromCheckpointOptions = OperationOptions & {
   id?: string;
   sourceSandboxId: string;
   checkpointId: string;
+  /** Explicitly copy RAM and disk; default remains a filesystem-only copy. */
+  content?: CheckpointContent;
   image?: string;
 };
 export type ExecOptions = Omit<OperationOptions, "operationId"> & {
@@ -349,6 +355,48 @@ export class SandboxSession {
       return client.checkpoint(this.id, info.checkpoint);
     });
   }
+  /** Capture RAM and disk; portable options retain RAM in checkpoint storage. */
+  async suspend(
+    options: OperationOptions & { portable?: PortableMemoryOptions } = {},
+  ) {
+    const operation = {
+      kind: "suspend",
+      sandboxId: this.id,
+      operationId: options.operationId ?? crypto.randomUUID(),
+    } as const;
+    return this.run(operation, options, async (client, signal) => {
+      await client.suspend(this.id, operation.operationId, options.portable);
+      await completedOperation(client, operation, signal);
+      const info = await client.getSandbox(this.id);
+      if (info.phase !== "stopped" || !info.checkpoint)
+        throw Error("Memory checkpoint is not published/stopped");
+      return client.checkpoint(this.id, info.checkpoint);
+    });
+  }
+  /** Requires a proven RAM restore. A core filesystem fallback is reported as an
+   * error with the stable operation ID, never disguised as memory continuation. */
+  async resumeMemory(options: OperationOptions = {}) {
+    const operation = {
+      kind: "resume-memory",
+      sandboxId: this.id,
+      operationId: options.operationId ?? crypto.randomUUID(),
+    } as const;
+    await this.run(operation, options, async (client, signal) => {
+      await client.resumeMemory(this.id, operation.operationId);
+      await completedOperation(client, operation, signal);
+      const outcome = await client.operation(this.id, operation.operationId);
+      const result = record(outcome.result);
+      if (result.memoryPreserved !== true)
+        throw Error(
+          "RAM not preserved; inspect the operation's explicit fallback outcome and current sandbox state",
+        );
+      if ((await client.getSandbox(this.id)).phase !== "running")
+        throw Error("Memory resume is not ready");
+      this.stopId = undefined;
+      this.stopGeneration = undefined;
+    });
+    return this;
+  }
   async resume(options: OperationOptions & { checkpointId?: string } = {}) {
     const operation = {
       kind: "resume",
@@ -453,6 +501,7 @@ export class SandboxSession {
         operation.operationId,
         input.sourceSandboxId,
         input.checkpointId,
+        input.content,
       );
       await completedOperation(client, operation, signal);
       const info = await client.getSandbox(session.id);

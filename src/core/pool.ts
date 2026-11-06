@@ -17,6 +17,10 @@ import {
 } from "./host-lifecycle.js";
 import type { HostIdleMode } from "./host-power.js";
 
+export const MAX_HOST_STARTUP_CONCURRENCY = 16;
+export const HOST_STARTUP_READY_PROBES = 40;
+export const HOST_STARTUP_READY_POLL_MS = 250;
+
 export type HostLease = {
   owner: string;
   poolId: string;
@@ -26,7 +30,20 @@ export type HostLease = {
   assignmentId: string;
   generation: number;
 };
+export type HostPreparation = {
+  id: string;
+  owner: string;
+  count: number;
+  slots: string[];
+  machines: string[];
+  phase: "pending" | "ready" | "cancelled" | "expired";
+  requestedAt: number;
+  expiresAt: number;
+};
+const PREPARATION_DEADLINE_MS = 15 * 60_000;
+
 export type PoolSlot = {
+  preparationId?: string;
   nativePower?: {
     mode: HostIdleMode;
     phase: "sleeping" | "asleep" | "waking";
@@ -278,6 +295,12 @@ export class PoolJournal {
           }
           return this.drainAt(slot);
         });
+      if (
+        tx
+          .scan<HostPreparation>(`${this.prefix()}preparation/${owner}/`)
+          .some((row) => row.value.phase === "pending")
+      )
+        deadlines.push(this.now() + HOST_LIFECYCLE_LIMITS.maintenanceRetryMs);
       return deadlines.length
         ? Math.max(
             this.now() + HOST_LIFECYCLE_LIMITS.maintenanceRetryMs,
@@ -404,6 +427,156 @@ export class PoolJournal {
     }
     return ticket;
   }
+  private preparationKey(owner: string, id: string) {
+    return `${this.prefix()}preparation/${identifier(owner)}/${identifier(id)}`;
+  }
+  /** One-shot preparation, not a minimum-warm target. Replays never replenish
+   * consumed hosts. No provider effect occurs in this transaction. */
+  async prepare(
+    owner: string,
+    id: string,
+    count: number,
+  ): Promise<HostPreparation> {
+    if (!Number.isSafeInteger(count) || count < 1 || count > this.capacity)
+      throw Error("Preparation exceeds owner capacity");
+    return this.state.transaction((tx) => {
+      const key = this.preparationKey(owner, id);
+      const prior = tx.get<HostPreparation>(key);
+      if (prior) {
+        if (prior.count !== count) throw Error("Preparation identity conflict");
+        return prior;
+      }
+      const now = this.now();
+      const slots = this.slots(tx, owner).filter((s) => s.phase !== "retired");
+      const pending = tx
+        .scan<HostPreparation>(`${this.prefix()}preparation/${owner}/`)
+        .map((row) => row.value)
+        .filter((p) => p.phase === "pending" && p.expiresAt > now);
+      const claimed = new Set(pending.flatMap((p) => p.slots));
+      const available = slots
+        .filter(
+          (s) =>
+            s.phase === "idle" &&
+            !s.nativePower &&
+            !s.lease &&
+            this.drainAt(s) > now &&
+            this.idleRetireAt(s) > now &&
+            !claimed.has(s.id),
+        )
+        .slice(0, count);
+      if (slots.length + count - available.length > this.capacity)
+        throw Error("Preparation exceeds available owner capacity");
+      const expiresAt =
+        now +
+        Math.min(
+          PREPARATION_DEADLINE_MS,
+          this.lifecycle.lifetimeMs - this.lifecycle.drainMs,
+        );
+      while (available.length < count) {
+        const slot: PoolSlot = {
+          id: this.newId(),
+          owner,
+          allocationId: this.newId(),
+          dispatched: false,
+          machineId: null,
+          phase: "allocating",
+          lease: null,
+          expiresAt: now + this.lifecycle.lifetimeMs,
+          idleSince: null,
+          lifecycle: hostLifecycle(this.lifecycle),
+          preparationId: id,
+        };
+        tx.put(this.slotKey(slot.id), slot);
+        available.push(slot);
+      }
+      const preparation: HostPreparation = {
+        id,
+        owner,
+        count,
+        slots: available.map((s) => s.id),
+        machines: [],
+        phase: "pending",
+        requestedAt: now,
+        expiresAt,
+      };
+      tx.put(key, preparation);
+      return preparation;
+    });
+  }
+  async preparation(owner: string, id: string): Promise<HostPreparation> {
+    return this.state.transaction((tx) => {
+      const result = tx.get<HostPreparation>(this.preparationKey(owner, id));
+      if (!result) throw Error("Host preparation unavailable");
+      return result;
+    });
+  }
+  async hasPendingPreparation(owner: string): Promise<boolean> {
+    identifier(owner);
+    return this.state.transaction((tx) =>
+      tx
+        .scan<HostPreparation>(`${this.prefix()}preparation/${owner}/`)
+        .some(
+          (row) =>
+            row.value.phase === "pending" && row.value.expiresAt > this.now(),
+        ),
+    );
+  }
+  async finishPreparations(
+    owner: string,
+    ready: ReadonlySet<string>,
+  ): Promise<void> {
+    identifier(owner);
+    await this.state.transaction((tx) => {
+      for (const { key, value: request } of tx.scan<HostPreparation>(
+        `${this.prefix()}preparation/${owner}/`,
+      )) {
+        if (request.phase !== "pending") continue;
+        if (request.expiresAt <= this.now()) {
+          tx.put(key, { ...request, phase: "expired" });
+          continue;
+        }
+        const slots = request.slots.map((id) =>
+          tx.get<PoolSlot>(this.slotKey(id)),
+        );
+        if (
+          slots.every(
+            (s) =>
+              s &&
+              s.owner === owner &&
+              s.phase === "idle" &&
+              !s.lease &&
+              !s.nativePower &&
+              this.drainAt(s) > this.now() &&
+              this.idleRetireAt(s) > this.now() &&
+              s.machineId &&
+              ready.has(s.id),
+          )
+        )
+          tx.put(key, {
+            ...request,
+            phase: "ready",
+            machines: slots.map((s) => s!.machineId!),
+          });
+      }
+    });
+  }
+  async cancelPreparations(owner: string): Promise<void> {
+    identifier(owner);
+    await this.state.transaction((tx) => {
+      for (const { key, value } of tx.scan<HostPreparation>(
+        `${this.prefix()}preparation/${owner}/`,
+      ))
+        if (value.phase === "pending")
+          tx.put(key, { ...value, phase: "cancelled" });
+      for (const slot of this.slots(tx, owner))
+        if (
+          slot.phase === "allocating" &&
+          slot.preparationId &&
+          !slot.dispatched
+        )
+          tx.put(this.slotKey(slot.id), { ...slot, phase: "retired" });
+    });
+  }
   async reserve(owner: string): Promise<PoolSlot | undefined> {
     identifier(owner);
     return this.state.transaction((tx) => {
@@ -440,6 +613,65 @@ export class PoolJournal {
       return slot;
     });
   }
+  /** Reserve only the deficit of queued demand after existing idle/pending hosts.
+   * Replayed batches retain allocation IDs; concurrent controllers cannot inflate
+   * capacity or allocate a second physical machine for the same reservation. */
+  async reserveBatch(owner: string, limit: number): Promise<PoolSlot[]> {
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > MAX_HOST_STARTUP_CONCURRENCY
+    )
+      throw Error("Invalid host startup concurrency");
+    if (limit === 1) {
+      const pending = (await this.inspect(owner)).find(
+        (slot) => slot.phase === "allocating",
+      );
+      const slot = pending ?? (await this.reserve(owner));
+      return slot ? [slot] : [];
+    }
+    identifier(owner);
+    return this.state.transaction((tx) => {
+      const demand = tx
+        .scan<Ticket>(`${this.prefix()}ticket/${owner}/`)
+        .filter((row) => row.value.phase === "queued").length;
+      const slots = this.slots(tx, owner).filter(
+        (slot) => slot.phase !== "retired",
+      );
+      const pending = slots.filter((slot) => slot.phase === "allocating");
+      const idle = slots.filter(
+        (slot) =>
+          slot.phase === "idle" &&
+          !slot.lease &&
+          this.drainAt(slot) > this.now(),
+      ).length;
+      const count = Math.max(
+        0,
+        Math.min(
+          demand - pending.length - idle,
+          limit - pending.length,
+          this.capacity - slots.length,
+        ),
+      );
+      for (let i = 0; i < count; i++) {
+        const slot: PoolSlot = {
+          id: this.newId(),
+          owner,
+          allocationId: this.newId(),
+          dispatched: false,
+          machineId: null,
+          phase: "allocating",
+          lease: null,
+          expiresAt: this.now() + this.lifecycle.lifetimeMs,
+          idleSince: null,
+          lifecycle: hostLifecycle(this.lifecycle),
+        };
+        tx.put(this.slotKey(slot.id), slot);
+        pending.push(slot);
+      }
+      return pending.sort((a, b) => a.id.localeCompare(b.id)).slice(0, limit);
+    });
+  }
   cancelQueuedIn(
     tx: Transaction,
     owner: string,
@@ -474,8 +706,23 @@ export class PoolJournal {
       if (slot.dispatched) return slot;
       const demand = tx
         .scan<Ticket>(`${this.prefix()}ticket/${owner}/`)
-        .some((row) => row.value.phase === "queued");
-      if (!demand) {
+        .filter((row) => row.value.phase === "queued").length;
+      const covered = this.slots(tx, owner).filter(
+        (other) =>
+          other.id !== slot.id &&
+          ((other.phase === "allocating" && other.dispatched) ||
+            (other.phase === "idle" &&
+              !other.lease &&
+              this.drainAt(other) > this.now())),
+      ).length;
+      const preparation = slot.preparationId
+        ? tx.get<HostPreparation>(
+            this.preparationKey(owner, slot.preparationId),
+          )
+        : undefined;
+      const requested =
+        preparation?.phase === "pending" && preparation.expiresAt > this.now();
+      if (!requested && demand <= covered) {
         tx.put(this.slotKey(id), { ...slot, phase: "retired" });
         return undefined;
       }

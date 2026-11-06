@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -613,4 +613,48 @@ test("embedded built-in boxd client is closed without allocating a machine", asy
   await controller.close();
   await controller.close();
   assert.equal(closes, 1);
+});
+
+test("explicit prepared hosts create no workloads, are consumed once and close without leftovers", async (t) => {
+  const dataDirectory = await directory(t),
+    host = hostFixture();
+  const controller = await openJetski({
+    provider: host.provider,
+    dataDirectory,
+    image,
+    hostsPerOwner: 2,
+    hostStartupConcurrency: 2,
+    waitTimeoutMs: 5000,
+  });
+  const id = randomUUID();
+  try {
+    const prepared = await controller.prepareHosts({
+      count: 2,
+      operationId: id,
+    });
+    assert.equal(prepared.phase, "ready");
+    assert.equal(prepared.machines.length, 2);
+    assert.equal(host.starts, 2);
+    assert.equal(
+      (await controller.list()).length,
+      0,
+      "preparation creates no synthetic sandbox",
+    );
+    const sandbox = await controller.create();
+    assert.equal((await sandbox.inspect()).phase, "running");
+    assert.equal(host.starts, 2, "placement consumes a prepared host");
+    assert.deepEqual(
+      await controller.prepareHosts({ count: 2, operationId: id }),
+      prepared,
+    );
+    await assert.rejects(
+      controller.prepareHosts({ count: 1, operationId: id }),
+      /identity conflict/,
+    );
+    assert.equal(host.starts, 2, "replay never replenishes consumed slots");
+  } finally {
+    await controller.close();
+  }
+  assert.equal(host.hosts.size, 0);
+  assert.equal(host.retired, 2);
 });

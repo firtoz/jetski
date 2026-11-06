@@ -1,3 +1,5 @@
+import { observationDelay } from "./client/wait.js";
+
 import { assertNever } from "./core/exhaustive.js";
 
 export {
@@ -108,6 +110,9 @@ export type NodeOptions = SessionOptions & {
   poolId?: string;
   hostLifecycle?: HostLifecycle;
   hostsPerOwner?: number;
+  hostStartupConcurrency?: number;
+  /** Bounded durable copy work per scheduler turn (1..256, default16). */
+  checkpointCopyBatchObjects?: number;
   workloadResources?: ManagerOptions["workloadResources"];
   events?: ManagerOptions["events"];
   timings?: ManagerOptions["timings"];
@@ -344,6 +349,23 @@ export class NodeJetski {
       reconciliationFailed: this.lastFailure !== undefined,
     };
   }
+  /** Prepare approved images/runtime on count idle, owner-scoped hosts once.
+   * Timeout only stops observation; reuse operationId to observe existing work. */
+  async prepareHosts(options: OperationOptions & { count: number }) {
+    if (this.closing || this.closed) throw Error("Controller is closed");
+    const signal = sessionDeadline(options, this.sessions);
+    signal.throwIfAborted();
+    const id = options.operationId ?? crypto.randomUUID();
+    await this.manager.prepareHosts(this.owner, id, options.count);
+    while (true) {
+      signal.throwIfAborted();
+      const preparation = await this.manager.hostPreparation(this.owner, id);
+      if (preparation.phase === "ready") return preparation;
+      if (preparation.phase !== "pending")
+        throw Error(`Host preparation ${id} is ${preparation.phase}`);
+      await observationDelay(signal);
+    }
+  }
   async create(
     options: Omit<CreateOptions, "image"> & { image?: string } = {},
   ) {
@@ -387,6 +409,7 @@ export class NodeJetski {
       await this.stopScheduler?.();
       await Promise.allSettled([...this.ticks]);
       await Promise.allSettled([...this.active]);
+      await this.manager.cancelHostPreparations(this.owner);
       const existing = await this.manager.list(this.owner);
       const unsettled = existing.filter(
         (s) =>
@@ -591,6 +614,12 @@ export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
         ...(options.events ? { events: options.events } : {}),
         ...(options.timings ? { timings: options.timings } : {}),
         hostsPerOwner: options.hostsPerOwner ?? 1,
+        ...(options.hostStartupConcurrency !== undefined
+          ? { hostStartupConcurrency: options.hostStartupConcurrency }
+          : {}),
+        ...(options.checkpointCopyBatchObjects !== undefined
+          ? { checkpointCopyBatchObjects: options.checkpointCopyBatchObjects }
+          : {}),
         ...(hosts.streamTransport
           ? { streamTransport: hosts.streamTransport }
           : {}),

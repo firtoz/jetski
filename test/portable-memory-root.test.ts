@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { gzipSync } from "node:zlib";
 import type { CapturedArchive } from "../src/core/archive-format.js";
+import { CheckpointCopy } from "../src/core/checkpoint-copy.js";
 import { checkpointArchive } from "../src/core/checkpoint-layout.js";
 import type { CheckpointPublication } from "../src/core/checkpoint-publication.js";
 import {
@@ -271,3 +272,113 @@ for (const packBytes of [0, 4 * 1024 * 1024])
       (original.filesystem.metadata as unknown as CapturedArchive).sha256,
     );
   });
+
+test("memory forks rebind the complete graph, retain independent objects and replay publication safely", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "jetski-memory-fork-"));
+  const state = new SqliteState(join(directory, "state.sqlite"));
+  t.after(async () => {
+    state.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const objects = new LocalCheckpointStore(join(directory, "objects"));
+  const registry = new CheckpointRegistry(state, objects);
+  await registry.initialize(fence);
+  await registry.admit(fence, "writer", "writer");
+  for (const [object, bytes] of [
+    [fsObject, fsBytes],
+    [memoryObject, memoryBytes],
+  ] as const)
+    await objects.put(
+      object,
+      (async function* () {
+        yield bytes;
+      })(),
+      object,
+    );
+  const root = fixture();
+  await registry.publish(fence, "writer", root.id, root.frames, root.metadata);
+  const publish = registry.publish.bind(registry);
+  let losePublication = true;
+  registry.publish = async (...args) => {
+    await publish(...args);
+    if (losePublication && args[0].sandbox === "branch-a") {
+      losePublication = false;
+      throw Error("memory publication ACK lost");
+    }
+  };
+  const copier = new CheckpointCopy(state, registry, objects);
+  const targets = ["branch-a", "branch-b"].map((sandbox) => ({
+    ...fence,
+    sandbox,
+  }));
+  for (const target of targets) {
+    await copier.start(fence, target, "fork", root.id, "memory");
+    await assert.rejects(
+      copier.start(fence, target, "fork", root.id, "filesystem"),
+      /identity conflict/,
+    );
+    if (target.sandbox === "branch-a")
+      await assert.rejects(
+        copier.advance(target, "fork"),
+        /memory publication ACK lost/,
+      );
+    const result = await copier.advance(target, "fork");
+    assert.equal(result.phase, "published");
+    assert.equal((await copier.advance(target, "fork")).phase, "published");
+    const copied = (await registry.root(target, "fork"))!;
+    const memory = portableMemoryRoot(copied)!;
+    assert.equal(memory.memory.sandbox, target.sandbox);
+    assert.equal(memory.memory.checkpointId, "fork");
+    assert.deepEqual(
+      memory.memory.compatibility,
+      portableMemoryRoot(root)!.memory.compatibility,
+    );
+    assert.equal(
+      checkpointArchive(copied).sha256,
+      checkpointArchive(root).sha256,
+    );
+    for (const object of copied.frames) {
+      assert.equal(object.sandbox, target.sandbox);
+      assert.equal(object.owner, fence.owner);
+      assert.ok(!root.frames.some((original) => original.id === object.id));
+      const chunks = [];
+      for await (const chunk of objects.read(object)) chunks.push(chunk);
+      assert.equal(hash(Buffer.concat(chunks)), object.sha256);
+    }
+    assert.equal(
+      memory.memory.files[0]!.chunks[0]!.object.sandbox,
+      target.sandbox,
+    );
+  }
+  assert.equal(
+    portableMemoryRoot((await registry.root(fence, root.id))!)!.memory.sandbox,
+    scope.sandbox,
+  );
+  await assert.rejects(
+    copier.start(
+      fence,
+      { ...targets[0]!, owner: "other" },
+      "denied",
+      root.id,
+      "memory",
+    ),
+    /same-owner/,
+  );
+  const fsTarget = { ...fence, sandbox: "files-only" };
+  await copier.start(fence, fsTarget, "files", root.id);
+  await copier.advance(fsTarget, "files");
+  assert.equal(
+    portableMemoryRoot((await registry.root(fsTarget, "files"))!),
+    undefined,
+  );
+  await assert.rejects(
+    copier.start(
+      fsTarget,
+      { ...fence, sandbox: "invalid" },
+      "no-memory",
+      "files",
+      "memory",
+    ),
+    /portable memory/,
+  );
+});

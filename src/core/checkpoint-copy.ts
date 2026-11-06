@@ -1,3 +1,8 @@
+import {
+  type CheckpointContent,
+  checkpointContent,
+} from "./checkpoint-content.js";
+import { copiedCheckpointMetadata } from "./checkpoint-copy-metadata.js";
 import { checkpointArchive } from "./checkpoint-layout.js";
 import { type CheckpointRegistry, type CheckpointRoot } from "./checkpoints.js";
 import {
@@ -13,11 +18,27 @@ import {
 import { portableMemoryRoot } from "./portable-memory-root.js";
 import { validateRootPayload } from "./root-payload.js";
 
+/** Bound work per controller turn without imposing a timer delay per two objects. */
+export const CHECKPOINT_COPY_BATCH_OBJECTS = 16;
+export const MAX_CHECKPOINT_COPY_BATCH_OBJECTS = 256;
+export function checkpointCopyBatchObjects(
+  value = CHECKPOINT_COPY_BATCH_OBJECTS,
+) {
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > MAX_CHECKPOINT_COPY_BATCH_OBJECTS
+  )
+    throw Error("Invalid copy batch bound");
+  return value;
+}
+
 export type CheckpointCopyRecord = {
   source: Fence;
   target: Fence;
   id: string;
   sourceRoot: string;
+  content: CheckpointContent;
   reader: string;
   root: CheckpointRoot;
   frames: ObjectInfo[];
@@ -42,9 +63,10 @@ export class CheckpointCopy {
     target: Fence,
     id: string,
     rootId: string,
+    content: CheckpointContent = "filesystem",
   ): Promise<CheckpointCopyRecord> {
     return this.state.transaction((tx) =>
-      this.startIn(tx, source, target, id, rootId),
+      this.startIn(tx, source, target, id, rootId, content),
     );
   }
   startIn(
@@ -53,7 +75,9 @@ export class CheckpointCopy {
     target: Fence,
     id: string,
     rootId: string,
+    content: CheckpointContent = "filesystem",
   ): CheckpointCopyRecord {
+    checkpointContent(content);
     identifier(id);
     identifier(rootId);
     scopeKey(source);
@@ -67,7 +91,8 @@ export class CheckpointCopy {
         if (
           canonical(prior.source) !== canonical(source) ||
           canonical(prior.target) !== canonical(target) ||
-          prior.sourceRoot !== rootId
+          prior.sourceRoot !== rootId ||
+          (prior.content ?? "filesystem") !== content
         )
           throw Error("Checkpoint copy identity conflict");
         return prior;
@@ -78,8 +103,13 @@ export class CheckpointCopy {
       if (!retained) throw Error("Copy source checkpoint unavailable");
       validateRootPayload(retained);
       checkpointArchive(retained);
-      // This API copies files, not process identity or memory into a new scope.
-      const root = portableMemoryRoot(retained)?.filesystem ?? retained;
+      // Filesystem copies deliberately project away RAM; explicit memory forks retain
+      // the entire verified graph and rebind its envelope at publication.
+      const portable = portableMemoryRoot(retained);
+      if (content === "memory" && !portable)
+        throw Error("Memory fork requires a portable memory checkpoint");
+      const root =
+        content === "memory" ? retained : (portable?.filesystem ?? retained);
       if (
         root.frames.some(
           (frame) =>
@@ -96,6 +126,7 @@ export class CheckpointCopy {
         target,
         id,
         sourceRoot: rootId,
+        content,
         reader,
         root,
         frames: root.frames.map((frame) => ({
@@ -132,6 +163,15 @@ export class CheckpointCopy {
     if (record.phase === "copying")
       tx.put(key, { ...record, cancelRequested: true });
   }
+  private metadata(record: CheckpointCopyRecord) {
+    return copiedCheckpointMetadata(
+      record.root,
+      record.target,
+      record.id,
+      record.frames,
+      record.content ?? "filesystem",
+    );
+  }
   private async finish(
     record: CheckpointCopyRecord,
     phase: "published" | "cancelled",
@@ -147,7 +187,7 @@ export class CheckpointCopy {
       if (root) {
         if (
           canonical(root.frames) !== canonical(record.frames) ||
-          canonical(root.metadata) !== canonical(record.root.metadata)
+          canonical(root.metadata) !== canonical(this.metadata(record))
         )
           throw Error("Copied checkpoint identity conflict");
         phase = "published";
@@ -163,10 +203,9 @@ export class CheckpointCopy {
   async advance(
     target: Fence,
     id: string,
-    frameLimit = 2,
+    frameLimit = CHECKPOINT_COPY_BATCH_OBJECTS,
   ): Promise<CheckpointCopyRecord> {
-    if (!Number.isSafeInteger(frameLimit) || frameLimit < 1 || frameLimit > 16)
-      throw Error("Invalid copy batch bound");
+    checkpointCopyBatchObjects(frameLimit);
     let record = await this.inspect(target, id);
     if (record.phase !== "copying") return record;
     // Publication may have committed before its acknowledgement or copy outcome.
@@ -174,7 +213,7 @@ export class CheckpointCopy {
     if (published) {
       if (
         canonical(published.frames) !== canonical(record.frames) ||
-        canonical(published.metadata) !== canonical(record.root.metadata)
+        canonical(published.metadata) !== canonical(this.metadata(record))
       )
         throw Error("Copied checkpoint identity conflict");
       return this.finish(record, "published");
@@ -246,7 +285,7 @@ export class CheckpointCopy {
       id,
       id,
       record.frames,
-      record.root.metadata,
+      this.metadata(record),
     );
     return this.finish(record, "published");
   }

@@ -23,9 +23,17 @@ export function managerApi(
       extra && signal ? AbortSignal.any([signal, extra]) : (extra ?? signal),
     );
   const api: SandboxApi = {
-    copyCheckpoint: (id, image, operation, source, checkpoint) =>
+    copyCheckpoint: (id, image, operation, source, checkpoint, content) =>
       call(() =>
-        manager.copyCheckpoint(owner, id, image, operation, source, checkpoint),
+        manager.copyCheckpoint(
+          owner,
+          id,
+          image,
+          operation,
+          source,
+          checkpoint,
+          content,
+        ),
       ),
     createSandbox: (id, image, operation) =>
       call(() => manager.create(owner, id, image, operation)),

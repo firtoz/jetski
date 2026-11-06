@@ -1,6 +1,13 @@
 import type { CapturedArchive } from "./archive-format.js";
 import { resumeCachedCheckpoint } from "./cached-resume.js";
-import { CheckpointCopy } from "./checkpoint-copy.js";
+import {
+  type CheckpointContent,
+  checkpointContent,
+} from "./checkpoint-content.js";
+import {
+  CheckpointCopy,
+  checkpointCopyBatchObjects,
+} from "./checkpoint-copy.js";
 import { CheckpointHistory } from "./checkpoint-history.js";
 import { checkpointArchive } from "./checkpoint-layout.js";
 import { CheckpointRegistry } from "./checkpoints.js";
@@ -62,8 +69,11 @@ import {
   recoverMissingPlacement,
 } from "./placement-recovery.js";
 import {
+  HOST_STARTUP_READY_POLL_MS,
+  HOST_STARTUP_READY_PROBES,
   type HostLease,
   InsufficientHostLifetimeError,
+  MAX_HOST_STARTUP_CONCURRENCY,
   PoolJournal,
 } from "./pool.js";
 import type { MemoryChunkCodec } from "./portable-memory-format.js";
@@ -171,6 +181,10 @@ export type ManagerOptions = {
   /** Store tiny complete output channels in durable transactional metadata. Opt-in. */
   inlineCommandOutputBytes?: number;
   hostsPerOwner?: number;
+  /** Concurrent host provisioning and distinct-host placement; defaults to one. */
+  hostStartupConcurrency?: number;
+  /** Objects per durable copy turn, 1..256; default16 favors scheduling fairness. */
+  checkpointCopyBatchObjects?: number;
   /** Retained sandbox identities per owner, including deleted history. */
   maxSandboxesPerOwner?: number;
   /** New host allocations snapshot this policy; existing slots keep theirs. */
@@ -186,6 +200,8 @@ export type ManagerOptions = {
  * identity boundary. Private host-control methods are never public API routes. */
 export class SandboxManager {
   private readonly pool: PoolJournal;
+  private readonly hostStartupConcurrency: number;
+  private readonly copyBatchObjects: number;
   private readonly operations: OperationJournal;
   private readonly checkpoints: CheckpointRegistry;
   private readonly copies: CheckpointCopy;
@@ -295,6 +311,16 @@ export class SandboxManager {
       lifecycle.lifetimeMs > maximum
     )
       throw Error("Host lifetime exceeds provider capability");
+    this.copyBatchObjects = checkpointCopyBatchObjects(
+      options.checkpointCopyBatchObjects,
+    );
+    this.hostStartupConcurrency = options.hostStartupConcurrency ?? 1;
+    if (
+      !Number.isSafeInteger(this.hostStartupConcurrency) ||
+      this.hostStartupConcurrency < 1 ||
+      this.hostStartupConcurrency > MAX_HOST_STARTUP_CONCURRENCY
+    )
+      throw Error("Invalid host startup concurrency");
     this.pool = new PoolJournal(
       state,
       options.poolId,
@@ -581,7 +607,9 @@ export class SandboxManager {
     operationId: string,
     sourceSandbox: string,
     checkpointId: string,
+    content: CheckpointContent = "filesystem",
   ): Promise<Sandbox> {
+    checkpointContent(content);
     identifier(owner);
     this.uuid(id);
     this.uuid(operationId);
@@ -601,6 +629,7 @@ export class SandboxManager {
           image,
           sourceSandbox,
           checkpointId,
+          ...(content === "memory" ? { content } : {}),
         },
       );
       const previous = tx.get<Sandbox>(this.key(scope));
@@ -617,12 +646,15 @@ export class SandboxManager {
       );
       if (!source || source.phase === "deleted")
         throw Error("Copy source sandbox unavailable");
+      if (content === "memory" && source.image !== image)
+        throw Error("Memory fork requires the source image");
       this.copies.startIn(
         tx,
         { owner, sandbox: sourceSandbox, generation: source.generation },
         fence,
         operationId,
         checkpointId,
+        content,
       );
       if (operation.phase !== "queued")
         throw Error("Copy admission unavailable");
@@ -651,7 +683,13 @@ export class SandboxManager {
       if (sandbox.phase !== "copying") continue;
       const scope = { owner, sandbox: sandbox.id },
         fence = { ...scope, generation: sandbox.generation };
-      const copy = await this.copies.advance(fence, sandbox.createOperation);
+      const copy = await timeStage(this.timings, "checkpoint.copy-batch", () =>
+        this.copies.advance(
+          fence,
+          sandbox.createOperation,
+          this.copyBatchObjects,
+        ),
+      );
       if (copy.phase === "copying") continue;
       await this.state.transaction((tx) => {
         const current = tx.get<Sandbox>(this.key(scope));
@@ -997,6 +1035,18 @@ export class SandboxManager {
       });
     }
   }
+  /** Explicit operator preparation uses the same provider bootstrap and image
+   * policy as ordinary placement. It never creates a workload or a checkpoint. */
+  prepareHosts(owner: string, id: string, count: number) {
+    this.uuid(id);
+    return this.pool.prepare(owner, id, count);
+  }
+  hostPreparation(owner: string, id: string) {
+    return this.pool.preparation(owner, id);
+  }
+  cancelHostPreparations(owner: string) {
+    return this.pool.cancelPreparations(owner);
+  }
   /** Trusted operator shutdown: retire only released, owner-scoped idle slots.
    * Publication/cleanup remain prerequisites for a slot becoming idle. Unknown
    * acknowledgements keep the durable retirement intent for reconciliation. */
@@ -1007,6 +1057,14 @@ export class SandboxManager {
         await this.pool.retireIdle(slot.id, "shutdown");
     }
     await this.retireIdleHosts(owner);
+    if (
+      (await this.pool.inspect(owner)).some(
+        (slot) => slot.phase === "allocating",
+      )
+    )
+      throw Error(
+        "Unsettled host allocation retained; reconcile before cleanup",
+      );
   }
   private async retireIdleHosts(owner: string): Promise<void> {
     for (let slot of await this.pool.inspect(owner)) {
@@ -1110,9 +1168,10 @@ export class SandboxManager {
           );
         }
       const readySlots = new Set<string>();
-      const queued = (await this.list(owner)).some(
-        (sandbox) => sandbox.phase === "queued",
-      );
+      const queued =
+        (await this.list(owner)).some(
+          (sandbox) => sandbox.phase === "queued",
+        ) || (await this.pool.hasPendingPreparation(owner));
       if (queued) {
         for (const slot of await this.pool.inspect(owner)) {
           if (
@@ -1135,161 +1194,210 @@ export class SandboxManager {
           // Unknown/starting hosts keep their capacity and receive no assignment.
         }
       }
-      const pendingAllocation = (await this.pool.inspect(owner)).find(
-        (slot) => slot.phase === "allocating",
-      );
-      const reserved = pendingAllocation ?? (await this.pool.reserve(owner));
-      const reservation = reserved
-        ? await this.pool.dispatchAllocation(reserved.id, owner)
-        : undefined;
-      if (reservation) {
-        const allocated = await this.provider.allocate({
-          owner,
-          operationId: reservation.allocationId,
-          expiresAt: reservation.expiresAt,
-        });
-        if ((await this.provider.inspect(allocated.id)).state !== "ready")
-          return;
-        await this.pool.provisioned(
-          reservation.id,
-          owner,
-          allocated.id,
-          allocated.allocationId,
-        );
-        readySlots.add(reservation.id);
-      }
-      const assignment = await this.pool.assign(
+      const reservations = await this.pool.reserveBatch(
         owner,
-        (tx, ticket, lease) => {
-          const scope = { owner, sandbox: ticket.sandboxId };
-          const sandbox = tx.get<Sandbox>(this.key(scope));
-          if (
-            !sandbox ||
-            sandbox.phase !== "queued" ||
-            sandbox.lease ||
-            sandbox.placementOperation !== ticket.id
-          )
-            throw Error("Placement sandbox authority changed");
-          const fence = this.operations.generationIn(tx, scope);
-          if (!this.operations.claimIn(tx, fence, ticket.id))
-            throw Error("Placement operation already dispatched");
-          tx.put(this.key(scope), { ...sandbox, phase: "starting", lease });
-        },
-        readySlots,
+        this.hostStartupConcurrency,
       );
-      if (!assignment) return;
-      const { lease, ticket } = assignment;
-      const scope = { owner, sandbox: ticket.sandboxId };
-      const sandbox = await this.get(scope);
-      if (!sandbox) throw new Error("Placement sandbox missing");
-      const operationFence = await this.operations.generation(scope);
-      try {
-        await this.checkpoints.initialize({
-          ...scope,
-          generation: sandbox.generation,
-        });
-        const resources = workloadResources(
-          sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES,
-        );
-        const portableResult = sandbox.portableRestore
-          ? await this.restorePortable(sandbox, lease)
-          : undefined;
-        const restoreCheckpointId = sandbox.restoreCheckpoint;
-        const resumedCached =
-          restoreCheckpointId && !portableResult
-            ? await timeStage(this.timings, "resume.cached", () =>
-                resumeCachedCheckpoint(
-                  this.checkpoints,
-                  { ...scope, generation: sandbox.generation },
-                  lease,
-                  sandbox.image,
-                  resources,
-                  restoreCheckpointId,
-                  this.transport,
-                ),
-              )
-            : false;
-        if (!resumedCached && !portableResult?.memoryPreserved) {
-          await this.request(lease, "claim", { lease });
-          if (sandbox.restoreCheckpoint && !portableResult)
-            await restoreCheckpoint(
-              this.objects,
-              this.checkpoints,
-              { ...scope, generation: sandbox.generation },
-              sandbox.restoreCheckpoint,
-              (action, payload) =>
-                this.request(lease, action, {
-                  ...(payload as Record<string, Json>),
-                  lease,
-                  image: sandbox.image,
-                }),
-              this.transport.checkpointImport
-                ? () =>
-                    this.transport.checkpointImport!(
-                      lease.machineId,
-                      lease,
-                      sandbox.image,
-                    )
-                : undefined,
+      await this.settleStartups(
+        reservations.map(async (reserved) => {
+          const reservation = await this.pool.dispatchAllocation(
+            reserved.id,
+            owner,
+          );
+          if (!reservation) return;
+          const allocated = await timeStage(this.timings, "host.allocate", () =>
+            this.provider.allocate({
+              owner,
+              operationId: reservation.allocationId,
+              expiresAt: reservation.expiresAt,
+            }),
+          );
+          let readiness = await timeStage(this.timings, "host.ready", () =>
+            this.provider.inspect(allocated.id),
+          );
+          // A fast host may enter a long bootstrap while peers are still booting.
+          // Keep bounded starting peers moving independently of that slow promise.
+          // Unknown/absent states are uncertainty, never permission to allocate again.
+          for (
+            let probe = 1;
+            this.hostStartupConcurrency > 1 &&
+            readiness.state === "starting" &&
+            probe < HOST_STARTUP_READY_PROBES;
+            probe++
+          ) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, HOST_STARTUP_READY_POLL_MS),
             );
-          await this.request(lease, "create", {
-            lease,
-            image: sandbox.image,
-            ...resources,
-          });
-        }
-        await this.pool.transition(lease, "active");
-        await this.state.transaction((tx) => {
-          const current = tx.get<Sandbox>(this.key(scope));
-          if (!current?.lease || canonical(current.lease) !== canonical(lease))
-            throw new Error("Sandbox assignment changed");
-          tx.put(this.key(scope), {
-            ...current,
-            phase: "running",
-            ...(portableResult && current.memoryRecovery
-              ? {
-                  memoryRecovery: {
-                    ...current.memoryRecovery,
-                    memoryPreserved: portableResult.memoryPreserved,
-                    reason:
-                      portableResult.fallbackReason ??
-                      "portable-memory-restored",
-                  },
-                }
-              : {}),
-          });
-          if (current.restoreCheckpoint)
-            this.checkpoints.releaseIn(
-              tx,
-              { ...scope, generation: current.generation },
-              current.placementOperation,
+            readiness = await timeStage(this.timings, "host.ready", () =>
+              this.provider.inspect(allocated.id),
             );
-        });
-        await this.operations.finish(operationFence, ticket.id, {
-          phase: "succeeded",
-          result: { sandboxId: sandbox.id, ...(portableResult ?? {}) },
-          error: null,
-        });
-      } catch (error) {
-        await this.pool.transition(lease, "quarantined");
-        await this.state.transaction((tx) => {
-          const current = tx.get<Sandbox>(this.key(scope));
-          if (current?.lease && canonical(current.lease) === canonical(lease))
-            tx.put(this.key(scope), { ...current, phase: "quarantined" });
-        });
-        await this.operations.finish(operationFence, ticket.id, {
-          phase: "uncertain",
-          result: null,
-          error: "Host lifecycle requires reconciliation",
-        });
-        throw error;
-      }
+          }
+          if (readiness.state !== "ready") return;
+          await this.pool.provisioned(
+            reservation.id,
+            owner,
+            allocated.id,
+            allocated.allocationId,
+          );
+          readySlots.add(reservation.id);
+        }),
+      );
+      await this.pool.finishPreparations(owner, readySlots);
+      await this.settleStartups(
+        Array.from({ length: this.hostStartupConcurrency }, () =>
+          this.assignAndStart(owner, readySlots),
+        ),
+      );
     } finally {
       try {
         await this.streams?.reconcileOwner(owner);
       } finally {
         this.activeOwners.delete(owner);
       }
+    }
+  }
+  private async settleStartups(jobs: Promise<void>[]) {
+    if (jobs.length === 1) {
+      await jobs[0];
+      return;
+    }
+    const outcomes = await Promise.allSettled(jobs);
+    const errors = outcomes.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length)
+      throw new AggregateError(
+        errors,
+        "Host startup batch requires reconciliation",
+      );
+  }
+  private async assignAndStart(owner: string, readySlots: ReadonlySet<string>) {
+    const assignment = await this.pool.assign(
+      owner,
+      (tx, ticket, lease) => {
+        const scope = { owner, sandbox: ticket.sandboxId };
+        const sandbox = tx.get<Sandbox>(this.key(scope));
+        if (
+          !sandbox ||
+          sandbox.phase !== "queued" ||
+          sandbox.lease ||
+          sandbox.placementOperation !== ticket.id
+        )
+          throw Error("Placement sandbox authority changed");
+        const fence = this.operations.generationIn(tx, scope);
+        if (!this.operations.claimIn(tx, fence, ticket.id))
+          throw Error("Placement operation already dispatched");
+        tx.put(this.key(scope), { ...sandbox, phase: "starting", lease });
+      },
+      readySlots,
+    );
+    if (!assignment) return;
+    const { lease, ticket } = assignment;
+    const scope = { owner, sandbox: ticket.sandboxId };
+    const sandbox = await this.get(scope);
+    if (!sandbox) throw new Error("Placement sandbox missing");
+    const operationFence = await this.operations.generation(scope);
+    try {
+      await this.checkpoints.initialize({
+        ...scope,
+        generation: sandbox.generation,
+      });
+      const resources = workloadResources(
+        sandbox.resources ?? DEFAULT_WORKLOAD_RESOURCES,
+      );
+      const portableResult = sandbox.portableRestore
+        ? await timeStage(this.timings, "resume.portable", () =>
+            this.restorePortable(sandbox, lease),
+          )
+        : undefined;
+      const restoreCheckpointId = sandbox.restoreCheckpoint;
+      const resumedCached =
+        restoreCheckpointId && !portableResult
+          ? await timeStage(this.timings, "resume.cached", () =>
+              resumeCachedCheckpoint(
+                this.checkpoints,
+                { ...scope, generation: sandbox.generation },
+                lease,
+                sandbox.image,
+                resources,
+                restoreCheckpointId,
+                this.transport,
+              ),
+            )
+          : false;
+      if (!resumedCached && !portableResult?.memoryPreserved) {
+        await this.request(lease, "claim", { lease });
+        if (sandbox.restoreCheckpoint && !portableResult)
+          await restoreCheckpoint(
+            this.objects,
+            this.checkpoints,
+            { ...scope, generation: sandbox.generation },
+            sandbox.restoreCheckpoint,
+            (action, payload) =>
+              this.request(lease, action, {
+                ...(payload as Record<string, Json>),
+                lease,
+                image: sandbox.image,
+              }),
+            this.transport.checkpointImport
+              ? () =>
+                  this.transport.checkpointImport!(
+                    lease.machineId,
+                    lease,
+                    sandbox.image,
+                  )
+              : undefined,
+          );
+        await this.request(lease, "create", {
+          lease,
+          image: sandbox.image,
+          ...resources,
+        });
+      }
+      await this.pool.transition(lease, "active");
+      await this.state.transaction((tx) => {
+        const current = tx.get<Sandbox>(this.key(scope));
+        if (!current?.lease || canonical(current.lease) !== canonical(lease))
+          throw new Error("Sandbox assignment changed");
+        tx.put(this.key(scope), {
+          ...current,
+          phase: "running",
+          ...(portableResult && current.memoryRecovery
+            ? {
+                memoryRecovery: {
+                  ...current.memoryRecovery,
+                  memoryPreserved: portableResult.memoryPreserved,
+                  reason:
+                    portableResult.fallbackReason ?? "portable-memory-restored",
+                },
+              }
+            : {}),
+        });
+        if (current.restoreCheckpoint)
+          this.checkpoints.releaseIn(
+            tx,
+            { ...scope, generation: current.generation },
+            current.placementOperation,
+          );
+      });
+      await this.operations.finish(operationFence, ticket.id, {
+        phase: "succeeded",
+        result: { sandboxId: sandbox.id, ...(portableResult ?? {}) },
+        error: null,
+      });
+    } catch (error) {
+      await this.pool.transition(lease, "quarantined");
+      await this.state.transaction((tx) => {
+        const current = tx.get<Sandbox>(this.key(scope));
+        if (current?.lease && canonical(current.lease) === canonical(lease))
+          tx.put(this.key(scope), { ...current, phase: "quarantined" });
+      });
+      await this.operations.finish(operationFence, ticket.id, {
+        phase: "uncertain",
+        result: null,
+        error: "Host lifecycle requires reconciliation",
+      });
+      throw error;
     }
   }
   private async reconcileHeldResumes(owner: string) {

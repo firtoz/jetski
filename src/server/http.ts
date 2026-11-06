@@ -5,6 +5,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { ApiCapabilities } from "../core/capabilities.js";
+import { checkpointContent } from "../core/checkpoint-content.js";
 import { identifier } from "../core/contracts.js";
 import type { SandboxManager } from "../core/manager.js";
 import { portableMemoryOptions } from "../core/memory-contracts.js";
@@ -184,6 +185,7 @@ export function createHttpServer(
             "operationId",
             "sourceSandbox",
             "checkpointId",
+            "content",
           ]);
           const id = string(input.id),
             image = string(input.image),
@@ -200,8 +202,13 @@ export function createHttpServer(
               operationId,
               string(input.sourceSandbox),
               string(input.checkpointId),
+              checkpointContent(
+                input.content === undefined ? "filesystem" : input.content,
+              ),
             );
           } else {
+            if (input.content !== undefined)
+              throw Error("Checkpoint content requires a source");
             sandbox = await manager.create(
               principal.owner,
               id,

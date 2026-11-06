@@ -1,4 +1,8 @@
 export type { ApiCapabilities } from "./capabilities.js";
+export {
+  CHECKPOINT_CONTENTS,
+  type CheckpointContent,
+} from "./checkpoint-content.js";
 export * from "./checkpoint-copy.js";
 export * from "./checkpoint-history.js";
 export {
@@ -30,7 +34,7 @@ export {
   type MissingPlacementRecovery,
   missingPlacementRecovery,
 } from "./placement-recovery.js";
-export type { HostLease } from "./pool.js";
+export type { HostLease, HostPreparation } from "./pool.js";
 export type { MemoryChunkCodec } from "./portable-memory-format.js";
 export * from "./ports.js";
 export * from "./preview-sessions.js";

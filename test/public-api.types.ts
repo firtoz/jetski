@@ -19,6 +19,14 @@ export async function publicApiTypes(
   remote: Jetski,
 ) {
   const opened: Promise<NodeJetski> = openJetski(options);
+  const prepared = await embedded.prepareHosts({
+    count: 2,
+    operationId: "persisted-uuid",
+  });
+  const machines: string[] = prepared.machines;
+  // @ts-expect-error host counts are numeric
+  embedded.prepareHosts({ count: "2" });
+  void machines;
   const session: SandboxSession = await embedded.create();
   await session.waitForOperation("existing", { waitTimeoutMs: 1000 });
   await remote.client.waitForOperation(session.id, "existing", {
@@ -34,6 +42,20 @@ export async function publicApiTypes(
     sourceSandboxId: session.id,
     checkpointId: checkpoint.id,
   };
+  const memoryCopy: SandboxSession = await embedded.fromCheckpoint({
+    ...source,
+    content: "memory",
+  });
+  await session.suspend({
+    portable: { codec: "gzip", chunkBytes: 1048576, reuse: true },
+  });
+  await memoryCopy.resumeMemory();
+  // @ts-expect-error only explicit supported checkpoint content is accepted
+  embedded.fromCheckpoint({ ...source, content: "ram-ish" });
+  session.suspend({
+    // @ts-expect-error portable capture codec is a closed union
+    portable: { codec: "unknown", chunkBytes: 1048576, reuse: true },
+  });
   const copied: SandboxSession = await embedded.fromCheckpoint(source);
   const remoteCopy: SandboxSession = await remote.fromCheckpoint(source);
   const output: Promise<CommandResult> = runSandbox(

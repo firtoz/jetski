@@ -81,6 +81,8 @@ test("checkpoint-backed sandbox admission, restart, cancellation and explicit re
     new SandboxManager(store, provider, transport, objects, {
       poolId: "pool",
       approvedImages: [image],
+      // Keep this restart/cancellation fixture deliberately between batches.
+      checkpointCopyBatchObjects: 2,
     });
   const registry = () => new CheckpointRegistry(state, objects);
   const token = "a".repeat(32);
