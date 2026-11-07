@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { checkChangesets } from "../check-changesets.mjs";
 import {
   compareVersions,
   mergedRelease,
@@ -169,4 +170,35 @@ test("publication waits for the latest exact-source CI and fails closed on red C
     sourceCiStatus([{ status: "completed", conclusion: "cancelled" }]),
     "failed",
   );
+});
+
+test("frontmatter validation permits consumed release branches without requiring git history", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "jetski-changeset-parse-"));
+  const root = pathToFileURL(dir + "/");
+  try {
+    await mkdir(new URL(".changeset/", root));
+    await writeFile(
+      new URL("package.json", root),
+      JSON.stringify({ name: "@firtoz/jetski" }),
+    );
+    assert.deepEqual(await checkChangesets(root), []);
+    const path = new URL(".changeset/change.md", root);
+    await writeFile(
+      path,
+      '---\n"@firtoz/jetski": patch\n---\n\nFix transfer.\n',
+    );
+    assert.equal((await checkChangesets(root))[0].releases[0].type, "patch");
+    await writeFile(
+      path,
+      '---\n"another-package": patch\n---\n\nUnknown package.\n',
+    );
+    await assert.rejects(checkChangesets(root), /Unknown release package/);
+    await writeFile(
+      path,
+      '---\n\n## "@firtoz/jetski": patch\n\nBroken frontmatter',
+    );
+    await assert.rejects(checkChangesets(root), /frontmatter/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

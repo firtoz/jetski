@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { appendFile, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { checkChangesets } from "./check-changesets.mjs";
 
 export function trustedMainPush(event, repository, eventName = "push") {
   if (typeof repository !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(repository))
@@ -56,14 +57,7 @@ async function main() {
       await appendFile(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
   };
   const pkg = JSON.parse(await readFile("package.json"));
-  const statusFile = process.env.RUNNER_TEMP + "/changeset-status.json";
-  execFileSync(
-    "npm",
-    ["exec", "--", "changeset", "status", "--output", statusFile],
-    { stdio: "inherit" },
-  );
-  const status = JSON.parse(await readFile(statusFile));
-  if (status.changesets.length) {
+  if ((await checkChangesets()).length) {
     const current = gh(`repos/${repo}/git/ref/heads/main`).object.sha;
     await output({ mode: current === sha ? "version" : "none", sha });
     return;

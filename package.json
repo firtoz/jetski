@@ -75,12 +75,13 @@
     "version:release": "node scripts/version-release.mjs",
     "check:release-version": "node scripts/sync-release-version.mjs --check",
     "test:release": "node --test scripts/test/*.test.mjs",
-    "check:changesets": "changeset status"
+    "check:changesets": "node scripts/check-changesets.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.2",
     "@boxd-sh/sdk": "0.3.0",
     "@changesets/cli": "3.0.3",
+    "@changesets/read": "1.0.1",
     "@types/node": "^24.10.0",
     "@types/ssh2": "1.15.6",
     "tsx": "^4.20.6",
