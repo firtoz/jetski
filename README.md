@@ -392,3 +392,10 @@ resources; use explicit budgets and owned-resource cleanup. See
 [design](docs/design.md), [qualification](docs/qualification.md),
 [standalone configuration](docs/standalone.md), [implementation](docs/implementation.md)
 and [MIT license](LICENSE).
+
+## Contributing a release
+
+Add a changeset with `npm run changeset`. Green main CI maintains a Release PR;
+after you review and merge it, green CI on that merge automatically publishes npm,
+GitHub artifacts and the container image. Versions, OpenAPI and example pins are
+updated together. See [the release guide](docs/releases.md).

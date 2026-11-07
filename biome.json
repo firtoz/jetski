@@ -2,7 +2,13 @@
   "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!dist", "!node_modules", "!host-rust/target"]
+    "includes": [
+      "**",
+      "!dist",
+      "!node_modules",
+      "!host-rust/target",
+      "!.changeset/*.md"
+    ]
   },
   "formatter": {
     "indentStyle": "space"

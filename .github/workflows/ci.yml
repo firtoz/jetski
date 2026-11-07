@@ -1,5 +1,5 @@
 name: CI
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
@@ -7,7 +7,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Prepare disposable execution host
         run: |
           sudo timeout --kill-after=5s 180s apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 update
@@ -43,7 +45,9 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: 1.97.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Prepare pinned compiler on disposable CI runner
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
@@ -69,7 +73,7 @@ jobs:
           (root/'manifest.json').write_text(json.dumps(dict(version=1,source=os.environ['GITHUB_SHA'],target='x86_64-unknown-linux-musl',sha256=hashlib.sha256(binary).hexdigest(),bytes=len(binary)),indent=2)+'\n')
           PY
           python3 host-rust/notices.py "$RUNNER_TEMP/jetski-native"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jetski-native-linux-x86_64
           path: ${{ runner.temp }}/jetski-native/*
@@ -77,19 +81,24 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm run check:release-version
+      - run: npm run check:changesets
+      - run: npm run test:release
       - run: npm run build
       - name: Qualify prebuilt artifact in an independent consumer
         run: node scripts/qualify-package.mjs
       - run: npm audit --omit=dev
       - name: Qualify unprivileged container startup, health and restart
         run: node scripts/qualify-container.mjs
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.4
       - name: Build and install release artifact with Bun without lifecycle scripts
@@ -101,7 +110,7 @@ jobs:
           bun add --ignore-scripts "$RUNNER_TEMP/jetski-package/"*.tgz
           bun install --frozen-lockfile --ignore-scripts
           bun --eval 'import {SandboxManager} from "@firtoz/jetski/core";import {JetskiClient} from "@firtoz/jetski/sdk";import {loadBoatBootstrapAssets} from "@firtoz/jetski/host-assets";if(!SandboxManager||!JetskiClient||!(await loadBoatBootstrapAssets()).installer.length)throw Error("Artifact import failed")'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jetski-package
           path: ${{ runner.temp }}/jetski-package/*.tgz
@@ -142,7 +151,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Prepare disposable rootless runtime
         run: |
           sudo timeout --kill-after=5s 180s apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
@@ -187,8 +198,10 @@ jobs:
     env:
       JETSKI_TEST_STORAGE_MODE: ${{ matrix.storageMode }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -275,3 +288,13 @@ jobs:
         if: always()
         run: |
           if sudo test -f /run/jetski-test-sshd.pid; then sudo kill "$(sudo cat /run/jetski-test-sshd.pid)"; fi
+
+  changesets:
+    name: Maintain release PR or request publication
+    needs: [gvisor-runtime, rootless-runtime, native-host, test, ssh-control]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    uses: $/.github/workflows/changesets.yml

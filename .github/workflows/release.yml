@@ -14,7 +14,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: jetski-publish
   cancel-in-progress: false
 jobs:
   release:
@@ -23,6 +23,7 @@ jobs:
     environment: npm-release
     permissions:
       contents: write
+      actions: read
       packages: write
       id-token: write
     env:
@@ -33,18 +34,18 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref_name }}
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           registry-url: https://registry.npmjs.org
-          cache: npm
+          package-manager-cache: false
       - name: Require exact version tag, main ancestry and completed green source CI
         run: |
           node --input-type=module -e 'import p from "./package.json" with {type:"json"};if(process.env.TAG!==`v${p.version}`)throw Error("Tag/version mismatch")'
           git merge-base --is-ancestor HEAD origin/main
           sha=$(git rev-parse HEAD)
-          result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$sha" --json conclusion --jq 'map(select(.conclusion=="success"))|length')
-          test "$result" -gt 0
+          SOURCE_SHA="$sha" node scripts/require-source-ci.mjs
           echo "SOURCE_SHA=$sha" >> "$GITHUB_ENV"
       - run: npm install --global npm@11.15.0
       - run: npm ci
@@ -91,6 +92,7 @@ jobs:
             echo "Upload already acknowledged; observe automated review without republishing"
           else
             node --input-type=module -e 'import{readFileSync}from"node:fs";const r=JSON.parse(readFileSync("/tmp/jetski-registry.json"));if(r.error?.code!=="E404")throw Error("Registry lookup failed; refusing uncertain publication")'
+            node scripts/release-registry-guard.mjs
             npm publish ./release/*.tgz --access public --provenance --ignore-scripts
           fi
           node --input-type=module <<'JS'

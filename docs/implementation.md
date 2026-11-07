@@ -3,9 +3,8 @@
 Jetski is an independent MIT-licensed sandbox runtime: a portable TypeScript
 core/SDK, embedded Node controller, optional HTTP/SSH service and CLI. Read
 [design](design.md) for contracts and [operations](operations.md) for deployment
-boundaries. The released API and earlier optimizations are included in npm 0.2.0. The optional
-two-slot upload follow-up below is unreleased source. Publishing a release does
-not change downstream deployments; clients choose when to upgrade.
+boundaries. The package version and CHANGELOG describe release state. Publishing a
+release does not change downstream deployments; clients choose when to upgrade.
 
 ## Acceptance overview
 
@@ -35,7 +34,7 @@ history is not silently expired. No new production cutover is included.
 - Runnable TypeScript examples, including a recorded Chromium fork.
 
 See [the application API](simple-api.md), [performance defaults](performance-tuning.md)
-and [examples](../examples/README.md) for usage. Numbered examples pin npm 0.2.0.
+and [examples](../examples/README.md) for usage. Numbered examples pin the package version.
 
 ## Read selectively
 

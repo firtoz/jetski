@@ -1,0 +1,96 @@
+name: Changesets
+on:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: changesets-main
+  cancel-in-progress: false
+jobs:
+  plan:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      sha: ${{ steps.plan.outputs.sha }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - id: plan
+        run: node scripts/release-plan.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+  version:
+    needs: plan
+    if: needs.plan.outputs.mode == 'version'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: changesets/action/version@22ccf9aa43179fe9e27dc62e575971d28cce197c # v2.0.0
+        id: version
+        with:
+          github-token: ${{ github.token }}
+          script: npm run version:release
+          pr-title: Release @firtoz/jetski
+          commit-message: "chore: version Jetski"
+          pr-base-branch: main
+      - name: Run CI for the bot-created release commit
+        if: steps.version.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.version.outputs.pr-number }}
+        run: |
+          sha=$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)
+          count=$(gh run list --workflow ci.yml --commit "$sha" --json databaseId --jq length)
+          if [ "$count" = 0 ]; then
+            gh workflow run ci.yml --ref changeset-release/main
+          fi
+  enqueue:
+    needs: plan
+    if: needs.plan.outputs.mode == 'publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - name: Preserve exact source identity and request trusted publication
+        run: node scripts/dispatch-release.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.plan.outputs.sha }}
+          TAG: ${{ needs.plan.outputs.tag }}
