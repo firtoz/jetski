@@ -2,7 +2,7 @@
 
 A self-contained embedded example. No standalone server or custom JSON config.
 Compare [hello world on boxd](../06-boxd/): only the provider block differs.
-Uses the released `@firtoz/jetski@0.2.0` package.
+Uses the released `@firtoz/jetski@0.2.1` package.
 Requires Node 24.22.1+ and an existing Boat account. Running it can incur host charges.
 
 From this folder (no root install or Jetski build required):

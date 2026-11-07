@@ -1,6 +1,6 @@
 # Simple application API
 
-Install `@firtoz/jetski@0.2.0` for the embedded Node controller or server-backed
+Install `@firtoz/jetski@0.2.1` for the embedded Node controller or server-backed
 SDK. Each numbered example pins that release and runs independently with
 `npm install`; no Jetski source build or sibling link is required.
 

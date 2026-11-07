@@ -20,7 +20,7 @@ An optional [SDK-only boxd adapter](docs/boxd.md) and
 [TypeScript example](examples/06-boxd/) add another machine-host choice. The
 [parity comparison](docs/provider-parity-benchmarks.md) covers both runtimes,
 interactive access and source-deleted R2 filesystem/process recovery.
-Available in `@firtoz/jetski@0.2.0`.
+Available in `@firtoz/jetski@0.2.1`.
 
 ## Recorded memory fork
 
@@ -99,18 +99,18 @@ bytes plus retained session files and acknowledged output.
 Use Node from [`.nvmrc`](.nvmrc). Install the prebuilt package (the CLI is `jetski`):
 
 ```sh
-npm install --global @firtoz/jetski@0.2.0
+npm install --global @firtoz/jetski@0.2.1
 jetski --version
 jetski --help
 ```
 
-For an SDK application: `npm install --save-exact @firtoz/jetski@0.2.0`, then import
+For an SDK application: `npm install --save-exact @firtoz/jetski@0.2.1`, then import
 `JetskiClient` from `@firtoz/jetski/sdk` or compose `SandboxManager` from `@firtoz/jetski/core`.
 Registry users do not need TypeScript or a source build. See [contributing](CONTRIBUTING.md)
 for checkout instructions, [operations](docs/operations.md) for deployment/backup,
 and [releases](docs/releases.md) for versions, containers and upgrades.
 
-A versioned Linux amd64 controller image is built as `ghcr.io/firtoz/jetski:v0.2.0`.
+A versioned Linux amd64 controller image is built as `ghcr.io/firtoz/jetski:v0.2.1`.
 Use its verified digest from the GitHub release once published; keep configuration
 read-only and `/data` on a persistent volume owned by UID1000. Example:
 
@@ -118,7 +118,7 @@ read-only and `/data` on a persistent volume owned by UID1000. Example:
 docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges \
   -p 127.0.0.1:8788:8788 --env-file /private/jetski.env \
   -v /private/server.json:/etc/jetski/server.json:ro \
-  -v /private/jetski-data:/data ghcr.io/firtoz/jetski:v0.2.0
+  -v /private/jetski-data:/data ghcr.io/firtoz/jetski:v0.2.1
 ```
 
 Set `dataDirectory: "/data"` and `host: "0.0.0.0"` in that container's configuration.

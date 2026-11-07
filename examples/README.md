@@ -4,7 +4,7 @@ Each numbered folder has its own runnable entry point, dependency manifest and
 short setup instructions. Each entry point is TypeScript, with `npm run typecheck`
 and direct Node execution for the introductory examples; the advanced recording
 demo uses tsx. No custom JSON plan/configuration files are needed.
-Each numbered example pins `@firtoz/jetski@0.2.0` from npm; no root build is required.
+Each numbered example pins `@firtoz/jetski@0.2.1` from npm; no root build is required.
 
 | Example                                               | Demonstrates                                             |
 | ----------------------------------------------------- | -------------------------------------------------------- |

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Jetski API",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "Implemented Jetski HTTP API. Host-control protocol, checkpoint formats and runtime compatibility are independently versioned. See the operations and qualification guides for supported boundaries."
   },
   "security": [
@@ -1738,6 +1738,16 @@
           }
         },
         "responses": {
+          "202": {
+            "description": "Cancellation requested; acknowledgement is not termination proof. Observe until cancelled or closed. Target stream ID is stable cancellation identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamStatus"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid UUID or request"
           },
@@ -1749,16 +1759,6 @@
           },
           "501": {
             "description": "Stream transport not configured"
-          },
-          "202": {
-            "description": "Cancellation requested; acknowledgement is not termination proof. Observe until cancelled or closed. Target stream ID is stable cancellation identity.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StreamStatus"
-                }
-              }
-            }
           }
         }
       }
@@ -2019,6 +2019,9 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Persisted recovery outcome; sandbox stopped at selected checkpoint"
+          },
           "400": {
             "description": "Invalid or rejected request"
           },
@@ -2027,9 +2030,6 @@
           },
           "404": {
             "description": "Sandbox unavailable in principal scope"
-          },
-          "200": {
-            "description": "Persisted recovery outcome; sandbox stopped at selected checkpoint"
           }
         },
         "description": "Requires acknowledgement that unpublished changes are unavailable. Fences the lost assignment and preserves the failed save. Does not resume or replay commands. Stable operation identity supports lost-response recovery."
@@ -2182,6 +2182,9 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Persisted recovery outcome; sandbox stopped at selected checkpoint"
+          },
           "400": {
             "description": "Invalid or rejected request"
           },
@@ -2190,9 +2193,6 @@
           },
           "404": {
             "description": "Sandbox unavailable in principal scope"
-          },
-          "200": {
-            "description": "Persisted recovery outcome; sandbox stopped at selected checkpoint"
           }
         },
         "description": "Requires acknowledgement that unpublished changes are unavailable. Fences the lost assignment and preserves the failed save. Does not resume or replay commands. Stable operation identity supports lost-response recovery."

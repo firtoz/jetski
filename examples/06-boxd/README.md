@@ -3,7 +3,7 @@
 The same one-shot API as [hello world on Boat](../02-hello-world-boat/).
 Only the `provider` block differs; command execution, storage and cleanup are identical.
 No standalone server, custom JSON config or boxd CLI is required by Jetski.
-Uses the released `@firtoz/jetski@0.2.0` package.
+Uses the released `@firtoz/jetski@0.2.1` package.
 Requires Node 24.22.1+ and an existing boxd account/API key. Hosts can incur charges.
 
 From this folder (no root install or Jetski build required):
