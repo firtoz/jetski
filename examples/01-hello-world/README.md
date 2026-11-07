@@ -4,7 +4,7 @@ Create a sandbox, run `echo`, then durably stop it. Requires an existing Jetski
 server and an operator-approved image. Creating a sandbox can allocate billable
 compute on that server. This example does not provision a controller.
 
-Uses the released `@firtoz/jetski@0.2.0` SDK. From this folder
+Uses the released `@firtoz/jetski@0.2.1` SDK. From this folder
 (no root install or Jetski build required):
 
 ```sh

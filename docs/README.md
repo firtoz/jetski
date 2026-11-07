@@ -11,7 +11,7 @@ runtime deliberately.
 - [Runnable examples](../examples/README.md): hello world, Boat, R2, files and warm reuse.
 - [Where data lives](storage-locations.md): controller disk, execution host, cache and R2.
 - [Simple API](simple-api.md): shared methods, lifecycle and error handling.
-  Convenience helpers are included in `@firtoz/jetski@0.2.0`.
+  Convenience helpers are included in `@firtoz/jetski@0.2.1`.
 
 ## Build an application
 

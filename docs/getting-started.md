@@ -20,11 +20,11 @@ npm run typecheck
 npm start
 ```
 
-The example installs the prebuilt `@firtoz/jetski@0.2.0` package from npm. No
+The example installs the prebuilt `@firtoz/jetski@0.2.1` package from npm. No
 root install, compiler invocation or custom JSON configuration is needed to run
 it. `npm run typecheck` is an optional strict check of your example code.
 
-For your own application, run `npm install --save-exact @firtoz/jetski@0.2.0`.
+For your own application, run `npm install --save-exact @firtoz/jetski@0.2.1`.
 No separately running server is needed for embedded usage.
 
 The script creates a sandbox, runs `echo`, saves its files, releases its assignment
@@ -53,7 +53,7 @@ send authenticated requests. Closing a client does not stop the server.
 The published release supports installation with:
 
 ```sh
-npm install --global @firtoz/jetski@0.2.0
+npm install --global @firtoz/jetski@0.2.1
 ```
 
 Follow the [README setup](../README.md#get-started) and

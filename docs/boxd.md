@@ -1,7 +1,7 @@
 # boxd machine hosts
 
 Jetski can use boxd through its optional TypeScript SDK, without installing or
-invoking the boxd CLI. This integration is included in `@firtoz/jetski@0.2.0`.
+invoking the boxd CLI. This integration is included in `@firtoz/jetski@0.2.1`.
 Built-in Node configuration accepts `provider: { kind: "boxd", token, namespace,
 region }`. Standalone configuration accepts `hostProvider` with `kind: "boxd"`,
 `tokenEnv`, `namespace` and `region`; see [server-boxd.json](../examples/server-boxd.json).
