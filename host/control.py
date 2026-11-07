@@ -296,7 +296,11 @@ def dispatch(
         return importer.file_begin(lease)
     if action == "import-file-chunk":
         return importer.file_chunk(
-            lease, payload.get("offset"), payload.get("bytes"), payload.get("sha256"), payload.get("slot", 0)
+            lease,
+            payload.get("offset"),
+            payload.get("bytes"),
+            payload.get("sha256"),
+            payload.get("slot", 0),
         )
     if action == "import-file-close":
         return importer.file_close(lease)

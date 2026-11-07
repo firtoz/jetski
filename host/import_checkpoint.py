@@ -74,7 +74,11 @@ class CheckpointImport:
             directory = self.file_directory(lease)
             if any(name not in ("chunk.bin", "chunk-next.bin") for name in os.listdir(directory)):
                 raise ValueError("unexpected_import_transfer_file")
-            return dict(path=str(directory / "chunk.bin"), chunkBytes=IMPORT_FILE_BYTES, paths=[str(directory / name) for name in ("chunk.bin", "chunk-next.bin")])
+            return dict(
+                path=str(directory / "chunk.bin"),
+                chunkBytes=IMPORT_FILE_BYTES,
+                paths=[str(directory / name) for name in ("chunk.bin", "chunk-next.bin")],
+            )
 
     def file_chunk(self, raw, offset, length, sha256, slot=0):
         lease = identity(raw)
