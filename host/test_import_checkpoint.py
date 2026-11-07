@@ -90,6 +90,31 @@ class ImportTests(unittest.TestCase):
             oracle(self.base / "source"), oracle(self.data / self.lease["assignmentId"])
         )
 
+    def test_two_staged_slots_commit_in_order_and_restore_exactly(self):
+        importer = self.binary()
+        paths = [pathlib.Path(path) for path in importer.file_begin(self.lease)["paths"]]
+        split = len(self.raw) // 2
+        parts = [self.raw[:split], self.raw[split:]]
+        for path, part in zip(paths, parts):
+            path.write_bytes(part)
+        with self.assertRaises(ValueError):
+            importer.file_chunk(self.lease, split, len(parts[1]), hashlib.sha256(parts[1]).hexdigest(), 1)
+        self.assertEqual(self.fence.read()["import"]["offset"], 0)
+        importer.file_chunk(self.lease, 0, len(parts[0]), hashlib.sha256(parts[0]).hexdigest(), 0)
+        importer.file_chunk(self.lease, split, len(parts[1]), hashlib.sha256(parts[1]).hexdigest(), 1)
+        importer.finish(self.lease)
+        self.assertFalse(paths[0].parent.exists())
+        self.assertEqual(oracle(self.base / "source"), oracle(self.data / self.lease["assignmentId"]))
+
+    def test_staged_slot_validation_and_fencing(self):
+        importer = self.binary()
+        importer.file_begin(self.lease)
+        for slot in (-1, 2, True, "../escape"):
+            with self.assertRaisesRegex(ValueError, "invalid_import_file_slot"):
+                importer.file_chunk(self.lease, 0, len(self.raw), self.receipt["sha256"], slot)
+        with self.assertRaises(ValueError):
+            importer.file_chunk({**self.lease, "generation": 2}, 0, len(self.raw), self.receipt["sha256"], 1)
+
     def test_binary_rejects_bad_hash_extent_symlink_and_stale_lease(self):
         importer = self.binary()
         path = pathlib.Path(importer.file_begin(self.lease)["path"])

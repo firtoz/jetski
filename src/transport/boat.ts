@@ -55,6 +55,7 @@ export class BoatTransport implements HostTransport {
   }
   private readonly channel: BoatControlChannel;
   private readonly timings: StageTimingSink | undefined;
+  private readonly checkpointUploadConcurrency: 1 | 2;
   private readonly backend: HostBackend;
   readonly memorySource?: (
     host: string,
@@ -87,11 +88,15 @@ export class BoatTransport implements HostTransport {
     options: {
       archiveReads?: boolean;
       archiveWrites?: boolean;
+      checkpointUploadConcurrency?: 1 | 2;
       backend?: HostBackend;
       timings?: StageTimingSink;
     } = {},
   ) {
     this.timings = options.timings;
+    this.checkpointUploadConcurrency = options.checkpointUploadConcurrency ?? 1;
+    if (![1, 2].includes(this.checkpointUploadConcurrency))
+      throw Error("Invalid checkpoint upload concurrency");
     this.backend = structuredClone(options.backend ?? PYTHON_HOST_BACKEND);
     validateHostBackend(this.backend);
     this.channel = new BoatControlChannel(
@@ -174,10 +179,44 @@ export class BoatTransport implements HostTransport {
       value.chunkBytes !== HOST_IMPORT_FILE_BYTES
     )
       throw Error("Invalid binary import negotiation");
+    const paths = [
+      path,
+      `/tmp/jetski-checkpoint-imports/${lease.assignmentId}/chunk-next.bin`,
+    ];
+    if (
+      value.paths !== undefined &&
+      JSON.stringify(value.paths) !== JSON.stringify(paths)
+    )
+      throw Error("Invalid binary import staging paths");
+    const staged =
+      this.checkpointUploadConcurrency === 2 && value.paths !== undefined;
     return {
       chunkBytes: HOST_IMPORT_FILE_BYTES,
+      ...(staged
+        ? {
+            stage: async (
+              offset: number,
+              bytes: Uint8Array<ArrayBuffer>,
+              sha256: string,
+            ) => {
+              const slot = Math.floor(offset / HOST_IMPORT_FILE_BYTES) % 2;
+              await timeStage(this.timings, "checkpoint.upload", () =>
+                this.api.uploadCheckpointPart(host, paths[slot]!, bytes),
+              );
+              return () =>
+                request("import-file-chunk", {
+                  offset,
+                  bytes: bytes.length,
+                  sha256,
+                  slot,
+                });
+            },
+          }
+        : {}),
       write: async (offset, bytes, sha256) => {
-        await this.api.uploadCheckpointPart(host, path, bytes);
+        await timeStage(this.timings, "checkpoint.upload", () =>
+          this.api.uploadCheckpointPart(host, path, bytes),
+        );
         return request("import-file-chunk", {
           offset,
           bytes: bytes.length,

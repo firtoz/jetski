@@ -3,21 +3,22 @@
 Jetski is an independent MIT-licensed sandbox runtime: a portable TypeScript
 core/SDK, embedded Node controller, optional HTTP/SSH service and CLI. Read
 [design](design.md) for contracts and [operations](operations.md) for deployment
-boundaries. The API and optimizations are included in npm 0.2.0. Publishing a release does
+boundaries. The released API and earlier optimizations are included in npm 0.2.0. The optional
+two-slot upload follow-up below is unreleased source. Publishing a release does
 not change downstream deployments; clients choose when to upgrade.
 
 ## Acceptance overview
 
-| Area                  | Evidence and boundaries                                                                                                          |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Independent package   | Portable subpath exports, prebuilt release checks and independent consumers.                                                     |
-| Host/runtime adapters | Boat, SSH-managed Linux and optional boxd; rootless Podman and optional gVisor. See provider/runtime reports.                    |
-| Execution and access  | Durable command identities, streaming output, PTYs, SSH, authenticated previews and forwarding.                                  |
-| Checkpoint durability | Exact bytes/modes/links, atomic publication, reader/writer coordination, generation fencing and source retention on uncertainty. |
-| Storage               | Local/S3 adapter contracts and R2 qualification; real-grace collection/recovery evidence is in qualification.                    |
-| Memory recovery/forks | Compatible gVisor process continuation, explicit disk/RAM graph copies and independently writable targets.                       |
-| Pool lifecycle        | One active assignment per host, owner-exclusive reuse, bounded leases, adaptive idle and one-shot preparation.                   |
-| Current follow-up     | 406 TypeScript / 241 Python tests; actual three-way browser state and file checks; owned test hosts retired.                     |
+| Area                  | Evidence and boundaries                                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Independent package   | Portable subpath exports, prebuilt release checks and independent consumers.                                                         |
+| Host/runtime adapters | Boat, SSH-managed Linux and optional boxd; rootless Podman and optional gVisor. See provider/runtime reports.                        |
+| Execution and access  | Durable command identities, streaming output, PTYs, SSH, authenticated previews and forwarding.                                      |
+| Checkpoint durability | Exact bytes/modes/links, atomic publication, reader/writer coordination, generation fencing and source retention on uncertainty.     |
+| Storage               | Local/S3 adapter contracts and R2 qualification; real-grace collection/recovery evidence is in qualification.                        |
+| Memory recovery/forks | Compatible gVisor process continuation, explicit disk/RAM graph copies and independently writable targets.                           |
+| Pool lifecycle        | One active assignment per host, owner-exclusive reuse, bounded leases, adaptive idle and one-shot preparation.                       |
+| Current follow-up     | Optional two-slot upload staging: 408 TS / 243 Python tests pass; four exact R2 restores showed no material speedup; serial default. |
 
 Tests and live qualification have different scopes. Unit fixtures do not establish
 provider performance, physical replacement, remote-store compatibility or all

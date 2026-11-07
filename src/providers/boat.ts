@@ -62,7 +62,9 @@ export class BoatApi {
   /** Bounded raw checkpoint parts use a separate limit from control envelopes. */
   async uploadCheckpointPart(host: string, path: string, data: Uint8Array) {
     if (
-      !/^\/tmp\/jetski-checkpoint-imports\/[a-f0-9-]{36}\/chunk.bin$/.test(path)
+      !/^\/tmp\/jetski-checkpoint-imports\/[a-f0-9-]{36}\/chunk(?:-next)?\.bin$/.test(
+        path,
+      )
     )
       throw Error("Invalid checkpoint upload path");
     return this.uploadBoundedFile(host, path, data, HOST_IMPORT_FILE_BYTES);

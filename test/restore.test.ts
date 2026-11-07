@@ -14,14 +14,17 @@ import { LocalCheckpointStore } from "../src/storage/local.js";
 
 const sha = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
-for (const chunkBytes of [
+for (const mode of [
   undefined,
   512 * 1024,
   4 * 1024 * 1024,
   16 * 1024 * 1024,
-]) {
+  "pipeline",
+] as const) {
+  const pipeline = mode === "pipeline";
+  const chunkBytes = pipeline ? 16 * 1024 * 1024 : mode;
   const binary = chunkBytes === 16 * 1024 * 1024;
-  test(`restore coalesces frames and resumes across boundaries with chunk bound ${chunkBytes ?? "legacy"}`, async (t) => {
+  test(`restore coalesces frames and resumes across boundaries with chunk bound ${mode ?? "legacy"}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "jetski-restore-"));
     const state = new SqliteState(join(directory, "state.sqlite"));
     t.after(async () => {
@@ -35,7 +38,9 @@ for (const chunkBytes of [
     let frameBytes = 300_000;
     if (binary) frameBytes = 3_000_000;
     else if (chunkBytes === 4 * 1024 * 1024) frameBytes = 2_000_000;
-    const frameCount = binary ? 6 : 3;
+    let frameCount = 3;
+    if (binary) frameCount = 6;
+    if (pipeline) frameCount = 13;
     const raw = randomBytes(frameBytes * frameCount);
     const compressed = Array.from(
       { length: frameCount },
@@ -109,12 +114,36 @@ for (const chunkBytes of [
       return { ...receipt };
     };
     let opened = 0,
-      closed = 0;
+      closed = 0,
+      stagedCount = 0,
+      uploading = 0;
+    const stageOffsets: number[] = [];
+    let failStage = pipeline;
     const openImport = binary
       ? async () => {
           opened++;
-          return {
+          const sink = {
             chunkBytes: 16 * 1024 * 1024,
+            ...(pipeline
+              ? {
+                  stage: async (
+                    offset: number,
+                    bytes: Uint8Array<ArrayBuffer>,
+                    digest: string,
+                  ) => {
+                    stagedCount++;
+                    stageOffsets.push(offset);
+                    uploading++;
+                    await new Promise((resolve) => setTimeout(resolve, 10));
+                    uploading--;
+                    if (failStage && offset === 0) {
+                      failStage = false;
+                      throw Error("staging upload lost");
+                    }
+                    return () => sink.write(offset, bytes, digest);
+                  },
+                }
+              : {}),
             write: async (
               offset: number,
               bytes: Uint8Array<ArrayBuffer>,
@@ -126,17 +155,38 @@ for (const chunkBytes of [
               offsets.push(offset);
               receipt.offset += bytes.length;
               if (loseAck) {
+                if (pipeline)
+                  assert.equal(
+                    stagedCount,
+                    2,
+                    "next upload must precede first commit",
+                  );
                 loseAck = false;
                 throw Error("lost acknowledgement");
               }
               return { ...receipt };
             },
             close: async () => {
+              assert.equal(
+                uploading,
+                0,
+                "all uploads must settle before temporary-path cleanup",
+              );
               closed++;
             },
           };
+          return sink;
         }
       : undefined;
+    if (pipeline) {
+      await assert.rejects(
+        restoreCheckpoint(objects, registry, fence, id, request, openImport),
+        /staging upload lost/,
+      );
+      assert.equal(receipt.offset, 0, "staging must never acknowledge bytes");
+      stagedCount = 0;
+      stageOffsets.length = 0;
+    }
     await assert.rejects(
       restoreCheckpoint(objects, registry, fence, id, request, openImport),
       /lost acknowledgement/,
@@ -152,12 +202,23 @@ for (const chunkBytes of [
       ),
     );
     assert.deepEqual(Buffer.concat(received), archive);
+    if (pipeline) {
+      assert.equal(stageOffsets.filter((offset) => offset === 0).length, 1);
+      assert.equal(
+        stageOffsets.filter((offset) => offset === bound).length,
+        2,
+        "unacknowledged staged bytes are uploaded again after restart",
+      );
+    }
     await restoreCheckpoint(objects, registry, fence, id, request, openImport);
     assert.equal(finishes, 1);
     receipt.phase = "extracting";
     await restoreCheckpoint(objects, registry, fence, id, request, openImport);
     assert.equal(finishes, 2);
-    assert.equal(opened, binary ? 2 : 0);
+    let expectedOpened = 0;
+    if (binary) expectedOpened = 2;
+    if (pipeline) expectedOpened = 3;
+    assert.equal(opened, expectedOpened);
     assert.equal(closed, opened);
     await assert.rejects(
       restoreCheckpoint(objects, registry, fence, id, async () => ({

@@ -22,6 +22,13 @@ export type CheckpointImportSink = {
     bytes: Uint8Array<ArrayBuffer>,
     sha256: string,
   ): Promise<Json>;
+  /** Optional two-part pipeline. Staging is temporary and never acknowledges
+   * durable progress; commits are called strictly in archive order. */
+  stage?(
+    offset: number,
+    bytes: Uint8Array<ArrayBuffer>,
+    sha256: string,
+  ): Promise<() => Promise<Json>>;
   close(): Promise<void>;
 };
 /** Negotiated control chunks; ordinary control requests keep their smaller bound. */

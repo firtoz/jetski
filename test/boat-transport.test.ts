@@ -668,3 +668,70 @@ test("Boat remote exit retains safe structured diagnostics through transport wra
   );
   assert.equal(calls, 1);
 });
+
+test("checkpoint staging negotiates fixed slots and does not acknowledge uploads as commits", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const assignmentId = "a780fdde-0c04-4430-afee-7a80cf638c59";
+  const paths = ["chunk.bin", "chunk-next.bin"].map(
+    (name) => `/tmp/jetski-checkpoint-imports/${assignmentId}/${name}`,
+  );
+  const uploads: string[] = [];
+  const api = new BoatApi("fixture");
+  api.uploadCheckpointPart = async (_host, path) => {
+    uploads.push(path);
+  };
+  const transport = new BoatTransport(state, api, undefined, {
+    archiveWrites: true,
+    checkpointUploadConcurrency: 2,
+  });
+  const lease = {
+    owner: "owner",
+    poolId: "pool",
+    machineId: "bx_owned",
+    slotId: "slot",
+    sandboxId: "box",
+    assignmentId,
+    generation: 1,
+  };
+  const commits: unknown[] = [];
+  let advertisedPaths: string[] | undefined = paths;
+  transport.request = async (_host, request) => {
+    let result: import("../src/core/contracts.js").Json = { closed: true };
+    if (request.action === "import-file-begin")
+      result = {
+        path: paths[0]!,
+        chunkBytes: 16 * 1024 * 1024,
+        ...(advertisedPaths ? { paths: advertisedPaths } : {}),
+      };
+    if (request.action === "import-file-chunk") {
+      commits.push(request.payload);
+      result = { offset: 1 };
+    }
+    return { version: 1, id: request.id, result };
+  };
+  const sink = await transport.checkpointImport!("bx_owned", lease, "image");
+  assert.ok(sink.stage);
+  const [first, second] = await Promise.all([
+    sink.stage(0, new Uint8Array([1]), "first"),
+    sink.stage(16 * 1024 * 1024, new Uint8Array([2]), "second"),
+  ]);
+  assert.deepEqual(uploads, paths);
+  assert.deepEqual(commits, []);
+  await first();
+  await second();
+  assert.deepEqual(
+    commits.map((value) => (value as { slot: number }).slot),
+    [0, 1],
+  );
+  advertisedPaths = undefined;
+  assert.equal(
+    (await transport.checkpointImport!("bx_owned", lease, "image")).stage,
+    undefined,
+  );
+  advertisedPaths = [paths[0]!, "/arbitrary/path"];
+  await assert.rejects(
+    transport.checkpointImport!("bx_owned", lease, "image"),
+    /staging paths/,
+  );
+});

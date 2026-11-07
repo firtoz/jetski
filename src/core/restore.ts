@@ -30,6 +30,7 @@ export async function restoreCheckpoint(
   if (retainedReader) await registry.requireReader(fence, reader, id);
   else await registry.admit(fence, reader, "reader", id);
   let sink: CheckpointImportSink | undefined;
+  const staged: Promise<() => Promise<Json>>[] = [];
   try {
     const root = await registry.root(fence, id);
     if (!root) throw Error("Checkpoint missing");
@@ -108,18 +109,8 @@ export async function restoreCheckpoint(
       offset = resumeOffset,
       buffered = 0;
     const buffer = new Uint8Array(chunkBytes);
-    const flush = async () => {
-      if (!buffered) return;
-      const part = buffer.subarray(0, buffered);
-      const digest = await sha(part);
-      const acknowledged = sink
-        ? await sink.write(offset, part, digest)
-        : await request("import-chunk", {
-            offset,
-            base64: encodeBase64(part),
-            sha256: digest,
-          });
-      offset += part.length;
+    let queuedOffset = resumeOffset;
+    const acknowledge = (acknowledged: Json, expectedOffset: number) => {
       if (
         !acknowledged ||
         typeof acknowledged !== "object" ||
@@ -127,10 +118,44 @@ export async function restoreCheckpoint(
         acknowledged.id !== id ||
         acknowledged.sha256 !== archive.sha256 ||
         acknowledged.bytes !== archive.bytes ||
-        acknowledged.offset !== offset ||
+        acknowledged.offset !== expectedOffset ||
         acknowledged.phase !== "receiving"
       )
         throw Error("Invalid import chunk acknowledgement");
+      offset = expectedOffset;
+    };
+    const drain = async () => {
+      const next = staged[0];
+      if (!next) return;
+      const commit = await next;
+      // Keep the promise discoverable until a durable acknowledgement is checked.
+      // A failure drains outstanding uploads before closing their temporary paths.
+      const expected = Math.min(offset + chunkBytes, archive.bytes);
+      acknowledge(await commit(), expected);
+      staged.shift();
+    };
+    const flush = async () => {
+      if (!buffered) return;
+      const part = buffer.subarray(0, buffered);
+      const digest = await sha(part);
+      if (sink?.stage) {
+        // The reusable read buffer must never mutate an in-flight upload.
+        const upload = sink.stage(queuedOffset, part.slice(), digest);
+        void upload.catch(() => {});
+        staged.push(upload);
+        queuedOffset += part.length;
+        if (staged.length === 2) await drain();
+      } else {
+        const acknowledged = sink
+          ? await sink.write(offset, part, digest)
+          : await request("import-chunk", {
+              offset,
+              base64: encodeBase64(part),
+              sha256: digest,
+            });
+        acknowledge(acknowledged, offset + part.length);
+        queuedOffset = offset;
+      }
       buffered = 0;
     };
     const cache = new Map<string, Uint8Array<ArrayBuffer>>();
@@ -195,12 +220,14 @@ export async function restoreCheckpoint(
       }
     }
     await flush();
+    while (staged.length) await drain();
     if (offset !== archive.bytes) throw Error("Restore extent mismatch");
     await sink?.close();
     sink = undefined;
     await finish();
   } finally {
     try {
+      await Promise.allSettled(staged);
       await sink?.close();
     } finally {
       if (!retainedReader) await registry.close(fence, reader);

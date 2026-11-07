@@ -72,17 +72,19 @@ class CheckpointImport:
             if not receipt or receipt["phase"] != "receiving":
                 raise ValueError("import_not_receiving")
             directory = self.file_directory(lease)
-            if any(name != "chunk.bin" for name in os.listdir(directory)):
+            if any(name not in ("chunk.bin", "chunk-next.bin") for name in os.listdir(directory)):
                 raise ValueError("unexpected_import_transfer_file")
-            return dict(path=str(directory / "chunk.bin"), chunkBytes=IMPORT_FILE_BYTES)
+            return dict(path=str(directory / "chunk.bin"), chunkBytes=IMPORT_FILE_BYTES, paths=[str(directory / name) for name in ("chunk.bin", "chunk-next.bin")])
 
-    def file_chunk(self, raw, offset, length, sha256):
+    def file_chunk(self, raw, offset, length, sha256, slot=0):
         lease = identity(raw)
+        if type(slot) is not int or slot not in (0, 1):
+            raise ValueError("invalid_import_file_slot")
         if type(length) is not int or not 1 <= length <= IMPORT_FILE_BYTES:
             raise ValueError("invalid_import_file_extent")
         with self.fence.locked():
             self.state(lease)
-            path = self.file_directory(lease) / "chunk.bin"
+            path = self.file_directory(lease) / ("chunk.bin" if slot == 0 else "chunk-next.bin")
             fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(fd, "rb") as source:
                 meta = os.fstat(source.fileno())
@@ -119,18 +121,19 @@ class CheckpointImport:
         if not os.path.lexists(directory):
             return dict(closed=True)
         self.directory(directory, 0o730)
-        if any(name != "chunk.bin" for name in os.listdir(directory)):
+        if any(name not in ("chunk.bin", "chunk-next.bin") for name in os.listdir(directory)):
             raise ValueError("unexpected_import_transfer_file")
-        path = directory / "chunk.bin"
-        if os.path.lexists(path):
-            meta = path.lstat()
-            if not stat.S_ISREG(meta.st_mode) or meta.st_uid not in (
-                os.geteuid(),
-                self.transfer.pw_uid,
-            ):
-                raise ValueError("unsafe_import_transfer_file")
-            path.unlink()
-            sync_dir(directory)
+        for name in ("chunk.bin", "chunk-next.bin"):
+            path = directory / name
+            if os.path.lexists(path):
+                meta = path.lstat()
+                if not stat.S_ISREG(meta.st_mode) or meta.st_uid not in (
+                    os.geteuid(),
+                    self.transfer.pw_uid,
+                ):
+                    raise ValueError("unsafe_import_transfer_file")
+                path.unlink()
+                sync_dir(directory)
         directory.rmdir()
         sync_dir(self.transfer_root)
         return dict(closed=True)
