@@ -10,7 +10,7 @@ owner-authenticated requests and do not shut it down when they disconnect.
 Install the prebuilt CLI with Node from [`.nvmrc`](../.nvmrc):
 
 ```sh
-npm install --global @firtoz/jetski@0.2.1
+npm install --global @firtoz/jetski@0.3.0
 ```
 
 Copy one complete configuration to a private path:
@@ -36,7 +36,7 @@ operator-managed HTTPS reverse proxy or authenticated encrypted tunnel. Local
 storage is on the server, not the client's laptop or execution host. R2/S3 moves
 objects only; back up SQLite too. [Storage layout](storage-locations.md).
 
-A versioned controller image is `ghcr.io/firtoz/jetski:v0.2.1`; use its verified
+A versioned controller image is `ghcr.io/firtoz/jetski:v0.3.0`; use its verified
 release digest and a persistent UID-1000-owned data volume. The controller needs
 no local workload runtime. [Deployment and backup requirements](operations.md).
 

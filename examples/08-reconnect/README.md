@@ -1,8 +1,7 @@
 # Restart and reconnect without replay
 
-This example requires the [pending command-handle API](../../docs/compatibility.md).
-Use a packed artifact for source review, or the published package after its normal
-release. The following commands deliberately separate admission from observation:
+This example uses the command-handle API in `@firtoz/jetski@0.3.0`. The following
+commands deliberately separate admission from observation:
 
 ```sh
 npm install

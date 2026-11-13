@@ -2,7 +2,7 @@
 
 Choose a small example for the value you want to try. Each numbered folder has its
 own package manifest, setup instructions and TypeScript entry point. The published
-examples install `@firtoz/jetski@0.2.1` from npm without a Jetski source build or
+examples install `@firtoz/jetski@0.3.0` from npm without a Jetski source build or
 sibling link. Run `npm run typecheck` to check types; Node execution alone does not.
 Provider examples can allocate billable resources and require your own credentials.
 

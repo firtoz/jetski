@@ -48,7 +48,7 @@ introductory examples because it records and checks a complete fork workflow.
 
 ## Run the demo
 
-Uses the released `@firtoz/jetski@0.2.1` package. No root install or Jetski build
+Uses the released `@firtoz/jetski@0.3.0` package. No root install or Jetski build
 is required:
 
 ```sh

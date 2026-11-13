@@ -1,6 +1,6 @@
 # Simple application API
 
-Install `@firtoz/jetski@0.2.1` for the embedded Node controller or server-backed
+Install `@firtoz/jetski@0.3.0` for the embedded Node controller or server-backed
 SDK. Published numbered examples pin that release and run independently with
 `npm install`; no Jetski source build or sibling link is required.
 
@@ -42,7 +42,7 @@ import type { CommandResult, SandboxSession } from "@firtoz/jetski/sdk";
 `NodeOptions` checks the provider/storage discriminated unions. `create()` and
 `fromCheckpoint()` return `Promise<SandboxSession>`; `exec()` returns
 `Promise<CommandResult>`. Both controller modes share the same session methods.
-[Compatibility](compatibility.md) identifies additions awaiting release.
+[Compatibility](compatibility.md) describes version differences and upgrade considerations.
 The numbered examples use `.ts` entry points and strict typechecks; supported Node
 runs their erasable TypeScript directly. Typechecking is explicit (`npm run
 typecheck`), since Node's execution does not itself check types.

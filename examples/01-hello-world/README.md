@@ -4,7 +4,7 @@ Create a sandbox, run `echo`, capture output and durably stop it using an existi
 Jetski service. Requires Node 24.22.1+, an authorized service token and an image
 approved by that controller. Sandbox creation can allocate billable compute.
 
-From this folder, install the prebuilt `@firtoz/jetski@0.2.1` package:
+From this folder, install the prebuilt `@firtoz/jetski@0.3.0` package:
 
 ```sh
 npm install

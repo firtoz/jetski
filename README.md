@@ -29,7 +29,7 @@ Workloads execute remotely; no container runtime is required on your laptop.
 Host allocation can incur provider charges.
 
 ```sh
-npm install --save-exact @firtoz/jetski@0.2.1
+npm install --save-exact @firtoz/jetski@0.3.0
 ```
 
 Set `BOAT_API_TOKEN` privately. For the `echo` trial, the repository examples use
@@ -68,8 +68,7 @@ in `.jetski/` on the machine running this script. Keep that directory private.
 [Complete Boat example](examples/02-hello-world-boat/) ·
 [Try boxd instead](examples/06-boxd/) ·
 [Connect to an existing service](examples/01-hello-world/).
-The first example uses the published API; [compatibility](docs/compatibility.md)
-identifies additions awaiting release.
+[Compatibility](docs/compatibility.md) covers API layers and upgrading from earlier versions.
 
 ## Build on it
 

@@ -8,7 +8,7 @@ controller. Both return the same `SandboxSession` interface.
 
 Follow the [README command example](../README.md#try-a-command), or run the complete
 [Boat example](../examples/02-hello-world-boat/). Install the prebuilt
-`@firtoz/jetski@0.2.1` package on Node 24.22.1 or newer; no source build, separate
+`@firtoz/jetski@0.3.0` package on Node 24.22.1 or newer; no source build, separate
 server or local container runtime is required.
 
 Supply a private provider credential and an approved digest-pinned image containing
