@@ -12,7 +12,13 @@ export {
   type PackedArchive,
 } from "./checkpoint-layout.js";
 export * from "./checkpoints.js";
+export type {
+  HostAdapters,
+  HostFactory,
+  HostFactoryContext,
+} from "./composition.js";
 export * from "./contracts.js";
+export * from "./failures.js";
 export * from "./files.js";
 export * from "./host-lifecycle.js";
 export * from "./host-power.js";

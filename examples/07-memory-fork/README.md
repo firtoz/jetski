@@ -8,13 +8,12 @@ JavaScript instance, then diverge to **9** and **6**. The original resumes at **
 
 ![Verified original at 4, independent branches at 9 and 6](optimized-poster.jpg)
 
-The complete workflow took **5m53s**, including **3m13s of initial preparation**,
-versus 17m36s originally. Durable save/verification took 23s; branch resume operations
-48s each. Both runs used three physical Boat hosts. Long waits in the viewing copy
-are explicitly labelled 16×; the on-screen clock retains real elapsed time. The
-full real-time movie is 6m00s. See [measurements and limits](../../docs/chromium-transfer-performance.md).
-[Original movie](demo.mp4) and [first prepared-host comparison](prepared-demo.mp4)
-are retained. These are individual runs, not universal performance guarantees.
+The recorded workflow took **5m53s**, including **3m13s preparation**, on three
+physical Boat hosts with the configured image/runtime/resources. Durable save/
+verification took 23s and branch resume operations 48s each. These are individual
+observations, not universal guarantees. Long waits in the viewing copy are labelled
+16× while its clock retains real elapsed time. The full movie is 6m00s.
+[Comparison conditions and limits](../../maintainer/benchmarks/chromium.md).
 
 ## The API underneath
 
@@ -47,7 +46,7 @@ operation IDs, viewer draining, automated actions, independent state checks and
 bounded cleanup. This example deliberately has more machinery than the numbered
 introductory examples because it records and checks a complete fork workflow.
 
-## Run from this checkout
+## Run the demo
 
 Uses the released `@firtoz/jetski@0.2.1` package. No root install or Jetski build
 is required:

@@ -1,46 +1,29 @@
-# Jetski documentation
+# Use Jetski
 
-Jetski runs isolated workloads on reusable hosts and saves declared persistent
-files independently of those hosts. You operate the controller; Jetski is not a
-hosted compute service. Start with a small example, then choose your storage and
-runtime deliberately.
+Start with [a command](../README.md#try-a-command) or the
+[runnable examples](../examples/README.md). Jetski runs workloads on configured
+execution hosts; you own the controller and its metadata.
 
-## Start here
+## Pick your next task
 
-- [Getting started](getting-started.md): choose embedded usage or a standalone server.
-- [Runnable examples](../examples/README.md): hello world, Boat, R2, files and warm reuse.
-- [Where data lives](storage-locations.md): controller disk, execution host, cache and R2.
-- [Simple API](simple-api.md): shared methods, lifecycle and error handling.
-  Convenience helpers are included in `@firtoz/jetski@0.2.1`.
+| Task                                      | Guide                                                                                                                   |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Choose embedded Node or a service client  | [Getting started](getting-started.md)                                                                                   |
+| Work with commands, files and checkpoints | [Application API and lifecycle](simple-api.md)                                                                          |
+| Reconnect to interrupted work             | [Failure recovery](failure-recovery.md)                                                                                 |
+| Add a terminal or authenticated preview   | [Interactive access](interactive-access.md)                                                                             |
+| Select machines and isolation             | [Boat](boat.md), [boxd](boxd.md), [Podman/gVisor tradeoffs](runtime-comparison.md)                                      |
+| Allow outbound internet access            | [Networking policy](networking.md)                                                                                      |
+| Save compatible process memory            | [Portable memory](portable-memory.md)                                                                                   |
+| Choose checkpoint storage                 | [Where data lives](storage-locations.md), [storage adapters](storage.md), [native R2](storage-r2.md)                    |
+| Tune reuse, transfer and cost             | [Performance settings](performance-tuning.md), [cost model](costs.md), [stage diagnostics](stage-timings.md)            |
+| Deploy or upgrade a shared controller     | [Standalone service](standalone.md), [operations/backups](operations.md), [upgrades](releases.md)                       |
+| Embed Jetski into your own platform       | [Composition and scheduling](embedded-platforms.md), [runtime selection](runtime-selection.md), [OpenAPI](openapi.json) |
 
-## Build an application
+[Compatibility](compatibility.md) distinguishes the published package from
+source additions awaiting release. Each guide describes the relevant operating
+limits; a supported configuration is not a guarantee for every workload or host.
 
-- [Architecture and contracts](design.md): replaceable boundaries and core guarantees.
-- [Boat hosts](boat.md): provisioning and bootstrap; SSH adoption is in the standalone guide.
-- [boxd hosts](boxd.md): SDK-only embedded/standalone configuration (optional peer dependency).
-- [Provider parity](provider-parity-benchmarks.md): matched runtime timings, interactive access and replacement recovery.
-- [Checkpoint storage](storage.md) and [native R2 bindings](storage-r2.md): adapter contracts.
-- [Runtime selection](runtime-selection.md): Podman, optional gVisor and fallback policy.
-- [Networking](networking.md): egress and isolation boundaries.
-- [Performance defaults and tuning](performance-tuning.md): safe defaults and explicit resource/provider choices.
-- [Portable memory](portable-memory.md): process recovery, compatibility and limits.
-- [OpenAPI](openapi.json): explicit versioned HTTP operations.
-
-## Run a controller
-
-- [Standalone guide](standalone.md): configuration, API, CLI, terminals and gateways.
-- [Failure recovery](failure-recovery.md): reconnect to existing operations, typed diagnostics and quarantine boundaries.
-- [Operations](operations.md): supported deployment scope, backups, alerts and disaster recovery.
-- [Releases](releases.md): installation and release artifacts.
-
-## Understand the measurements
-
-- [Costs](costs.md): compute, starts, retained idle time and modeling assumptions.
-- [Benchmarks](benchmarks.md): measured results and comparison boundaries.
-- [Runtime comparison](runtime-comparison.md): isolation, compatibility and measured tradeoffs.
-- [Chromium fork measurements](chromium-transfer-performance.md): recorded state forks and end-to-end limits.
-- [Qualification](qualification.md): evidence and known limitations.
-
-Implementation plans and experiment notes are maintainer material. User-facing
-instructions above describe how to use the project; measurements distinguish
-local fixtures from live provider qualification.
+Working on Jetski itself? [Maintainer documentation](../maintainer/README.md)
+contains architecture, qualification methods, measured evidence and release
+machinery. Ordinary library users can skip it.

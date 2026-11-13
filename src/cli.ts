@@ -48,7 +48,7 @@ if (values.version) {
   process.stdout.write(RELEASE_VERSION + "\n");
 } else if (values.help || !command) {
   process.stdout.write(
-    "Jetski: durable sandboxes on reusable compute\nUsage: jetski serve --config PATH | capabilities | list | get ID | create --id UUID --operation UUID --image DIGEST | exec ID --id UUID -- COMMAND | stop ID --operation UUID | resume ID --operation UUID\nDocs: https://github.com/firtoz/jetski#readme\n",
+    "Jetski: durable sandboxes on reusable compute\nUsage: jetski serve --config PATH | capabilities | list | get ID | create --id UUID --operation UUID --image DIGEST | exec ID --id UUID -- COMMAND | stop ID --operation UUID | resume ID --operation UUID\nLifecycle: checkpoint stops execution and retains assignment; stop publishes files and releases assignment (host may stay warm); resume restores files, not RAM. delete is explicit; GC has a separate grace period. Observation timeout does not cancel remote work.\nDocs: https://github.com/firtoz/jetski#readme\n",
   );
 } else if (command === "check-config") {
   const { serverConfig } = await import("./server/config.js");
@@ -215,7 +215,24 @@ if (values.version) {
     });
     server.listen(config.port ?? 8788, config.host ?? "127.0.0.1", () =>
       process.stdout.write(
-        JSON.stringify({ listening: server.address() }) + "\n",
+        JSON.stringify({
+          listening: server.address(),
+          controller: {
+            dataDirectory: directory,
+            state: join(directory, "state.sqlite"),
+            poolId: config.poolId,
+            owners: config.principals.map((principal) => principal.owner),
+            provider: config.hostProvider.kind,
+            storage:
+              !config.storage || config.storage.kind === "local"
+                ? { kind: "local", directory: join(directory, "objects") }
+                : {
+                    kind: "s3",
+                    bucket: config.storage.bucket,
+                    prefix: config.storage.prefix,
+                  },
+          },
+        }) + "\n",
       ),
     );
     let stopping = false;

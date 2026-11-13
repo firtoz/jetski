@@ -10,7 +10,7 @@ import {
   type TerminalInput,
   terminalFrame,
 } from "../src/core/terminal-input.js";
-import { JetskiClient } from "../src/sdk.js";
+import { Jetski, JetskiClient } from "../src/sdk.js";
 import { SqliteState } from "../src/state/sqlite.js";
 
 for (const admitted of [false, true])
@@ -178,4 +178,70 @@ test("authorization and transport failures never become absence proofs", async (
     await assert.rejects(attachment.send({ kind: "close" }), /Unresolved/);
     assert.equal(posts, 0);
   }
+});
+
+test("session terminal facade preserves input identity after lost acknowledgement", async (t) => {
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  const receipts = new Map<string, Json>();
+  let posts = 0,
+    lost = true;
+  const client = new Jetski({
+    url: "https://example.invalid",
+    token: "private",
+    fetch: async (url, options) => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/v1/sandboxes/sandbox")
+        return Response.json({ id: "sandbox", createOperation: "create" });
+      const id = path.split("/").at(-1)!;
+      if (options?.method === "GET")
+        return receipts.has(id)
+          ? Response.json(receipts.get(id))
+          : Response.json({}, { status: 404 });
+      const value = JSON.parse(String(options?.body)) as {
+        id: string;
+        input: TerminalInput;
+      };
+      const bytes = terminalFrame(value.input);
+      const receipt = {
+        id: value.id,
+        kind: value.input.kind,
+        bytes: bytes.length,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        sequence: 0,
+        phase: "sent",
+      };
+      posts++;
+      receipts.set(value.id, receipt);
+      if (lost) {
+        lost = false;
+        throw Error("lost input acknowledgement");
+      }
+      return Response.json(receipt);
+    },
+  });
+  let sandbox = await client.get("sandbox");
+  let attachment = await sandbox.attachTerminal(
+    state,
+    "attachment",
+    "terminal",
+    "a".repeat(64),
+  );
+  await assert.rejects(
+    attachment.send({ kind: "stdin", base64: "aGk=" }),
+    /lost input acknowledgement/,
+  );
+  sandbox = await client.get("sandbox");
+  attachment = await sandbox.attachTerminal(
+    state,
+    "attachment",
+    "terminal",
+    "a".repeat(64),
+  );
+  await attachment.resume();
+  assert.equal(
+    posts,
+    1,
+    "reconnect observes the acknowledged input, never sends a second one",
+  );
 });

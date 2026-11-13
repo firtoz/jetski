@@ -88,3 +88,30 @@ Follow [operations](operations.md#backup-and-disaster-recovery) for consistent
 metadata/object backups and single-writer recovery. See [storage contracts](storage.md)
 for adapter requirements, pins and safe garbage collection, and the
 [R2 example](../examples/03-hello-world-r2/) for configuration.
+
+## Resolved embedded diagnostics
+
+`await controller.resolvedConfiguration()` reports the absolute data directory,
+SQLite path or custom state identity, local object directory or remote bucket and
+prefix, owner/pool IDs and scheduler kind. It excludes credentials. Relative paths
+resolve once against the opening process's working directory; moving the working
+directory later must not change the active store. Save the non-secret summary
+with backup metadata so operators know which namespace they are recovering.
+
+If reopen rejects a configuration/owner mismatch, compare the original provider,
+storage endpoint/bucket/prefix, owner/pool, approved images and custom adapter IDs.
+Restore the intended configuration and matching metadata; do not bypass the seal,
+move empty stores into place, adopt foreign objects or remove a live lock.
+Credential rotation keeps these identities stable: update the token or access-key
+values without changing the bound namespace/configuration. A replacement provider
+account is a namespace change even if it accepts the same resource identifiers;
+custom factories must bind that distinction in their stable identity.
+
+For backup, quiesce the authoritative controller, obtain a consistent SQLite
+backup (including committed WAL state), and retain every checkpoint object rooted
+by that metadata and its pins/journals. Keep immutable configuration and identity
+alongside it; store credentials separately. For restore, stop the old scheduler,
+restore matching metadata and objects, reopen the same namespace, inspect pending
+operations and reconcile before admitting new work. Never copy a live SQLite
+main file alone or treat a bucket inventory as replacement metadata. Detailed
+procedures remain in the [operations runbook](operations.md#backup-and-disaster-recovery).

@@ -377,36 +377,17 @@ function box(reply: Reply): { id: string; state: string } {
   return { id: value.id, state: value.state };
 }
 
-/** Owns only machines returned by its durable allocation journal. Provider ready
- * is insufficient: a separately bootstrapped host-control agent must attest ready. */
-export class BoatHostProvider implements HostProvider {
+/** Dedicated machine lifecycle only. Ready means provider ready, not sandbox
+ * attestation. Deliberately has no runtime capabilities or workload transport. */
+export class BoatMachineProvider {
   constructor(
     private readonly state: StateStore,
     private readonly api: BoatApi,
-    private readonly transport: HostTransport,
     private readonly machine: BoatMachineType = "small",
     private readonly now = Date.now,
-    private readonly bootstrap?: { ensure(host: string): Promise<void> },
   ) {
     if (!BOAT_MACHINE_TYPES.includes(machine))
       throw Error("Unsupported Boat machine type");
-  }
-  capabilities() {
-    return {
-      kind: "machine-host",
-      architecture: "x86_64",
-      rootlessPodman: true,
-      maxLifetimeMs: HOST_LIFECYCLE_LIMITS.maxLifetimeMs,
-      features: {
-        evidence: "adapter-declaration",
-        runtimes: ["podman", "gvisor"],
-        networkModes: ["none", "egress", "public-egress"],
-        storageModes: ["default", "fuse-overlayfs"],
-        nativeIdleModes: [],
-        hostStreams: true,
-        portableMemoryRuntimes: ["gvisor"],
-      },
-    } as const;
   }
   async allocate(input: {
     owner: string;
@@ -508,23 +489,7 @@ export class BoatHostProvider implements HostProvider {
         return { state: "starting" };
       if (!["ready", "idle", "running"].includes(resource.state))
         return { state: "unknown" };
-      await this.bootstrap?.ensure(id);
-      const response = await this.transport.request(id, {
-        version: HOST_PROTOCOL_VERSION,
-        id: crypto.randomUUID(),
-        action: "status",
-        payload: null,
-      });
-      const result = response.result;
-      if (
-        result &&
-        typeof result === "object" &&
-        !Array.isArray(result) &&
-        result.ready === true &&
-        result.machineId === id
-      )
-        return { state: "ready" };
-      return { state: "unknown" };
+      return { state: "ready" };
     } catch (error) {
       return {
         state: "unknown",
@@ -562,5 +527,67 @@ export class BoatHostProvider implements HostProvider {
         throw Error("Boat retirement fenced");
       tx.put(key, { ...current, retired: true });
     });
+  }
+}
+
+/** Sandbox-capable host provider. Provider readiness alone never attests a runtime. */
+export class BoatHostProvider
+  extends BoatMachineProvider
+  implements HostProvider
+{
+  constructor(
+    state: StateStore,
+    api: BoatApi,
+    private readonly transport: HostTransport,
+    machine: BoatMachineType = "small",
+    now = Date.now,
+    private readonly bootstrap?: { ensure(host: string): Promise<void> },
+  ) {
+    super(state, api, machine, now);
+  }
+  capabilities() {
+    return {
+      kind: "machine-host",
+      architecture: "x86_64",
+      rootlessPodman: true,
+      maxLifetimeMs: HOST_LIFECYCLE_LIMITS.maxLifetimeMs,
+      features: {
+        evidence: "adapter-declaration",
+        runtimes: ["podman", "gvisor"],
+        networkModes: ["none", "egress", "public-egress"],
+        storageModes: ["default", "fuse-overlayfs"],
+        nativeIdleModes: [],
+        hostStreams: true,
+        portableMemoryRuntimes: ["gvisor"],
+      },
+    } as const;
+  }
+  override async inspect(id: string): Promise<HostObservation> {
+    const machine = await super.inspect(id);
+    if (machine.state !== "ready") return machine;
+    try {
+      await this.bootstrap?.ensure(id);
+      const response = await this.transport.request(id, {
+        version: HOST_PROTOCOL_VERSION,
+        id: crypto.randomUUID(),
+        action: "status",
+        payload: null,
+      });
+      const result = response.result;
+      return result &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        result.ready === true &&
+        result.machineId === id
+        ? { state: "ready" }
+        : { state: "unknown" };
+    } catch (error) {
+      return {
+        state: "unknown",
+        ...(error instanceof HostTransportError && error.details
+          ? { diagnostic: error.details }
+          : {}),
+      };
+    }
   }
 }

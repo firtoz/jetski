@@ -658,3 +658,52 @@ test("explicit prepared hosts create no workloads, are consumed once and close w
   assert.equal(host.hosts.size, 0);
   assert.equal(host.retired, 2);
 });
+
+test("generated command intent survives a lost acknowledgement and controller reopen without replay", async (t) => {
+  const dataDirectory = await directory(t),
+    host = hostFixture();
+  const request = host.provider.transport.request.bind(host.provider.transport);
+  let lost = true;
+  host.provider.transport.request = async (...args) => {
+    const response = await request(...args);
+    if (args[1].action === "command-start" && lost) {
+      lost = false;
+      throw Error("lost command admission acknowledgement");
+    }
+    return response;
+  };
+  const options = {
+    provider: host.provider,
+    dataDirectory,
+    image,
+    waitTimeoutMs: 5000,
+  };
+  const first = await openJetski(options);
+  const sandbox = await first.create();
+  await assert.rejects(sandbox.startCommand(["echo", "hello"]));
+  const intents = await first.operationIntents();
+  const command = intents.intents.find((intent) => intent.kind === "exec");
+  assert.ok(command);
+  const summary = await first.resolvedConfiguration();
+  assert.equal(summary.dataDirectory, dataDirectory);
+  assert.equal(summary.state.kind, "sqlite");
+  assert.equal(JSON.stringify(summary).includes("token"), false);
+  await first.close(); // Saves retained output before retiring the fixture host.
+  const second = await openJetski(options);
+  try {
+    assert.deepEqual(await second.operationIntents(), intents);
+    const attached = await second.get(command.sandboxId);
+    assert.equal(
+      (await attached.command(command.operationId).wait()).stdout,
+      "Hello, world!\n",
+    );
+    assert.equal(
+      host.actions.filter((action) => action === "command-start").length,
+      1,
+    );
+    assert.equal(host.actions.includes("command-cancel"), false);
+    assert.equal(host.starts, 1, "observation never allocates a replacement");
+  } finally {
+    await second.close();
+  }
+});

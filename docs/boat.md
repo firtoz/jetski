@@ -1,99 +1,17 @@
-# Boat machine-host adapter
+# Run on Boat
 
-`@firtoz/jetski/providers/boat` exports `BoatApi` and `BoatHostProvider`. This adapter
-provisions owned machines and implements the core allocation/inspection/retirement
-contract. It uses the public HTTPS API with explicit credentials; it does not import
-a provider SDK into the core or SDK entry points.
+Boat supplies the physical machines; Jetski supplies owner-scoped sandboxes,
+commands, verified checkpoints and host reuse. Start with the
+[embedded hello-world example](../examples/02-hello-world-boat/).
 
-Allocation persists a random provider idempotency key and the complete request
-before network dispatch. A replay uses the same body, including the originally
-chosen machine type and TTL. Configuration changes do not change an admitted
-request. The supported machine types are `small`, `default`, and `large`, with
-`small` as the default. Pool policy defaults to one hour and permits opt-in leases
-up to24 hours. The eight-hour policy completed [live lifecycle qualification](host-lifecycle-benchmarks.md).
-Snapshots and provider
-monitoring are disabled, and no provider environment is inherited.
+## Choose configuration
 
-Creation retries stop at the requested expiry or23 hours after admission,
-whichever is earlier. The retry horizon is independent of a longer physical lease. An expired unknown
-allocation needs operator reconciliation; starting another operation is not a safe
-substitute. The provider documents a 24-hour idempotency retention window, so the
-adapter never intentionally retries beyond that window. A known completed
-allocation retains its original host identity even after retirement.
+Embedded Node accepts `provider: { kind: "boat", token }`. Supported machine types
+are `small` (default), `default` and `large`. The provider block also accepts fixed
+runtime/network/storage/init policy and opt-in verified binary archive reads.
+Keep the API token private and the workload image digest approved.
 
-Inspection checks provider state and the injected host transport's protocol status.
-An API-ready VM is not admitted as ready until the installed host-control agent
-reports the expected machine identity and readiness. The transport/bootstrap layer
-must install and qualify the rootless runtime and keep its credentials outside the
-workload. The standalone Boat configuration wires automatic bootstrap and this transport.
-Direct embedded callers inject `BoatBootstrap` as the provider bootstrap hook.
-
-Retirement only accepts an allocation found in this controller's persisted ownership
-journal and the exact allocation ID. Deletion sends the provider's confirmation
-header and observes resource absence before recording retirement. An accepted or
-uncertain deletion remains pending and is reconciled under the same identity.
-Unknown machines are never adopted or deleted implicitly.
-
-The HTTP client rejects redirects, caps responses at 1 MiB, and applies a 30-second
-deadline. Failed responses do not echo provider bodies. API credentials should be
-scoped to the intended account and resource permissions; changing accounts requires
-separate controller state.
-
-## Idle pricing
-
-`@firtoz/jetski/providers/boat-pricing` exports an optional controller-only price source.
-It uses the read-only limits endpoint, scales the default hourly rate for the
-selected machine size and preserves a zero next-start fee. A blocked start is not
-converted into an invented monetary quote. Only validated micro-dollar values
-enter the core; wallet/account response data does not enter the quote or workload.
-The core caches refreshes durably, fences old completions and falls back on error.
-
-## Evidence and limitations
-
-Tests use an injected HTTP fixture plus real SQLite reopen. They cover committed
-creation acknowledgement loss, frozen request replay, expiry, owner fencing,
-readiness attestation, pending deletion and terminal replay. Live provisioning, rootless runtime, physical replacement and owned cleanup are
-separately qualified in [the hosted evidence](qualification.md). Measured costs
-and latency are in [the lifecycle comparison](host-lifecycle-benchmarks.md); HTTP
-fixtures alone do not establish those results. New hosted experiments require
-an explicitly approved allowance.
-
-Provider contracts were checked against the official
-[API overview](https://docs.boat.dev/api/v1),
-[creation reference](https://docs.boat.dev/api/reference/sandboxes/create-sandbox),
-and [deletion lifecycle](https://docs.boat.dev/data-retention).
-
-## Host-control transport
-
-`@firtoz/jetski/transport/boat` exposes `BoatTransport(state, api)`. It accepts only hosts
-in the allocation journal, invokes the fixed installed Python control program, and
-requires an exact protocol/version/request-ID response. Provider command errors,
-truncation, timeout, cancellation and response mismatch are uncertain outcomes;
-the transport never retries workload effects automatically.
-
-Requests up to 48 KiB use a base64-encoded pipe to the control program. Larger
-requests (up to 1 MiB) use a newly created mode-0700 temporary directory and the
-provider file API, avoiding Linux's per-argument size limit. Before dispatch the
-host verifies the input length and SHA-256. Cleanup checks directory ownership,
-mode, symlink refusal and exact expected contents; it never recursively deletes.
-An uncertain cleanup reports failure so the caller must inspect before reuse.
-
-Command responses allow an 8 MiB JSON envelope while enforcing the protocol's
-2 MiB stdout and 64 KiB diagnostic bounds. Command deadlines are configurable from
-1 to 600 seconds; the HTTP deadline also allows the provider's startup wait.
-The host scripts have disposable Linux execution coverage. The corrected fixture
-runs provider commands as a non-root guest, matching Boat, with `sudo -n` only for
-the fixed privileged control program. Fresh bootstrap qualification is in CI;
-live-provider recovery is recorded in [the hosted evidence](qualification.md).
-
-Wire schemas: [execute command](https://docs.boat.dev/api/reference/agent/execute-sandbox-command)
-and [write file](https://docs.boat.dev/api/reference/agent/write-sandbox-file).
-
-
-## Automatic owned-machine bootstrap
-
-`@firtoz/jetski/providers/boat-bootstrap` exports the Node-only `BoatBootstrap`. The
-standalone host factory selects it only for a Boat configuration:
+The standalone equivalent is:
 
 ```json
 {
@@ -105,78 +23,50 @@ standalone host factory selects it only for a Boat configuration:
 }
 ```
 
-This replaces `hostProvider: { "kind": "ssh", "hosts": [...] }`; the other server
-fields (pool ID, approved images, storage and principals) remain required. The
-credential comes from that explicitly named controller environment variable.
-Creating demand may allocate a billable VM. Do not enable it without an allowance.
-`standaloneHosts` constructs adapters without allocating anything on its own.
+The complete server configuration still needs a pool ID, approved images,
+principals and data directory. [Standalone setup](standalone.md).
+Demand can allocate billable hosts; opening an empty controller does not prewarm
+them. Bootstrap installs missing prerequisites on owned execution machines, not
+on your desktop. A provider-ready VM must pass host/runtime identity attestation
+before workload placement.
 
-Bootstrap secures the stock image’s guest-owned `/opt` parent before the first
-installation on an owned Boat machine. It refuses symlinks and refuses this repair
-if a Jetski installation/configuration/assignment already exists; adopted SSH hosts
-remain operator-prepared. It then uploads ordinary Python source modules through
-the bounded private file channel. The installer runs with passwordless sudo on the owned VM,
-never on the controller. Missing Podman/uidmap/network/filesystem/user-session
-prerequisites are installed from the host's configured apt repositories; unrelated
-packages are not upgraded. The installation still checks supported architecture,
-namespaces, cgroups, subordinate IDs, runtime and immutable image policy.
+## Reuse and retire
 
-The controller journals the exact code, installer and policy digests before
-installation. A root-owned host lock and fsynced receipt bind the installed code
-and configuration. Retrying after an uncertain response checks the same receipt,
-installed bytes and readiness. Conflicting policy/code, a foreign existing
-configuration, unsafe paths, or an unreceipted active assignment fail closed.
-Completed controller receipts avoid reinstalling on every readiness poll. A new
-package revision requires explicit replacement, not an implicit upgrade of warm
-assigned machines. Reconciliation exposes failure as unknown readiness and keeps
-work queued. Diagnostics are bounded and provider credentials never enter bundles.
+Default leases are one hour with ten-minute idle retention and zero minimum warm
+capacity. Explicit lifecycle policy supports longer bounded leases up to the
+provider's declared 24-hour maximum. Keep a controller alive to reuse released
+hosts; `runSandbox()` closes it after one command. Adaptive idle pricing is an
+optional decision aid, not an account spending guarantee. [Cost model](costs.md).
 
-Boat documents its non-root guest and passwordless sudo in
-[the machine reference](https://docs.boat.dev/machines). Earlier disposable tests
-ran the command envelope as root and did not qualify that privilege boundary;
-the corrected fixture explicitly rejects a root provider-command process.
+Allocation journals freeze the provider idempotency key, machine request and TTL
+before dispatch. A lost acknowledgement is observed under the same identity;
+configuration changes cannot alter admitted input. Replay ends at expiry or
+23 hours after admission, whichever is earlier. Unknown expired allocations
+require reconciliation, not replacement IDs.
 
-## Interactive stream transport
+Only positively owned allocations can retire. Deletion must be followed by
+observed provider absence; an accepted/uncertain response remains pending. No
+foreign machine is adopted or deleted implicitly. Saves must publish and verify
+before assignment release; uncertain sources stay retained.
 
-`@firtoz/jetski/transport/boat-stream` supplies `BoatStreamTransport`, automatically selected
-by the standalone Boat factory. It registers a per-machine Ed25519 public key with
-the authenticated Boat API and pins the returned SSH host key in transactional
-controller state. Private keys stay in that state, outside workloads and public
-receipts; protect the state database as a credential store. Lost registration
-responses reuse the same key. Changed host keys require explicit reconciliation.
+## Platform integration
 
-Only unexpired, owned allocations matching the lease owner may connect. SSH runs
-the fixed privileged host-control entry point as Boat's `user`; it does not expose
-an outer-host shell through the sandbox API. Workload access still requires the
-normal generation-fenced stream reservation. Connections have bounded admission,
-framing and lifetime, and are never automatically replayed after interruption.
-The adapter accepts Boat's IPv4 forwarding endpoint or direct IPv4/IPv6 address.
-Provider registration currently runs per connection; measured latency and
-qualified compatibility are scoped to [the recorded hosted runs](qualification.md).
+Use [generic Boat composition](embedded-platforms.md#reusable-composition) to inject
+state, assets, streams, pricing and runtime policy. Dedicated full-VM callers can
+use the [host-only seam](embedded-platforms.md#dedicated-machine-lifecycle) without
+claiming a sandbox runtime is ready. See [release availability](compatibility.md).
 
-Wire contract: [Boat's versioned OpenAPI](https://docs.boat.dev/openapi/boat-v1.yaml),
-`POST /sandboxes/{sandboxId}/sshkey`.
+Advanced exports include `/providers/boat`, `/transport/boat`,
+`/providers/boat-bootstrap`, `/providers/boat-bootstrap-embedded` and
+`/transport/boat-stream`. Embedded streams require a qualified Node-compatible
+SSH transport; credentials stay outside workloads and host keys are pinned.
+Operator machinery and the [host protocol](../maintainer/runtime.md) remain separate
+from the shared application API.
 
-## Bounded live recovery qualification
+The API wrapper uses explicit credentials, HTTPS, bounded responses and deadlines,
+without redirect or automatic workload retries. A transport timeout never confirms
+cancellation. Changing accounts requires a separate bound controller namespace.
 
-`examples/qualify-live-boat.ts prepare PRIVATE_DIRECTORY CONFIG_JSON` writes a
-fresh resumable plan without contacting Boat. The config has `image` (approved
-OCI digest), `hosts` (the Boat host-provider configuration above), and `storage`
-(the standalone local/S3 configuration). The directory must not already exist;
-its parent must be private. Credentials remain environment references.
-
-After obtaining a separate paid-host allowance, run the same directory with
-`JETSKI_PAID_QUALIFICATION_APPROVED=1` and `qualify-live-boat.ts run PRIVATE_DIRECTORY`.
-The runner admits at most two allocation identities and uses normal one-hour host
-lifetimes. It checks a random binary and file/mode/link fixture, warm same-host
-resume, a changed save, and recovery after the source host is confirmed retired.
-It waits the real ten-minute idle retention for each retirement; no clocks are
-advanced. Expect more than twenty minutes plus provisioning and transfers.
-
-On interruption, preserve the directory and resume it, rather than creating a new
-plan. Stable command IDs observe uncertain work without blindly rerunning it.
-Failures retain checkpoints and diagnostics; host lifetimes remain bounded. On
-success it verifies retirement of both owned machines and removes only objects in
-its random fixture scope. The private result and step journal distinguish actual
-execution evidence from merely preparing the runner. This is a recovery test,
-not the full matched performance benchmark or release acceptance matrix.
+[Provider capabilities](embedded-platforms.md#capabilities) ·
+[Networking](networking.md) · [Recovery](failure-recovery.md) ·
+[Scoped provider evidence](../maintainer/benchmarks/providers.md).

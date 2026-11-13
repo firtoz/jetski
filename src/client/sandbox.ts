@@ -4,12 +4,19 @@ import {
   OUTPUT_CHUNK,
   OUTPUT_LIMIT,
 } from "../core/command-output.js";
+import type { StateStore } from "../core/contracts.js";
+import { identifier, type Json } from "../core/contracts.js";
 import type { Sandbox } from "../core/manager.js";
 import type { PortableMemoryOptions } from "../core/memory-contracts.js";
+import type { TerminalGeometry } from "../core/terminal-input.js";
+import { TerminalInputNotFound } from "../core/terminal-input.js";
 import { MAX_FILE_UPLOAD_BYTES } from "../core/uploads.js";
 import type { JetskiClient } from "../sdk.js";
+import { JetskiHttpError } from "./errors.js";
+import { TerminalAttachment } from "./terminal.js";
 import {
   OPERATION_WAIT_LIMITS,
+  OperationOutcomeError,
   observationDelay,
   observeOperation,
 } from "./wait.js";
@@ -68,7 +75,10 @@ export type SandboxOperation = Readonly<{
     | "delete"
     | "expose"
     | "revoke"
-    | "pin";
+    | "pin"
+    | "terminal"
+    | "preview"
+    | "revoke-preview";
   sandboxId: string;
   operationId: string;
 }>;
@@ -139,17 +149,46 @@ async function completedOperation(
   operation: SandboxOperation,
   signal: AbortSignal,
 ) {
-  while (true) {
-    signal.throwIfAborted();
-    const result = await client.operation(
+  try {
+    await observeOperation(
       operation.sandboxId,
       operation.operationId,
+      () => client.operation(operation.sandboxId, operation.operationId),
+      { signal },
     );
-    if (result.phase === "succeeded") return;
-    if (result.phase !== "queued" && result.phase !== "running")
-      throw Error(`Operation is ${result.phase}`);
-    await observationDelay(signal);
+  } catch (cause) {
+    if (
+      cause instanceof OperationOutcomeError &&
+      ["checkpoint", "stop", "suspend", "delete"].includes(operation.kind)
+    ) {
+      let sandbox: Sandbox | undefined;
+      try {
+        sandbox = await client.getSandbox(operation.sandboxId);
+      } catch {}
+      if (sandbox?.phase === "quarantined")
+        throw new QuarantinedSaveError(cause.operation, sandbox);
+    }
+    throw cause;
   }
+}
+/** Await durable identity persistence before dispatch, bounded by observation. */
+export async function recordOperation(
+  options: SessionOptions,
+  operation: SandboxOperation,
+  signal: AbortSignal,
+) {
+  signal.throwIfAborted();
+  const before = options.onOperation?.(Object.freeze({ ...operation }));
+  if (before)
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      signal.addEventListener("abort", abort, { once: true });
+      Promise.resolve(before)
+        .then(resolve, reject)
+        .finally(() => signal.removeEventListener("abort", abort));
+      if (signal.aborted) abort();
+    });
+  signal.throwIfAborted();
 }
 async function output(
   client: SandboxApi,
@@ -336,6 +375,7 @@ export class SandboxSession {
       return result;
     });
   }
+  /** Publish files and stop execution. Retains assignment unless releaseHost is true. */
   async checkpoint(options: OperationOptions & { releaseHost?: boolean } = {}) {
     const operation = {
       kind: "checkpoint",
@@ -397,6 +437,7 @@ export class SandboxSession {
     });
     return this;
   }
+  /** Restore filesystem state, not process memory. */
   async resume(options: OperationOptions & { checkpointId?: string } = {}) {
     const operation = {
       kind: "resume",
@@ -463,6 +504,7 @@ export class SandboxSession {
       await completedOperation(client, operation, signal);
     });
   }
+  /** Explicit deletion workflow; does not bypass pins or the GC grace period. */
   async delete(options: OperationOptions = {}) {
     const operation = {
       kind: "delete",
@@ -548,19 +590,7 @@ export class SandboxSession {
       operation ??= await (
         input as (client: SandboxApi) => Promise<SandboxOperation>
       )(client);
-      const before = this.options.onOperation?.(
-        Object.freeze({ ...operation }),
-      );
-      if (before)
-        await new Promise<void>((resolve, reject) => {
-          const abort = () => reject(signal.reason);
-          signal.addEventListener("abort", abort, { once: true });
-          Promise.resolve(before)
-            .then(resolve, reject)
-            .finally(() => signal.removeEventListener("abort", abort));
-          if (signal.aborted) abort();
-        });
-      signal.throwIfAborted();
+      await recordOperation(this.options, operation, signal);
       return await execute(client, signal, operation);
     } catch (cause) {
       if (!operation) throw cause;
@@ -583,17 +613,18 @@ export class SandboxSession {
         throw Error("Sandbox is not running");
     });
   }
-  async exec(
+  /** Admit once and return an identity; does not wait for command completion. */
+  async startCommand(
     argv: string[],
     options: ExecOptions = {},
-  ): Promise<CommandResult> {
-    const id = options.id ?? crypto.randomUUID();
+  ): Promise<CommandHandle> {
+    const id = identifier(options.id ?? crypto.randomUUID());
     const operation = {
       kind: "exec",
       sandboxId: this.id,
       operationId: id,
     } as const;
-    return this.run(operation, options, async (client, signal) => {
+    return this.run(operation, options, async (client) => {
       await client.startCommand(
         this.id,
         id,
@@ -601,37 +632,107 @@ export class SandboxSession {
         options.cwd ?? "/workspace",
         options.timeoutSeconds ?? 120,
       );
-      let status: Record<string, unknown>;
-      while (true) {
-        signal.throwIfAborted();
-        status = record(await client.commandStatus(this.id, id));
-        if (status.phase === "succeeded" || status.phase === "failed") break;
-        if (status.phase !== "running" && status.phase !== "queued")
-          throw Error(`Command is ${status.phase}`);
-        await observationDelay(signal);
-      }
-      if (!Number.isSafeInteger(status.exitCode))
-        throw Error("Command has no confirmed exit code");
-      // Sequential channels share one deadline and bounded retained-output limits.
-      const stdoutBytes = await output(client, this.id, id, "stdout", signal);
-      const stderrBytes = await output(client, this.id, id, "stderr", signal);
-      const result: CommandResult = {
-        id,
-        exitCode: status.exitCode as number,
-        stdoutBytes,
-        stderrBytes,
-        get stdout() {
-          return new TextDecoder("utf-8", { fatal: true }).decode(stdoutBytes);
-        },
-        get stderr() {
-          return new TextDecoder("utf-8", { fatal: true }).decode(stderrBytes);
-        },
-      };
-      if (result.exitCode !== 0 && options.check !== false)
-        throw new JetskiCommandError(result);
-      return result;
+      return this.command(id);
     });
   }
+  /** Attach without dispatching, resuming or replaying the command. */
+  command(id: string): CommandHandle {
+    return new CommandHandle(
+      this.id,
+      identifier(id),
+      this.options,
+      this.clientFor,
+    );
+  }
+  async exec(
+    argv: string[],
+    options: ExecOptions = {},
+  ): Promise<CommandResult> {
+    // One deadline covers admission, status and both bounded output channels.
+    const signal = sessionDeadline(options, this.options);
+    const command = await this.startCommand(argv, { ...options, signal });
+    return command.wait({ ...options, signal });
+  }
+  runtimeCapabilities(options: OperationOptions = {}) {
+    return this.raw(options).runtimeCapabilities(this.id);
+  }
+  /** Start the existing PTY protocol; the ID is journaled before admission. */
+  async startTerminal(
+    argv: string[],
+    options: ExecOptions & { geometry?: TerminalGeometry } = {},
+  ) {
+    const id = identifier(options.id ?? crypto.randomUUID());
+    return this.run(
+      { kind: "terminal", sandboxId: this.id, operationId: id },
+      options,
+      async (client) => {
+        await client.startTerminal(
+          this.id,
+          id,
+          argv,
+          options.cwd ?? "/workspace",
+          options.timeoutSeconds ?? 120,
+          options.geometry,
+        );
+        return { id, sandboxId: this.id };
+      },
+    );
+  }
+  /** Reuse the durable input acknowledgement journal, with a caller-owned stable
+   * controller/owner binding. Persist attachment state across reconnects. */
+  attachTerminal(
+    state: StateStore,
+    attachmentId: string,
+    terminalId: string,
+    binding: string,
+  ) {
+    return TerminalAttachment.open(
+      state,
+      attachmentId,
+      { binding, sandbox: this.id, terminal: terminalId },
+      {
+        observe: async (id, signal) => {
+          const client = this.raw(signal ? { signal } : {});
+          try {
+            return await client.terminalInputStatus(this.id, terminalId, id);
+          } catch (error) {
+            if (
+              error instanceof TerminalInputNotFound ||
+              (error instanceof JetskiHttpError && error.status === 404)
+            )
+              return undefined;
+            throw error;
+          }
+        },
+        admit: (id, input, signal) =>
+          this.raw(signal ? { signal } : {}).terminalInput(
+            this.id,
+            terminalId,
+            id,
+            input,
+          ),
+      },
+    );
+  }
+  terminalOutput(
+    terminalId: string,
+    offset = 0,
+    options: OperationOptions = {},
+  ) {
+    return this.raw(options).terminalOutput(
+      this.id,
+      terminalId,
+      offset,
+      OUTPUT_CHUNK,
+    );
+  }
+  terminalStatus(terminalId: string, options: OperationOptions = {}) {
+    return this.raw(options).terminalStatus(this.id, terminalId);
+  }
+  closeTerminal(terminalId: string, options: OperationOptions = {}) {
+    return this.raw(options).closeTerminal(this.id, terminalId);
+  }
+  /** Verified filesystem publication and assignment release; may retain warm compute. */
   async stop(options: OperationOptions = {}): Promise<void> {
     let generation: number;
     await this.run(
@@ -682,5 +783,168 @@ export class JetskiCommandError extends Error {
   constructor(readonly result: CommandResult) {
     super(`Command exited with status ${result.exitCode}`);
     this.name = "JetskiCommandError";
+  }
+}
+
+/** A confirmed command outcome other than an ordinary exit (for example uncertainty).
+ * The original response is retained; this error never authorizes replay. */
+export class CommandOutcomeError extends Error {
+  constructor(
+    readonly sandboxId: string,
+    readonly commandId: string,
+    readonly outcome: Json,
+  ) {
+    super(
+      `Command ${commandId} has no confirmed normal exit; reconcile its existing identity`,
+    );
+    this.name = "CommandOutcomeError";
+  }
+}
+export type CommandOutputChunk = {
+  bytes: Uint8Array;
+  offset: number;
+  nextOffset: number;
+  terminal: boolean;
+};
+/** An existing command identity. Observations never admit execution. */
+export class CommandHandle {
+  constructor(
+    readonly sandboxId: string,
+    readonly id: string,
+    private readonly defaults: SessionOptions,
+    private readonly clientFor: (signal: AbortSignal) => SandboxApi,
+  ) {}
+  status(options: OperationOptions = {}) {
+    return this.clientFor(
+      sessionDeadline(options, this.defaults),
+    ).commandStatus(this.sandboxId, this.id);
+  }
+  /** Explicit remote cancellation request. Its acknowledgement is not a confirmed exit. */
+  cancel(options: OperationOptions = {}) {
+    return this.clientFor(
+      sessionDeadline(options, this.defaults),
+    ).cancelCommand(this.sandboxId, this.id);
+  }
+  /** Persist nextOffset only after consuming a chunk; pass it on reconnect.
+   * Each channel retains at most 16 MiB. Terminal means end of retained output. */
+  async *output(
+    channel: "stdout" | "stderr",
+    options: OperationOptions & { offset?: number } = {},
+  ): AsyncGenerator<CommandOutputChunk> {
+    let offset = options.offset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > OUTPUT_LIMIT)
+      throw Error("Invalid command output cursor");
+    const signal = sessionDeadline(options, this.defaults),
+      client = this.clientFor(signal);
+    while (true) {
+      signal.throwIfAborted();
+      const segment = record(
+        await client.commandOutput(
+          this.sandboxId,
+          this.id,
+          channel,
+          offset,
+          OUTPUT_CHUNK,
+        ),
+      );
+      signal.throwIfAborted();
+      if (
+        !segment ||
+        typeof segment.base64 !== "string" ||
+        typeof segment.terminal !== "boolean" ||
+        typeof segment.nextOffset !== "number" ||
+        !Number.isSafeInteger(segment.nextOffset)
+      )
+        throw Error("Invalid command output segment");
+      const bytes = decodeBase64(segment.base64);
+      if (
+        segment.nextOffset !== offset + bytes.length ||
+        segment.nextOffset > OUTPUT_LIMIT
+      )
+        throw Error("Command output cursor mismatch");
+      if (bytes.length || segment.terminal) {
+        yield {
+          bytes,
+          offset,
+          nextOffset: segment.nextOffset,
+          terminal: segment.terminal,
+        };
+        offset = segment.nextOffset;
+      }
+      if (segment.terminal) return;
+      if (!bytes.length) await observationDelay(signal);
+    }
+  }
+  async wait(
+    options: Omit<ExecOptions, "id" | "cwd" | "timeoutSeconds"> = {},
+  ): Promise<CommandResult> {
+    const operation = {
+      kind: "exec",
+      sandboxId: this.sandboxId,
+      operationId: this.id,
+    } as const;
+    try {
+      const signal = sessionDeadline(options, this.defaults),
+        client = this.clientFor(signal);
+      let status: Record<string, unknown>;
+      let outcome: Json;
+      while (true) {
+        signal.throwIfAborted();
+        outcome = await client.commandStatus(this.sandboxId, this.id);
+        status = record(outcome);
+        if (status.phase === "succeeded" || status.phase === "failed") break;
+        if (status.phase !== "running" && status.phase !== "queued")
+          throw new CommandOutcomeError(this.sandboxId, this.id, outcome);
+        await observationDelay(signal);
+      }
+      if (
+        typeof status.exitCode !== "number" ||
+        !Number.isSafeInteger(status.exitCode)
+      )
+        throw new CommandOutcomeError(this.sandboxId, this.id, outcome);
+      const stdoutBytes = await output(
+        client,
+        this.sandboxId,
+        this.id,
+        "stdout",
+        signal,
+      );
+      const stderrBytes = await output(
+        client,
+        this.sandboxId,
+        this.id,
+        "stderr",
+        signal,
+      );
+      const result: CommandResult = {
+        id: this.id,
+        exitCode: status.exitCode,
+        stdoutBytes,
+        stderrBytes,
+        get stdout() {
+          return new TextDecoder("utf-8", { fatal: true }).decode(stdoutBytes);
+        },
+        get stderr() {
+          return new TextDecoder("utf-8", { fatal: true }).decode(stderrBytes);
+        },
+      };
+      if (result.exitCode !== 0 && options.check !== false)
+        throw new JetskiCommandError(result);
+      return result;
+    } catch (cause) {
+      throw new JetskiOperationError(operation, cause);
+    }
+  }
+}
+
+/** Confirmed controller quarantine, retaining the source after a failed/uncertain save. */
+export class QuarantinedSaveError extends OperationOutcomeError {
+  readonly code = "quarantined-save";
+  constructor(
+    operation: import("../core/contracts.js").Operation,
+    readonly sandbox: Sandbox,
+  ) {
+    super(operation);
+    this.name = "QuarantinedSaveError";
   }
 }

@@ -8,12 +8,20 @@ const jetski = new Jetski({
 
 const sandbox = await jetski.create({ image: env("JETSKI_IMAGE") });
 
+const failures: unknown[] = [];
 try {
   const result = await sandbox.exec(["echo", "Hello, world!"]);
   process.stdout.write(result.stdout);
-} finally {
-  await sandbox.stop();
+} catch (error) {
+  failures.push(error);
 }
+try {
+  await sandbox.stop();
+} catch (error) {
+  failures.push(error);
+}
+if (failures.length)
+  throw new AggregateError(failures, "Work or verified cleanup failed");
 
 function env(name: string): string {
   const value = process.env[name];

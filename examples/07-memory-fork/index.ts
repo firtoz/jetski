@@ -123,8 +123,21 @@ const gateway = await openDesktopGateway(
 );
 let recording: Awaited<ReturnType<typeof recordDashboard>> | undefined;
 const accesses: Array<{ close(): Promise<void> }> = [];
+const failures: unknown[] = [];
+async function collect(
+  action: () => unknown | Promise<unknown>,
+): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    failures.push(error);
+  }
+}
 const deadline = setTimeout(() => {
-  void gateway.close().finally(() => jetski.close());
+  void (async () => {
+    await collect(() => gateway.close());
+    await collect(() => jetski.close());
+  })();
 }, 55 * 60000);
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const emit = async (
@@ -446,31 +459,46 @@ try {
   }
   succeeded = true;
 } catch (error) {
-  await log("failure.jsonl", {
-    at: new Date().toISOString(),
-    message: error instanceof Error ? error.message : "Unknown demo failure",
-  });
-  await timeline.publish({
-    panel: "source",
-    phase: "failed",
-    message: "Run stopped; failure and operation IDs preserved",
-  });
+  failures.push(error);
+  await collect(() =>
+    log("failure.jsonl", {
+      at: new Date().toISOString(),
+      message: error instanceof Error ? error.message : "Unknown demo failure",
+    }),
+  );
+  await collect(() =>
+    timeline.publish({
+      panel: "source",
+      phase: "failed",
+      message: "Run stopped; failure and operation IDs preserved",
+    }),
+  );
   if (recording) {
-    await recording
-      .stop(resolve(directory, "failed-run.mp4"))
-      .catch(() => recording?.abort());
+    const activeRecording = recording;
+    try {
+      await activeRecording.stop(resolve(directory, "failed-run.mp4"));
+    } catch (error) {
+      failures.push(error);
+      await collect(() => activeRecording.abort());
+    }
     recording = undefined;
   }
-  throw error;
 } finally {
   clearTimeout(deadline);
-  await Promise.allSettled(accesses.map((access) => access.close()));
-  await gateway.close();
+  for (const access of accesses) await collect(() => access.close());
+  await collect(() => gateway.close());
   // Core shutdown publishes acknowledged data first; uncertainty retains its source.
-  await jetski.close();
-  await timeline.close();
-  await log("closed.jsonl", { at: new Date().toISOString(), succeeded });
+  await collect(() => jetski.close());
+  await collect(() => timeline.close());
+  await collect(() =>
+    log("closed.jsonl", {
+      at: new Date().toISOString(),
+      succeeded: succeeded && failures.length === 0,
+    }),
+  );
 }
+if (failures.length)
+  throw new AggregateError(failures, "Demo work or verified cleanup failed");
 
 function required(name: string) {
   const value = process.env[name];

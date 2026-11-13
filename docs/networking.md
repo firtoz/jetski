@@ -7,7 +7,7 @@ host networking or change the namespace/filter configuration.
 | --------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `none`          | Podman, gVisor                    | Default; no outbound internet                                                                              |
 | `egress`        | Podman                            | Legacy slirp path; host-loopback mapping disabled, private networks are not generally blocked              |
-| `public-egress` | Python host with Podman or gVisor | Experimental IPv4 internet with a shared, fail-closed destination filter; hosted qualification in progress |
+| `public-egress` | Python host with Podman or gVisor | Experimental IPv4 internet with a shared, fail-closed destination filter; scoped hosted evidence available |
 
 Select the profile when composing a host bootstrap. It is fixed for that host;
 changing policy requires a replacement, not a change to a running assignment.
@@ -34,7 +34,7 @@ unchanged.
 
 A trusted namespace adapter owns a small, from-scratch keeper with no workload
 image, persistent workload mounts or provider credentials. Pasta supplies IPv4
-translation; nftables filters packets at the namespace interface. Both workload
+translation; a verified nftables or tc/BPF filter enforces destination policy at the namespace interface. Both workload
 runtimes use that same path. gVisor runs the workload in its application kernel;
 using Podman to own the network helper does not run the workload outside gVisor.
 

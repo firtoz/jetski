@@ -1,130 +1,64 @@
-# Portable process-memory checkpoint design
+# Save and restore process memory
 
-Opt-in portable process recovery is implemented and qualified on compatible Boat
-hosts with R2. The [finite comparison](portable-memory-benchmarks.md) records all
-thirty local samples, eighteen hosted cycles, both physical replacements and the
-limits of that evidence. Podman stays default.
+Use portable gVisor checkpoints when restarting an application from files would
+lose valuable process state or repeat expensive initialization. They publish RAM
+and its exact filesystem checkpoint into durable storage, allowing compatible
+replacement hosts to continue the process. Podman remains the default;
+[configure compatible gVisor hosts](gvisor-runtime.md) first.
 
-## Independent boundaries
+## Publish a recovery point
 
-Native gVisor creates ordinary image files while the workload is stopped. The
-host adapter turns them into bounded immutable chunks; a codec independently
-encodes each chunk. The storage interface owns transport and durable object
-verification. The core owns publication, retained references, fencing and placement.
-No object-store credentials enter the workload and no store-specific API enters
-portable core code. Memory images contain application secrets and remain private.
+Resolve commands, uploads and interactive streams, then request explicit portable
+capture on a compatible assigned sandbox:
 
-The version-one portable manifest declares:
+```ts
+const checkpoint = await sandbox.suspend({
+  portable: { codec: "gzip", chunkBytes: 1048576, reuse: true },
+});
+await sandbox.pin(checkpoint.id, "application-state");
+await sandbox.resumeMemory();
+```
 
-- Owner/sandbox, stable checkpoint identity and generation.
-- The exact verified filesystem archive SHA-256.
-- Runtime archive, host ABI, approved OCI image, logical configuration, platform,
-  required kernel and explicit exposed CPU feature baseline.
-- Sorted relative file/directory paths, whole-file lengths and hashes.
-- Complete ordered chunk extents: decoded length/hash, codec and immutable stored
-  object length/hash/address. Both stored and decoded bytes are checked.
+`gzip` with reuse suits compressible memory with small changes; identity encoding
+can avoid compression work for other data. Reuse reduces transfer but capture and
+verification still cover complete native image files. Each recovery point has a
+complete manifest rather than an unbounded chain of historical patches.
 
-A manifest has bounded entries, extents and expansion. It contains no base-root
-pointer or executable patches. Incremental saves reuse immutable chunks and emit a
-complete new manifest, so reconstruction never follows an unbounded history chain.
-Content hashes index reuse; physical object IDs come from persisted upload attempts.
-A failed create-only upload can reserve its ID permanently, so retry must observe
-its outcome or journal a fresh ID, never overwrite or blindly retry the old name.
-Current codec implementations are identity and independently compressed gzip;
-codec implementations remain injectable and cannot authorize publication.
+Without `portable` options, `suspend()` seals a local memory image and retains its
+exclusive source host. That local image alone cannot survive physical source loss.
+Observe each stable operation to completion; unknown native effects retain their
+fence/source and must not be replayed.
 
-## One retained recovery point
+Explicit SDK calls are `suspend(sandboxId, operationId, portableOptions)` and
+`resumeMemory(sandboxId, operationId)`. CLI: `suspend ID --operation UUID
+--memory-codec gzip`, optionally `--memory-chunk-bytes N` or `--no-memory-reuse`,
+then observe before `resume-memory`.
 
-A `filesystem-memory` root wraps the existing filesystem metadata and appends all
-memory objects to the existing physical retained-reference graph. The registry
-checks every object before committing the root under the writer generation. A
-missing memory object prevents the combined recovery point from being acknowledged.
-Reader/writer/collector exclusion, pins and the minimum GC grace remain unchanged.
-Any chunk reused by a later retained root stays reachable after an earlier root
-retires. Checkpoint-copy APIs default to the filesystem projection into a new scope;
-they do not duplicate process identity or memory implicitly. Explicit
-`fromCheckpoint({sourceSandboxId, checkpointId, content: "memory"})` creates a
-stopped, same-owner copy of the complete disk/RAM graph. Object identities and
-publication metadata are rebound to the target under existing writer/reader
-fences; source objects remain unchanged. Call `resumeMemory()` separately on a
-compatible runtime. The [Chromium fork example](../examples/07-memory-fork/README.md)
-shows two fresh hosts continuing one JavaScript instance independently, with a
-recorded demonstration and its measured limits.
+## Create an independent copy
 
-The format parser establishes structural consistency, not execution authority.
-Restore must verify encoded objects, bounded decoded chunks, complete file hashes,
-filesystem equivalence and native compatibility before any instruction executes.
+`fromCheckpoint({ sourceSandboxId, checkpointId, content: "memory" })` copies a
+retained same-owner RAM/filesystem graph into a distinct stopped sandbox. Call
+`resumeMemory()` separately on the target. Source and target history remain
+independent. Ensure enough host capacity: a suspended source can retain its
+assignment. The [browser fork demo](../examples/07-memory-fork/) shows complete
+configuration and independent file/process state.
 
-## Portable policy and filesystem identity
+## Respect the recovery boundary
 
-The old local memory seal deliberately includes physical inode/lease identity.
-Keep that path unchanged. Portable compatibility compares logical policy:
-first verify physical rootfs, persistent mount and cgroup paths against trusted
-host configuration; then normalize only those paths, runtime state location and
-source lease annotations. Keep all remaining OCI resources, command, mount,
-capability and runtime flag policy in the digest. Host/runtime artifacts are
-separately pinned. Never normalize an unexpected path or erase isolation policy.
-CPU features must be an explicit nonempty sorted baseline actually exposed by
-runsc and supported on the target; the full source host feature list is not a
-portable contract.
+Recovery requires compatible runtime archive, approved image, helper ABI,
+configuration, kernel and explicit CPU feature baseline. Every encoded/decoded
+object and reconstructed file must verify before native execution. Missing or
+corrupt memory is never executed. A known pre-effect filesystem fallback reports
+process-state loss; the convenience `resumeMemory()` rejects it as RAM continuation.
+Uncertain native effects remain quarantined. Ordinary `resume()` restores files
+and never claims memory continuity.
 
-Fresh filesystem inodes are expected on another host. The proposed proof reuses
-the verified archive import and records a new physical frozen-tree identity on the
-exclusive target assignment. Before native restore, recheck that identity and the
-matching retained filesystem root. This must not accept arbitrary new files against
-an old seal. Native open-file and deleted-open-file semantics need real qualification.
+External sockets are not portable process state: disconnect and reconnect them.
+Checkpointing does not make external side effects exactly once. RAM images can
+contain application secrets; protect objects, metadata and backups accordingly.
+Remote objects do not back up controller metadata. Preserve both and keep the
+approved base image available for replacement hosts.
 
-Publish and restore effects use persisted stable intents and generation fences.
-An unknown native effect is reconciled, not replayed. A known incompatible or
-unavailable memory image can use verified filesystem recovery only with explicit
-process-state loss. An uncertain original writer must not gain a competing target.
-Host capture/reconstruction and target import journals are implemented. Target
-import begins only after verified filesystem import with an explicit memory-required
-barrier; it closes the target fence. Every encoded chunk and reconstructed file is
-checked, including after ownership handoff. A durable `restoring` state precedes
-native execution. An uncertain effect is observed and quarantined, never replayed;
-only known pre-effect stages permit explicit filesystem fallback. The core, SDK, standalone server and CLI use these same journals and guards.
-
-## Experimental API integration
-
-A supported assigned gVisor host advertises `portableMemoryVersion: 1`.
-`client.suspend(sandboxId, operationId, {codec: "gzip", chunkBytes: 1048576,
-reuse: true})` requests remote memory publication alongside the matching filesystem.
-Omitting the third argument preserves same-host memory suspension. Embedded callers
-supply trusted bounded codecs through `ManagerOptions.memoryCodecs`; the standalone
-service includes identity and gzip. Gzip is available from `@firtoz/jetski/storage/memory-codecs`.
-The CLI accepts `suspend ID --operation UUID --memory-codec gzip`, with optional
-`--memory-chunk-bytes N` and `--no-memory-reuse`.
-
-Observe the saved operation before using `resume-memory`. A local compatible image
-remains the warm path. When that source is definitively unavailable or safely
-released, a portable root can reconstruct memory on a compatible replacement.
-Inspect `memoryPreserved` and `fallbackReason`; filesystem-only fallback explicitly
-reports process-state loss. Unknown native effects retain their reader and target
-quarantine for observation. Both compressed-full and incremental physical R2
-recoveries passed, with the first pre-effect parent-policy failure and its guarded
-repair retained in the report. The second replacement used the automatic fix.
-
-The optional Boat binary archive bindings also transfer memory through scoped
-outer-host files. Exports are read-only links; imports are bounded disposable
-parts checked by the same durable object journal. Range reads skip reused chunks.
-Other transports retain bounded control transfers. Transfer links and upload files
-never grant execution authority or enter workload mounts. Diagnostics optionally
-separate source verification, encoding, reconstruction, target verification and
-native restore; timings are observations, not publication receipts.
-
-
-## Durability boundary and practical defaults
-
-The object store holds immutable file/memory chunks; transactional state holds the
-complete retained manifests, operation outcomes and leases. Preserve both. R2
-protects against execution-host loss; it does not replace control-plane metadata
-backups. Local storage also depends on its control-plane disk.
-
-For compressible, lightly changed memory, gzip with reuse reduced median durable
-save time by about 82% in the qualified fixture. Entropy that changes completely
-still needed roughly 64 MiB per save. Choose identity for that tradeoff if desired;
-no universally fastest mode or default client cutover is implied. Incremental
-transfer reuses chunks but still captures and verifies complete native image files.
-Use the [measurements](portable-memory-benchmarks.md) rather than synthetic codec
-ratios to estimate remote save latency.
+[Measured tradeoffs and recovery limits](../maintainer/benchmarks/memory.md) ·
+[Recovery guide](failure-recovery.md) ·
+[Format/authority internals](../maintainer/memory-format.md).

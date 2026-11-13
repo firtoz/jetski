@@ -6,6 +6,7 @@ import {
   type StateStore,
   type Transaction,
 } from "./contracts.js";
+import { JetskiContractError } from "./failures.js";
 import {
   decideIdleRetention,
   HOST_LIFECYCLE_LIMITS,
@@ -334,7 +335,7 @@ export class PoolJournal {
       ? tx.get<PoolSlot>(this.slotKey(machine.slot))
       : undefined;
     if (!slot || !slot.lease || canonical(slot.lease) !== canonical(lease))
-      throw new Error("Stale host lease");
+      throw new JetskiContractError("stale-generation", "Stale host lease");
     return slot;
   }
   /** Check in the same transaction that persists command admission. */

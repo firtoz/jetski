@@ -1,7 +1,7 @@
 # Native host contract audit
 
 Reference: Python host assets at `8bb303f`. Rust is experimental and selected only by explicit native transport/bootstrap
-configuration; Python remains the default. This is the implementation map; see the [hosted report](../docs/rust-host-benchmarks.md)
+configuration; Python remains the default. This is the implementation map; see the [hosted report](../maintainer/benchmarks/native-host.md)
 for the qualified paths and limits. Ordinary JSON control and binary interactive framing share the
 same authenticated host entrypoint; their timeouts must not be conflated.
 
@@ -64,8 +64,7 @@ than attributing every result to language overhead alone.
 
 The native supervisor command runner clears inherited environment, redirects bounded
 output to private temporary files, and launches its own small setsid/exec child
-mode followed by GNU timeout. The watchdog runs independently of the control session; this
-turn checks the real native helper's exit/output limits and timeout path, while
+mode followed by GNU timeout. The watchdog runs independently of the control session; local tests check the real native helper's exit/output limits and timeout path, while
 control-death uncertainty is covered by targeted local checks rather than a new hosted fault matrix. No daemon or
 Python trampoline is introduced. Private `__control` dispatch is selected explicitly
 by Boat/SSH transport configuration; default invocation refuses operation.

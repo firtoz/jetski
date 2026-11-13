@@ -1,4 +1,4 @@
-import type { NodeHostAdapters, NodeProvider } from "../node.js";
+import type { HostAdapters, HostFactory } from "../core/composition.js";
 import {
   BoxdControlChannel,
   BoxdStreamTransport,
@@ -19,7 +19,7 @@ export function boxdHostFactory(
     memory?: string;
     close?: () => void | Promise<void>;
   } & MachineRuntimeOptions,
-): NodeProvider {
+): HostFactory {
   const policy = machineRuntimeOptions(options);
   options = { ...options, ...policy };
   return {
@@ -32,7 +32,7 @@ export function boxdHostFactory(
       }),
     ),
     id: options.id,
-    create({ state, poolId, approvedImages }): NodeHostAdapters {
+    create({ state, poolId, approvedImages }): HostAdapters {
       let provider: BoxdHostProvider;
       const channel = new BoxdControlChannel(client, (host) =>
         provider.owned(host),

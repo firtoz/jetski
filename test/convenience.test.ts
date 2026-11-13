@@ -7,6 +7,7 @@ import {
   Jetski,
   JetskiCommandError,
   JetskiOperationError,
+  QuarantinedSaveError,
 } from "../src/sdk.js";
 
 function fixture(
@@ -17,6 +18,7 @@ function fixture(
     lostCreate?: boolean;
     lostStop?: boolean;
     nonzero?: boolean;
+    quarantinedSave?: boolean;
   } = {},
 ) {
   const calls: Array<{
@@ -47,7 +49,8 @@ function fixture(
         phase = body.sourceSandbox ? "stopped" : "running";
         if (options.lostCreate) throw Error("lost create acknowledgement");
       }
-      if (parts[3] === "stop") phase = "stopped";
+      if (parts[3] === "stop")
+        phase = options.quarantinedSave ? "quarantined" : "stopped";
       if (parts[3] === "resume") {
         generation++;
         phase = "running";
@@ -57,7 +60,11 @@ function fixture(
       return Response.json({ phase: "queued" });
     }
     if (parts[3] === "operations")
-      return Response.json({ id: parts[4], phase: "succeeded" });
+      return Response.json({
+        id: parts[4],
+        sandbox,
+        phase: phase === "quarantined" ? "uncertain" : "succeeded",
+      });
     if (parts.length === 3)
       return Response.json({
         id: sandbox,
@@ -238,4 +245,24 @@ test("HTTP facade copies into a distinct stopped sandbox and reports a lost copy
     },
   );
   assert.equal(lost.calls.length, 1);
+});
+
+test("failed save exposes confirmed quarantine and its existing operation identity", async () => {
+  const f = fixture({ quarantinedSave: true });
+  const sandbox = await f.client.create({ image: "image" });
+  await assert.rejects(
+    sandbox.stop(),
+    (error) =>
+      error instanceof JetskiOperationError &&
+      error.cause instanceof QuarantinedSaveError &&
+      error.cause.code === "quarantined-save" &&
+      error.cause.sandbox.phase === "quarantined" &&
+      error.cause.operation.phase === "uncertain",
+  );
+  assert.equal(
+    f.calls.filter(
+      (call) => call.path.endsWith("/stop") && call.method === "POST",
+    ).length,
+    1,
+  );
 });

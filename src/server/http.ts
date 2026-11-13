@@ -7,6 +7,7 @@ import {
 import type { ApiCapabilities } from "../core/capabilities.js";
 import { checkpointContent } from "../core/checkpoint-content.js";
 import { identifier } from "../core/contracts.js";
+import { JetskiContractError } from "../core/failures.js";
 import type { SandboxManager } from "../core/manager.js";
 import { portableMemoryOptions } from "../core/memory-contracts.js";
 import { missingPlacementRecovery } from "../core/placement-recovery.js";
@@ -759,6 +760,8 @@ export function createHttpServer(
           error instanceof StreamNotFound
         )
           send(response, 404, { error: "not_found" });
+        else if (error instanceof JetskiContractError)
+          send(response, 409, { error: error.code });
         else send(response, 400, { error: "request_failed" });
       } else response.destroy();
     }

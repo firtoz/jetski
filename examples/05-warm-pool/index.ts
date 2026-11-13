@@ -8,6 +8,7 @@ const jetski = await openJetski({
   // Default local storage puts checkpoints in ./.jetski/objects on this machine.
 });
 
+const failures: unknown[] = [];
 try {
   // Paid one-shot preparation, including the approved image. A long-running app
   // can do this before expected demand; it does not maintain a permanent pool.
@@ -21,9 +22,16 @@ try {
     process.stdout.write(result.stdout);
     await sandbox.stop();
   }
-} finally {
-  await jetski.close();
+} catch (error) {
+  failures.push(error);
 }
+try {
+  await jetski.close();
+} catch (error) {
+  failures.push(error);
+}
+if (failures.length)
+  throw new AggregateError(failures, "Work or verified cleanup failed");
 
 function env(name: string): string {
   const value = process.env[name];

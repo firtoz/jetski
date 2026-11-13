@@ -1,8 +1,8 @@
 # Experimental native host
 
-This opt-in backend completed its finite hosted qualification. Python remains
-the default: the [matched report](../docs/rust-host-benchmarks.md) found no consistent
-end-to-end speed win. The [completed goal](../docs/goals/rust-host.md) records scope.
+This guide is for maintainers selecting/building the optional native host. Python remains
+the default: the [matched report](../maintainer/benchmarks/native-host.md) found no consistent
+end-to-end speed win.
 
 Use the existing Rust toolchain to run `cargo test --manifest-path host-rust/Cargo.toml`.
 No host installation, runtime changes or cloud allocation are performed by this

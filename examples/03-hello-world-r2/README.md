@@ -1,15 +1,16 @@
-# Hello world with R2 checkpoints
+# Keep checkpoint objects in R2
 
-A self-contained embedded example. No standalone server or custom JSON config.
-Uses the released `@firtoz/jetski@0.2.1` package.
-Requires Node 24.22.1+ and an existing Boat account. Running it can incur host charges.
+The same one-command Boat example with remote checkpoint objects.
+Requires Node 24.22.1+, an existing Boat account and a digest-approved image.
+Uses the prebuilt `@firtoz/jetski@0.2.1` package; no separate service, root build or
+local container runtime is required. Allocated hosts can incur charges.
 
-From this folder (no root install or Jetski build required):
+Use an existing private bucket and scoped credentials. From this folder:
 
 ```sh
 npm install
-export BOAT_API_TOKEN=your-boat-token
-export JETSKI_IMAGE=your-approved-image@sha256:YOUR_DIGEST
+export BOAT_API_TOKEN=your-private-token
+export JETSKI_IMAGE=docker.io/library/alpine@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
 export R2_ENDPOINT=https://YOUR_ACCOUNT.r2.cloudflarestorage.com
 export R2_BUCKET=your-existing-private-bucket
 export R2_ACCESS_KEY_ID=your-scoped-access-key
@@ -18,33 +19,12 @@ npm run typecheck
 npm start
 ```
 
-The image must contain `echo` and satisfy the runtime's image contract. Boat
-bootstrap runs on allocated hosts, never on your laptop. Credentials stay in the
-controller, outside workloads. `.jetski/` holds SQLite metadata and recovery IDs;
-keep it private and retain it on failure. Each invocation creates new logical
-sandboxes intentionally. To continue existing work, use `jetski.get(id)`.
+Expected output: `Hello, world!`, after verified save/release/owned-host retirement.
+Only the storage block differs from [local Boat storage](../02-hello-world-boat/).
+R2 holds objects, while private `.jetski/` still holds SQLite, ownership and recovery
+metadata. Back up both. The prefix is further scoped by the persisted owner. A new
+provider/storage identity needs a separate controller directory.
 
-R2 stores checkpoint objects; SQLite and owner/configuration identity still live
-in `.jetski/`. Back up that metadata too. Use a private, existing bucket and scoped
-credentials. The prefix is scoped further by the controller's persisted owner.
-A different storage/provider configuration requires a different data directory.
-
-`runSandbox()` returns only after a durable save, assignment release and owned
-host retirement. It keeps the checkpoint and captured command output. For reuse
-across multiple sessions use [openJetski](../05-warm-pool/) instead.
-
-An uncertain save/cleanup rejects and retains its source and journals. Do not
-rerun blindly: inspect the recorded operation IDs and reopen the same controller
-state. A crash-stale lock requires the [recovery procedure](../../docs/standalone.md)
-after confirming no controller remains. See [the shared API](../../docs/simple-api.md)
-for observation timeouts, lifecycle boundaries and advanced operations.
-
-Storage location: [where data lives](../../docs/storage-locations.md). “Local”
-means the controller machine: this script for embedded examples, or the remote
-server for a server-backed client. Relative embedded data paths use the process
-working directory. Boat's live disk/cache is separate from the checkpoint store.
-
-The entry point is TypeScript (`index.ts`), run directly by Node 24.22.1+ without
-an extra runner. `npm run typecheck` checks it with strict TypeScript settings.
-The environment helper checks required values and returns a `string`, so no
-non-null assertions or casts are needed for credentials/configuration.
+A failure retains journals and uncertain source state; inspect original IDs rather
+than rerunning. R2 credentials never enter the workload.
+[Recovery](../../docs/failure-recovery.md) · [storage layout](../../docs/storage-locations.md).

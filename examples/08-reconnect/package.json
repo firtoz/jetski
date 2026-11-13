@@ -1,0 +1,16 @@
+{
+  "name": "jetski-example-reconnect",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.ts",
+    "typecheck": "tsc --noEmit --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes --module NodeNext --target ES2023 --types node --skipLibCheck index.ts"
+  },
+  "dependencies": {
+    "@firtoz/jetski": "0.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "~5.9.3"
+  }
+}

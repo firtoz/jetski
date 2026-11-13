@@ -1,59 +1,32 @@
-# Files and checkpoints
+# Restore saved files into a new sandbox
 
-A self-contained embedded example. No standalone server or custom JSON config.
-Uses the released `@firtoz/jetski@0.2.1` package.
-Requires Node 24.22.1+ and an existing Boat account. Running it can incur host charges.
+Write a file, publish/pin a checkpoint, create a distinct same-owner sandbox and
+verify its restored contents and different ID.
+Requires Node 24.22.1+, an existing Boat account and a digest-approved image.
+Uses the prebuilt `@firtoz/jetski@0.2.1` package; no separate service, root build or
+local container runtime is required. Allocated hosts can incur charges.
 
-From this folder (no root install or Jetski build required):
+From this folder:
 
 ```sh
 npm install
-export BOAT_API_TOKEN=your-boat-token
-export JETSKI_IMAGE=your-approved-image@sha256:YOUR_DIGEST
+export BOAT_API_TOKEN=your-private-token
+export JETSKI_IMAGE=docker.io/library/alpine@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
 npm run typecheck
 npm start
 ```
 
-The image must contain `echo` and satisfy the runtime's image contract. Boat
-bootstrap runs on allocated hosts, never on your laptop. Credentials stay in the
-controller, outside workloads. `.jetski/` holds SQLite metadata and recovery IDs;
-keep it private and retain it on failure. Each invocation creates new logical
-sandboxes intentionally. To continue existing work, use `jetski.get(id)`.
+`checkpoint({ releaseHost: true })` releases the original assignment before the
+copy resumes, so the default one-host limit is enough. The original stays stopped;
+the new sandbox owns an independent checkpoint and writable files. A warm machine
+may be reused: a distinct logical sandbox does not prove physical-host replacement.
 
-Local checkpoints live on this controller's disk, independently of Boat hosts.
-They survive execution-host replacement, but not loss of the controller disk.
-For remote objects see [the R2 example](../03-hello-world-r2/).
+This is filesystem recovery, not RAM continuation or cross-account import. Copy
+and resume retain separate operation IDs. `close()` saves/releases remaining work
+and retires released owned hosts; pinned history remains retained.
+[Lifecycle table](../../docs/simple-api.md#lifecycle).
 
-This example writes a file, publishes a checkpoint with `{ releaseHost: true }`,
-and pins that version. `jetski.fromCheckpoint(...)` creates a **different logical
-sandbox** with its own independently published filesystem checkpoint. It stays
-stopped until `restored.resume()`; the original remains stopped. The two printed
-sandbox IDs differ, and the restored file has the saved contents.
-
-Releasing the original assignment lets the new sandbox run even with the default
-one-host-per-owner limit. A healthy warm Boat may be reused: a new sandbox does
-not force a replacement VM. This is a filesystem copy/restore example, not a
-physical-host-failure or process/RAM recovery demonstration. The copy belongs to
-the same owner and controller/storage namespace; it is not a cross-account import.
-
-Plain `checkpoint()` stops execution but retains the assignment; `releaseHost: true`
-also releases it after durable publication. Copy and resume have distinct operation
-IDs, so an uncertain resume does not repeat the copy. The source is retained;
-this example does not delete checkpoint history. `close()` saves/releases any
-remaining assignment and retires released hosts.
-
-An uncertain save/cleanup rejects and retains its source and journals. Do not
-rerun blindly: inspect the recorded operation IDs and reopen the same controller
-state. A crash-stale lock requires the [recovery procedure](../../docs/standalone.md)
-after confirming no controller remains. See [the shared API](../../docs/simple-api.md)
-for observation timeouts, lifecycle boundaries and advanced operations.
-
-Storage location: [where data lives](../../docs/storage-locations.md). “Local”
-means the controller machine: this script for embedded examples, or the remote
-server for a server-backed client. Relative embedded data paths use the process
-working directory. Boat's live disk/cache is separate from the checkpoint store.
-
-The entry point is TypeScript (`index.ts`), run directly by Node 24.22.1+ without
-an extra runner. `npm run typecheck` checks it with strict TypeScript settings.
-The environment helper checks required values and returns a `string`, so no
-non-null assertions or casts are needed for credentials/configuration.
+Controller metadata/recovery IDs and local objects live in this folder's private
+`.jetski/`, separately from execution-host disk/cache. Back it up. Failed/uncertain
+cleanup retains source/journals: inspect original IDs rather than rerunning.
+[Recovery](../../docs/failure-recovery.md) · [storage layout](../../docs/storage-locations.md).

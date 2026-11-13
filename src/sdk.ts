@@ -1,8 +1,15 @@
+import { JetskiHttpError } from "./client/errors.js";
+import { JetskiOperationError } from "./client/sandbox.js";
+import { JETSKI_FAILURE_CODES } from "./core/failures.js";
+
+export { JetskiHttpError } from "./client/errors.js";
+
 import { readFileChunks, writeFileChunks } from "./client/files.js";
 import {
   type CreateOptions,
   type FromCheckpointOptions,
   type JetskiOptions,
+  recordOperation,
   SandboxSession,
   sandboxSession,
   sessionDeadline,
@@ -13,6 +20,9 @@ import {
 } from "./core/checkpoint-content.js";
 
 export {
+  CommandHandle,
+  CommandOutcomeError,
+  type CommandOutputChunk,
   type CommandResult,
   type CreateOptions,
   type ExecOptions,
@@ -21,6 +31,7 @@ export {
   JetskiOperationError,
   type JetskiOptions,
   type OperationOptions,
+  QuarantinedSaveError,
   type SandboxApi,
   type SandboxOperation,
   SandboxSession,
@@ -77,11 +88,6 @@ import {
   terminalGeometry,
 } from "./core/terminal-input.js";
 import type { UploadSpec, UploadStatus } from "./core/uploads.js";
-export class JetskiHttpError extends Error {
-  constructor(readonly status: number) {
-    super(`Jetski request failed (${status})`);
-  }
-}
 export class JetskiClient {
   private readonly base: URL;
   constructor(
@@ -286,8 +292,38 @@ export class JetskiClient {
     if (body !== undefined) options.body = JSON.stringify(body);
     const response = await this.transport(new URL(path, this.base), options);
     if (!response.ok) {
-      await response.body?.cancel();
-      throw new JetskiHttpError(response.status);
+      // Only read our bounded classification response; never expose diagnostics.
+      let code: import("./core/failures.js").JetskiFailureCode | undefined;
+      if (response.status === 409 && response.body) {
+        const reader = response.body.getReader();
+        try {
+          const chunks: Uint8Array[] = [];
+          let size = 0;
+          while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            size += chunk.value.length;
+            if (size > 256) throw Error("Error response bound");
+            chunks.push(chunk.value);
+          }
+          const bytes = new Uint8Array(size);
+          let offset = 0;
+          for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.length;
+          }
+          const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+          if (value && typeof value === "object" && "error" in value) {
+            code = JETSKI_FAILURE_CODES.find(
+              (candidate) => candidate === value.error,
+            );
+          }
+        } catch {
+        } finally {
+          await reader.cancel();
+        }
+      } else await response.body?.cancel();
+      throw new JetskiHttpError(response.status, code);
     }
     return (await response.json()) as T;
   }
@@ -722,6 +758,54 @@ export class Jetski {
             : signal,
         }),
     );
+  }
+  /** Create an authenticated scoped preview through an existing configured gateway.
+   * The returned URL/grant is a credential; never log it or infer it from a port. */
+  async preview(
+    sandboxId: string,
+    exposureId: string,
+    origin: string,
+    options: import("./client/sandbox.js").OperationOptions = {},
+  ) {
+    const operation = {
+      kind: "preview",
+      sandboxId,
+      operationId: options.operationId ?? crypto.randomUUID(),
+    } as const;
+    const signal = sessionDeadline(options, this.options);
+    try {
+      await recordOperation(this.options, operation, signal);
+      return await this.clientFor(signal).createPreviewGrant(
+        sandboxId,
+        exposureId,
+        origin,
+        operation.operationId,
+      );
+    } catch (cause) {
+      throw new JetskiOperationError(operation, cause);
+    }
+  }
+  async revokePreview(
+    sandboxId: string,
+    grantId: string,
+    options: import("./client/sandbox.js").OperationOptions = {},
+  ) {
+    const operation = {
+      kind: "revoke-preview",
+      sandboxId,
+      operationId: options.operationId ?? crypto.randomUUID(),
+    } as const;
+    const signal = sessionDeadline(options, this.options);
+    try {
+      await recordOperation(this.options, operation, signal);
+      return await this.clientFor(signal).revokePreviewGrant(
+        sandboxId,
+        grantId,
+        operation.operationId,
+      );
+    } catch (cause) {
+      throw new JetskiOperationError(operation, cause);
+    }
   }
   async get(
     id: string,

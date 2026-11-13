@@ -122,4 +122,4 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release already exists; inspect immutable assets rather than overwrite"; exit 1
           fi
-          gh release create "$TAG" release/* --verify-tag --title "Jetski $TAG" --notes-file docs/release-notes.md
+          gh release create "$TAG" release/* --verify-tag --title "Jetski $TAG" --notes-file maintainer/release-notes.md

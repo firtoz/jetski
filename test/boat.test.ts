@@ -292,3 +292,35 @@ test("only an ignored HTTP range is a capability fallback; server errors stay fa
     await source.close();
   }
 });
+
+test("host-only provider shares ownership journals but never claims runtime readiness", async (t) => {
+  const { BoatMachineProvider } = await import("../src/providers/boat.js");
+  const state = new SqliteState(":memory:");
+  t.after(() => state.close());
+  let calls = 0;
+  const api = new BoatApi("private", async () => {
+    calls++;
+    return Response.json({
+      ok: true,
+      sandbox: { id: "bx_owned", state: "ready" },
+    });
+  });
+  const machines = new BoatMachineProvider(state, api);
+  const input = {
+    owner: "owner",
+    operationId: "allocation",
+    expiresAt: Date.now() + 60000,
+  };
+  await machines.allocate(input);
+  assert.deepEqual(await machines.inspect("bx_owned"), { state: "ready" });
+  const before = calls;
+  await assert.rejects(machines.inspect("bx_foreign"), /not owned/);
+  assert.equal(calls, before);
+  assert.equal("capabilities" in machines, false);
+  const runtime = new BoatHostProvider(state, api, {
+    request: async () => {
+      throw Error("no attestation");
+    },
+  });
+  assert.deepEqual(await runtime.inspect("bx_owned"), { state: "unknown" });
+});

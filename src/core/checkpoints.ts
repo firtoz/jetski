@@ -13,6 +13,7 @@ import {
   scopeKey,
   type Transaction,
 } from "./contracts.js";
+import { JetskiContractError } from "./failures.js";
 import {
   inventoryObjects,
   type ObjectObservation,
@@ -204,8 +205,12 @@ export class CheckpointRegistry {
   }
   private load(tx: Transaction, fence: Fence): Registry {
     const state = tx.get<Registry>(this.key(fence));
-    if (!state || state.generation !== fence.generation)
-      throw new Error("Checkpoint generation mismatch");
+    if (!state) throw new Error("Checkpoint generation mismatch");
+    if (state.generation !== fence.generation)
+      throw new JetskiContractError(
+        "stale-generation",
+        "Checkpoint generation mismatch",
+      );
     return state;
   }
   /** Caller must prove the old host assignment is released before advancing. */

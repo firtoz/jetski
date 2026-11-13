@@ -1,8 +1,33 @@
 # Simple application API
 
 Install `@firtoz/jetski@0.2.1` for the embedded Node controller or server-backed
-SDK. Each numbered example pins that release and runs independently with
+SDK. Published numbered examples pin that release and run independently with
 `npm install`; no Jetski source build or sibling link is required.
+
+## API hierarchy
+
+- `/node`: embedded Node controller (`runSandbox`, `openJetski`).
+- `/sdk`: portable clients of an independently running service (`Jetski`, `JetskiClient`).
+- `/core` and explicit adapters: advanced platform composition, with injected state,
+  scheduler, storage, identity/policy and telemetry. No standalone service required.
+
+[Strict packed consumers and compatibility](compatibility.md) and
+[embedded platform composition](embedded-platforms.md) cover supported entry points.
+
+## Lifecycle
+
+| Action                                         | Execution and assignment                                             | Durable history / controller                                                |
+| ---------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `writeFile()`                                  | Live files change; execution continues                               | Not a checkpoint                                                            |
+| `checkpoint()`                                 | Stops execution, retains assignment by default                       | Verifies/publishes filesystem state                                         |
+| `checkpoint({ releaseHost: true })` / `stop()` | Publishes, then releases assignment                                  | Files/output retained; released host may stay warm                          |
+| `resume()`                                     | Restores files into a fresh writable workload                        | Does not continue process memory                                            |
+| `suspend()` / `resumeMemory()`                 | Explicit RAM/disk capture / proven compatible continuation           | Never silently reports filesystem restore as memory continuation            |
+| Embedded `close()`                             | Stops/saves known assignments; retires eligible released owned hosts | Stops controller scheduling; retains history; unresolved cleanup rejects    |
+| Detach HTTP client                             | No remote shutdown or cancellation                                   | Independent controller keeps scheduling; facade has no controller `close()` |
+| `delete()`                                     | Explicit deletion workflow, including safe shutdown                  | Separate from stop and eventual object GC; pins/grace still apply           |
+| GC                                             | No execution shortcut or source deletion on uncertainty              | Complete reachability, explicit retention and minimum 24-hour grace         |
+| Timeout / aborted observation                  | Remote work may still run                                            | Reconnect to existing IDs; no automatic replay/cancellation                 |
 
 ## TypeScript
 
@@ -17,6 +42,7 @@ import type { CommandResult, SandboxSession } from "@firtoz/jetski/sdk";
 `NodeOptions` checks the provider/storage discriminated unions. `create()` and
 `fromCheckpoint()` return `Promise<SandboxSession>`; `exec()` returns
 `Promise<CommandResult>`. Both controller modes share the same session methods.
+[Compatibility](compatibility.md) identifies additions awaiting release.
 The numbered examples use `.ts` entry points and strict typechecks; supported Node
 runs their erasable TypeScript directly. Typechecking is explicit (`npm run
 typecheck`), since Node's execution does not itself check types.
@@ -78,8 +104,32 @@ binary data remain bytes. Text decoding rejects invalid UTF-8.
 Execution defaults to a 120-second command timeout and ten-minute observation
 window. Nonzero exit rejects with `JetskiCommandError` as the operation error's
 cause; captured output remains on `cause.result`. Use `{ check: false }` to handle
-exit codes explicitly. Large/live command output uses the existing cursor-based
-SDK rather than accumulating unbounded output in `exec`.
+exit codes explicitly. Large/live command output uses `startCommand()` and its cursor-based handle.
+Both channels retain at most 16 MiB; reaching that bound can truncate output.
+The facade returns retained bytes, not a promise of complete unbounded logs.
+
+## Interactive work
+
+See [release availability](compatibility.md) before using command/terminal helpers:
+
+```ts
+const command = await sandbox.startCommand(["sh", "-c", "printf hello"]);
+for await (const chunk of command.output("stdout", { offset: savedOffset })) {
+  await consume(chunk.bytes);
+  await persistCursor(chunk.nextOffset);
+}
+const result = await command.wait();
+```
+
+Persist sandbox/command IDs and separate channel cursors. `sandbox.command(id)`
+reattaches without admission. `status()` observes, `wait()` collects bounded output,
+and `cancel()` explicitly requests cancellation; its acknowledgement is not a
+confirmed exit. Breaking/aborting observation never cancels remote work.
+
+The shared terminal helpers reuse `TerminalAttachment`'s durable input journal.
+`exposePort()` grants a generation-bound permission, not a URL. Service previews
+need an authenticated configured gateway; TCP forwarding requires explicit local
+listener/key setup. [Interactive setup and contracts](interactive-access.md).
 
 ## Restore into a new sandbox
 
@@ -119,81 +169,40 @@ not imply remote cancellation. The helpers never automatically replay a mutation
 or cancel an uncertain command. `JetskiOperationError.operation` identifies the
 sandbox and operation to inspect.
 
+See the [complete restart/reconnect example](../examples/08-reconnect/).
+Embedded `operationIntents({ after, limit })` locates automatically journaled IDs;
+these are intentions, not confirmation of admission. `resolvedConfiguration()`
+reports absolute controller paths and owner/pool identity without credentials.
+
 An explicit retry of `stop()` on the same handle reuses its ID within the same
 generation. Resume advances the generation and the next stop uses a new ID.
 For other mutations, reuse the originally recorded ID only with the same input
 and after inspecting its outcome. Do not replay an entire example after a failure.
 
-## Embedded ownership, storage and shutdown
+## Embedded ownership and shutdown
 
-`dataDirectory` is private controller state, with an exclusive local process lock
-and persisted owner, pool and configuration identity. A crash-stale lock is never
-stolen automatically; follow the [controller recovery runbook](standalone.md)
-after proving the prior process is gone. One directory cannot be reopened with a
-different owner/provider/storage namespace/image allowlist. Credentials can rotate
-without changing identity; credential values are excluded from the identity record.
+Use one authoritative controller per private data directory/state namespace.
+Reopen requires the same bound owner/provider/storage/image identity; credentials
+can rotate without changing namespace. A crash-stale lock is not stolen
+automatically. Follow [controller recovery](operations.md) after proving every old
+controller/supervisor has stopped. The local lock is not distributed coordination.
 
-With `storage: { kind: "local" }` (the default), checkpoint objects are in
-`<dataDirectory>/objects/` on the machine running this script, **not Boat**.
-`dataDirectory: "./.jetski"` resolves against the script process's working
-directory, not the source file's folder. SQLite metadata lives alongside objects
-at `.jetski/state.sqlite`. Boat holds live workload files and a disposable cache;
-see [where data lives](storage-locations.md) for the full layout. S3/R2 stores objects remotely, **not SQLite metadata**. Back up state as well
-as objects for control-plane disk-loss recovery. Remote storage still requires its
-adapter consistency qualification; changing an endpoint does not establish it.
+Local objects and SQLite live on the controller, not the workload host or remote
+SDK client. Relative paths resolve from the opening process's working directory.
+R2/S3 replaces object storage, not metadata. Back up both and keep their identities
+matched. [Storage locations](storage-locations.md).
 
-`close()` stops scheduling, waits for in-flight effects and durably stops known
-assignments, then retires only released idle hosts belonging to this controller's
-owner. It does not wait through warm retention. Unsettled operations, uncertain
-saves or retirement acknowledgements produce an error and retain recovery state;
-it never forces deletion of an active source. Provider ownership rules still
-apply: SSH retirement releases adoption, never powers off an operator's machine.
-Retained checkpoints/output are not erased on close. Report both work and cleanup
-errors in application error handling; `runSandbox` aggregates them automatically.
+`close()` stops scheduling, waits for in-flight effects, durably stops known
+assignments and retires released owned hosts without waiting through idle retention.
+Unsettled operations, uncertain saves or retirement replies reject with recovery
+state retained; no active source is force-deleted. SSH retirement only releases
+adoption. Retained history remains. Preserve both work and cleanup errors;
+`runSandbox()` aggregates them automatically.
 
-Keep one controller per data directory and state namespace. An injected shared
-state backend needs operator-provided single-controller coordination across
-machines/directories; the local lock is not a distributed lease. Independently scheduling that same core
-from another process or gateway is unsupported. The advanced `.manager` is a
-trusted operator escape hatch and requires coordinated lifecycle access.
-
-## Replaceable components and advanced examples
-
-The Node factory accepts Boat, adopted SSH, custom host provider/transport
-pairs, or a provider factory. A factory receives the persisted `poolId`, state
-and approved images; [boxd](boxd.md) uses this extension without a mandatory SDK
-dependency. Explicit `poolId` is also available for preconfigured host bootstrap,
-and reopening a directory with a different pool is rejected. Storage can be local, S3-compatible, or a custom `CheckpointStore`.
-Transactional state, scheduler, host lifecycle, resources and error reporting are
-injectable. Custom adapters declare stable IDs for configuration binding and must
-satisfy the existing conformance contracts. These hooks do not bypass publication,
-lease fencing or owner scope. Credentials remain outside workloads.
-
-The SDK/core imports remain portable; Node/database/host dependencies live behind
-the explicit `/node` entry point. The factory dynamically loads selected cloud or
-SSH adapters. No additional standalone service is required to embed it.
-
-`sandbox.raw()` exposes owner-scoped command, file, terminal, port and memory APIs
-with explicit IDs/cursors. `jetski.client` in HTTP mode provides the full existing
-SDK; embedded `jetski.api` provides direct owner-scoped contracts, with
-`jetski.manager` for operator integration. Existing terminal/forwarding and gateway
-modules remain available through their explicit package exports. PTYs, previews,
-TCP tunnels and memory checkpoints retain their capability, authentication and
-network-policy requirements. A port permission is not a gateway, and filesystem
-`resume()` never silently substitutes for a requested memory restore.
-
-## Observe interrupted operations
-
-Use `sandbox.waitForOperation(savedOperationId, { waitTimeoutMs, signal })` to
-observe existing work after reconnecting. The explicit SDK exposes the same helper
-with a sandbox ID. Neither repeats the original mutation. Failed/uncertain outcomes
-remain typed errors, and observation timeout does not cancel work. See
-[failure recovery](failure-recovery.md) for diagnostics and quarantine limits.
-
-Provider configuration is a discriminated union keyed by `kind`. Built-in
-validation and dispatch have compile-time exhaustiveness checks: adding a provider
-requires updating each affected branch. Adapter cleanup is shared by built-in,
-custom and factory providers.
+For injectable providers/state/storage/scheduling and operator access, use
+[platform integration](embedded-platforms.md). `sandbox.raw()`, service
+`jetski.client`, embedded `jetski.api` and trusted `jetski.manager` retain explicit
+advanced contracts. They do not bypass owner, fencing, publication or authorization.
 
 ## Prepare hosts before demand
 
@@ -214,31 +223,12 @@ its recorded result even after the hosts have been consumed or retired; it does
 not promise they remain available forever. New requests need new persisted IDs.
 Capacity includes active and uncertain hosts; preparation never evicts a workload.
 
-The same host provider/bootstrap/runtime policy as ordinary placement is used.
-Approved OCI references stay digest-pinned. A local image-cache hit skips a registry
-pull, while missing images are pulled and rechecked; local-store errors fail closed.
-Runtime-specific rootfs preparation and normal placement verification still apply.
-Cache reuse is per host and never crosses owners. It is not an image-distribution
-cache shared among newly allocated machines.
+Preparation uses the same approved runtime/image policy and owner isolation as
+placement. It expires within 15 minutes or earlier near drain; completed IDs do
+not replenish capacity. Timeout does not undo an uncertain allocation. `close()`
+cancels undispatched preparation and retires positively released owned hosts,
+reporting uncertainty with recovery state retained. This is embedded Node/core
+functionality, not an additional HTTP route.
 
-Preparation expires after at most 15 minutes (earlier near the host's drain limit).
-Observation timeout or abort does not undo an uncertain allocation: observe the
-same operation ID. Prepared hosts use ordinary idle/lifetime limits and cost money
-while retained. `close()` cancels undispatched preparation and retires positively
-released idle hosts; uncertain allocations are reported with recovery state retained.
-This convenience API is currently embedded Node/core only, not a new HTTP route.
-
-## Optional transfer tuning
-
-`openJetski({ ..., memoryRestoreConcurrency: 2 })` opts into independent memory
-object writes, using the shared closed set 1/2/4. Default 1 preserves existing
-resource pressure. All workers finish before native admission, fallback or reader
-closure; shared binary import sinks and legacy journals remain serial.
-
-Boat additionally accepts `provider: { kind: "boat", token, archiveReads: true }`
-for verified binary archive downloads. This is an optional transport binding, not
-a new checkpoint format or weaker publication policy. An explicitly ignored HTTP
-Range can use the same fenced control read; server/auth/integrity failures remain
-failures. Other host transports retain their own capability paths. See the
-[measured desktop tradeoffs](chromium-transfer-performance.md), especially coarse
-chunk reuse and the limits of per-host timings.
+For memory-write concurrency, binary archives and image choices, use
+[performance settings](performance-tuning.md).

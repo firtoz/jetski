@@ -98,6 +98,7 @@ test("one version synchronizes runtime, OpenAPI, lock, guides and all numbered e
       "docs/README.md",
       "docs/getting-started.md",
       "docs/simple-api.md",
+      "docs/compatibility.md",
       "docs/standalone.md",
       "docs/boxd.md",
       "docs/failure-recovery.md",

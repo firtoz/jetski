@@ -2,8 +2,8 @@
 
 ## Deployment boundary
 
-v0.1 targets one controller with local SQLite, Linux x86-64 execution hosts,
-Boat or explicitly adopted SSH inventory, and local or qualified S3/R2 storage.
+Jetski supports one controller with local SQLite, Linux x86-64 execution hosts,
+Boat, optional boxd or explicitly adopted SSH inventory, and local or qualified S3/R2 storage.
 It does not provide HA, multi-controller scheduling, managed backups, a hosted
 service, hard per-owner filesystem/storage billing quotas or a contractual SLA.
 Run a dedicated controller/volume per trust or billing domain where needed.
@@ -11,7 +11,7 @@ Provider outages and force-terminated machines can lose unpublished changes.
 Checkpoint acknowledgements cover verified declared persistent paths; memory
 recovery additionally requires the documented compatible runtime/platform.
 
-Use Node from `.nvmrc` for the npm server. SSH-managed hosts need an OpenSSH client
+Use Node from [`.nvmrc`](../.nvmrc) for the npm server. SSH-managed hosts need an OpenSSH client
 on the controller; the container includes it. The controller needs no local Podman,
 gVisor, Python or elevated privileges: those run on dedicated execution machines.
 Protect configuration, SSH keys, SQLite, logs and storage credentials. For bearer

@@ -1,128 +1,55 @@
-# Optional gVisor runtime
+# Use gVisor
 
-The optional Python host path is qualified on owned Boat hosts with R2 durable
-filesystem recovery, native execution/PTY/TCP and real process-memory continuity.
-Podman remains the default. See the [matched measurements and limits](gvisor-benchmarks.md)
-and the [implementation goal](goals/gvisor-runtime.md).
+Choose gVisor for its additional application-kernel boundary or compatible process
+continuation. Podman remains the default. Read [runtime tradeoffs](runtime-comparison.md)
+and qualify your actual workload before enabling it.
 
-## Composition
+## Configure a compatible execution host
 
-Machine allocation, runtime isolation and durable storage remain separate. The
-adapter uses native `runsc`, caller-managed unprivileged user namespaces,
-subordinate workload IDs, private network namespaces and enforced cgroup limits.
-The trusted host adapter preconfigures each delegated cgroup and enters it before
-launching Sentry/gofer. `runsc` does not configure the host-wide cgroup tree;
-actual CPU/memory/pid limits and the Sentry membership are independently checked.
-Image preparation can reuse the existing OCI image tooling; this does not make
-Podman's execution journal authoritative for a separately restored runsc process.
-Unsupported host capabilities must fail admission rather than weaken isolation.
+Import `GVISOR_RUNTIME` from `@firtoz/jetski/core` and set it as the provider's
+`runtime` policy, with `networkMode: "none"` or the qualified `public-egress` profile.
+The same pinned policy is accepted by embedded Node and standalone configuration.
+Optional `workloadInit` is an approved-image argv for a long-running application.
 
-The initial platform is Linux x86-64 with `systrap`. The installer pins the entire
-upstream `release-20261102.0` archive, including adjacent `gvisor-bin` sidecars;
-checks its SHA-256 before extraction; rejects links, devices, traversal and
-archive expansion beyond its bounds; and installs in a separate immutable
-root-owned directory. It changes no global container-runtime default.
+The supported host path is Python/Linux x86-64 with systrap, explicit subordinate
+user mappings and cgroup v2 delegation. Unsupported Rust/network combinations fail
+admission. Bootstrap verifies the pinned runtime archive and actual namespace/
+CPU/memory/PID limits. It installs on owned execution machines, not your controller
+or desktop, and changes no global runtime default. Immutable runtime changes
+require replacement hosts.
 
-[gVisor's simple rootless mode](https://gvisor.dev/docs/user_guide/rootless/)
-does not implement checkpoint/restore. The adapter must prove caller-managed
-namespace support instead. It must also prove effective resource limits rather
-than accepting ignored cgroup errors. Python host composition comes first;
-an unsupported host implementation/runtime pair must be rejected explicitly.
+Plain upstream `runsc --rootless` is not this checkpoint-capable configuration.
+On restricted AppArmor hosts, bootstrap needs the scoped policy-loader support;
+it does not disable global namespace restrictions. Missing support refuses
+bootstrap. [Host implementation contract](../maintainer/runtime.md).
 
-## Filesystem stop and memory suspend
+## Suspend and resume
 
-Ordinary checkpoint/stop preserves declared filesystem paths and terminates
-processes. Both backends now offer init SIGTERM and a ten-second grace period
-before forced termination; an application must handle the signal to flush its own
-work. See the [fair comparison](runtime-fair-benchmarks.md). Memory suspend is a distinct, capability-gated operation:
+Observe `sandbox.runtimeCapabilities()` (or explicit SDK
+`runtimeCapabilities(sandboxId)`) on the assigned host. Suspension requires
+`memorySuspendVersion: 1`; portable publication additionally requires
+`portableMemoryVersion: 1`.
 
-1. Refuse unresolved commands, open terminal/forwarding streams and file uploads.
-   Background workload processes can remain inside the isolated runtime.
-2. Persist the operation and close its generation before native checkpointing.
-   Checkpoint completion must be followed by independently observed quiescence.
-3. Checksum native memory artifacts immediately after freezing. Capture the
-   frozen filesystem and publish its verified, retained durable root
-   through the existing storage machinery. Upload completion alone is insufficient.
-4. Recheck the staged memory checksums, then seal bounded artifacts against the exact filesystem archive and frozen
-   inode/link identity, lease, OCI image, runtime/configuration, kernel and CPU
-   compatibility identities. Verify all memory bytes before using them.
-5. Resume only against the same private unchanged filesystem under the next lease
-   generation. Preserve original command/output identities; old writers stay stale.
-   Persist `resuming` before restore and observe uncertain effects without replay.
+- Ordinary `checkpoint()`/`stop()` preserve files and terminate processes, with
+  a graceful shutdown interval before forced termination.
+- `suspend()` stops execution and seals RAM against the exact filesystem/runtime
+  identity. Without portable options the image remains local and retains its host.
+- `resumeMemory()` requires proven process continuation. The explicit underlying
+  outcome can report known filesystem fallback; the convenience method rejects
+  that as memory recovery. Uncertain native effects remain quarantined.
 
-The initial native restore command disables background image loading. Deferred
-loading can be considered later with independent page-integrity proofs, without
-allowing unverified memory to execute. Live external connections are not promised
-across suspension; callers must close and reconnect them explicitly.
+Resolve commands, uploads and interactive streams before capture. Keep external
+connections disconnected and reconnect them explicitly after restore. Preserve
+operation identities and inspect their outcomes; a timeout does not authorize a
+second native restore or replacement command.
 
-## Recovery boundary
+CLI equivalents are `suspend ID --operation UUID` and
+`resume-memory ID --operation UUID`. The HTTP routes are `/suspend`,
+`/resume-memory` and `/capabilities` below `/v1/sandboxes/{id}`.
+Ordinary `resume` retains filesystem semantics.
 
-R2 remains the independent durable checkpoint authority. Default memory suspension
-seals a local image alongside a verified filesystem checkpoint and retains the
-exclusive source host. Local memory alone cannot survive physical source loss.
-
-The optional [portable-memory path](portable-memory.md) instead publishes both
-memory chunks and the matching filesystem root before acknowledgement. It can
-reconstruct process state on a compatible replacement host; the [November 4
-qualification](portable-memory-benchmarks.md) tests actual source-deleted recovery.
-Missing, incompatible or corrupt memory is never executed. Known pre-effect
-filesystem fallback reports `memoryPreserved: false`; uncertain native effects
-remain quarantined rather than silently restarting the process.
-
-Ordinary `resume` retains filesystem semantics. Live external connections are not
-promised across either kind of memory restore. Checkpoint objects do not replace
-transactional metadata backups or authorize release after an uncertain save.
-
-Optional operator `workloadInit` uses the same unprivileged policy on Podman and
-gVisor, allowing a stateful application to run while control I/O settles.
-
-The Python bootstrap/control path now selects native lifecycle and exec adapters
-from immutable host policy. The SDK exports the pinned `GVISOR_RUNTIME` policy for
-explicit bootstrap composition. Unsupported Rust/egress combinations are rejected
-before effects; ordinary bootstrap configuration still selects Podman.
-
-Local tests exercise exec byte streams, cancellation/start identity, image-path
-isolation and journal transitions using local processes or driver doubles. They
-do not prove native gVisor operation or hosted performance. Native CI and the matched Boat/R2 qualification independently cover memory
-continuity, affected interactive paths and source-deleted filesystem recovery;
-see the linked measurements for boundaries and limits.
-
-## Operator and client usage
-
-Select `runtime: GVISOR_RUNTIME` in the Boat bootstrap options, or the equivalent
-pinned runtime policy in standalone `hostProvider` configuration. `workloadInit`
-is an optional approved-image argv for the application init, identical on either
-runtime. Unsupported egress and Rust-host combinations fail before installation.
-The standalone service uses the same adapters and fencing as embedded clients.
-
-Initial hosts require cgroup v2 delegation, util-linux `unshare` with explicit
-subordinate-ID maps, and one prepared contiguous subordinate range per runtime
-account. Unsupported mapping layouts fail closed. On hosts with AppArmor user
-namespace restrictions, bootstrap loads a profile attached only to the root-owned
-Jetski launcher. It permits namespace creation without disabling AppArmor or
-changing kernel restrictions. It is not an additional AppArmor confinement claim;
-gVisor, unprivileged mapped identities, namespaces and enforced resource limits
-remain the isolation boundary. Missing policy-loader support refuses bootstrap.
-
-
-Observe `sdk.runtimeCapabilities(sandboxId)` on an assigned sandbox. Memory
-suspension requires `memorySuspendVersion: 1`. Call `sdk.suspend(sandboxId, id)`
-and observe the stable operation until it completes. This publishes and verifies
-the declared filesystem checkpoint, seals local memory, stops execution and retains
-the exclusive source. It does not release that host into the idle pool.
-
-Call `sdk.resumeMemory(sandboxId, id)` to resume. Successful operations explicitly
-report `memoryPreserved`. A known unusable memory image or positively absent host
-uses a retained, verified filesystem checkpoint and reports `memoryPreserved: false`
-and a fallback reason after the replacement actually runs. Uncertain native effects
-remain quarantined for reconciliation. Reconnect using the same operation ID;
-never submit a second command to resolve an uncertain first command.
-
-HTTP equivalents are `POST .../suspend`, `POST .../resume-memory` with an
-`operationId`, and `GET .../capabilities`, under `/v1/sandboxes/{sandboxId}`.
-The CLI exposes `suspend` and `resume-memory` with `--operation`. Ordinary `resume`
-keeps its filesystem semantics. Memory artifacts are local by default. Pass explicit portable
-options to publish them in the configured store; see [portable setup](portable-memory.md).
-The original qualification tested filesystem-only replacement; the later portable
-qualification also preserves process state on compatible replacements.
-See [runtime tradeoffs](runtime-comparison.md) before selecting a default.
+For recovery after physical source loss, publish explicit portable RAM/filesystem
+objects. Local memory alone cannot survive that loss. Back up controller metadata
+as well as objects, and preserve compatible runtime/image/helper ABI, kernel and
+CPU requirements. [Portable setup](portable-memory.md) ·
+[Qualification and limits](../maintainer/qualification.md).

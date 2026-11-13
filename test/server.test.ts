@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { type HostProvider } from "../src/core/contracts.js";
 import { SandboxManager } from "../src/core/manager.js";
 import { type HostTransport } from "../src/core/transport.js";
-import { JetskiClient } from "../src/sdk.js";
+import { JetskiClient, JetskiHttpError } from "../src/sdk.js";
 import {
   bearerAuthentication,
   createHttpServer,
@@ -119,6 +119,13 @@ test("server enforces owner scope and progresses without browser polling", async
   const client = new JetskiClient(base, "a".repeat(32));
   assert.equal((await client.createSandbox(id, image, operationId)).id, id);
   assert.equal((await client.getSandbox(id)).phase, "running");
+  await assert.rejects(
+    client.suspend(id, randomUUID()),
+    (error) =>
+      error instanceof JetskiHttpError &&
+      error.status === 409 &&
+      error.code === "unsupported-capability",
+  );
   assert.deepEqual(
     (await client.listSandboxes()).map((sandbox) => sandbox.id),
     [id],

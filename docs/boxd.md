@@ -7,25 +7,12 @@ region }`. Standalone configuration accepts `hostProvider` with `kind: "boxd"`,
 `tokenEnv`, `namespace` and `region`; see [server-boxd.json](../examples/server-boxd.json).
 Install the optional peer `@boxd-sh/sdk@0.3.0` alongside Jetski.
 
-See the [self-contained TypeScript example](../examples/06-boxd/) and the
-[original Boat comparison](boxd-boat-benchmarks.md) and
-[current parity qualification](provider-parity-benchmarks.md).
-
-## What is qualified
-
-The bounded November 5 comparison exercises the actual Node controller, Python
-host agent, rootless Podman, same approved Alpine image and S3-compatible R2 store
-on both providers. It checks command output, filesystem content/modes/hardlinks/
-symlinks, warm checkpoint resume and recovery after the source machine is deleted.
-The preliminary local-store run additionally copies a checkpoint into a different
-logical sandbox. Local adapter tests cover acknowledgement loss and owner fencing.
-
-The follow-on [parity qualification](provider-parity-benchmarks.md) adds actual
-PTY/input/resize/signals, SSH reconnect, TCP and authenticated HTTPS/WebSocket
-checks on both Podman hosts. Native idle RAM/disk wake and gVisor source-deleted portable-memory replacement
-also pass on boxd; Boat passes the matching runtime/recovery cases.
-Cloudflare Worker embedding and provider-native fork/snapshot integration remain
-outside this comparison. Native VM sleep is distinct from Jetski memory checkpoints.
+Start with the [self-contained example](../examples/06-boxd/). The
+[capability matrix](embedded-platforms.md#capabilities) describes supported profiles;
+[scoped provider evidence](../maintainer/benchmarks/providers.md) records actual
+runtime, interactive, native-idle and replacement checks. Worker embedding and
+provider-native fork/snapshot integration remain outside that evidence. Native
+VM sleep is distinct from workload RAM checkpoints.
 
 ## Modular composition
 
@@ -63,11 +50,7 @@ provider absence before success. An uncertain outcome keeps its durable journal.
 SSH host-adoption semantics are unchanged: this cloud adapter deletes only its
 positively owned VMs; the SSH adapter never powers off operator machines.
 
-The original comparison used one-hour maximum leases and fixed ten-minute idle retention.
-The [parity goal](goals/boat-boxd-parity.md) adds the shared policy options below;
-its hosted cases and limitations are recorded separately in the report.
-That comparison did not use native sleep. Optional controller-managed sleep now
-uses `hostLifecycle.nativeIdle: { mode: "ram" | "disk", afterMs }`. It applies
+Optional controller-managed sleep uses `hostLifecycle.nativeIdle: { mode: "ram" | "disk", afterMs }`. It applies
 only after verified durable publication, workload cleanup and assignment release,
 with no queued demand. It freezes an idle host/cache, not an active sandbox's
 processes. Portable gVisor memory checkpoints remain a separate feature.
@@ -110,10 +93,10 @@ networking policy. An ineligible combination is rejected, not downgraded silentl
 Existing physical hosts retain their immutable bootstrap identity and require
 replacement to change runtime policy. Native idle policy is snapshotted per slot.
 
-`/v1/capabilities` now exposes `host.features`: supported adapter configuration
+`/v1/capabilities` exposes `host.features`: supported adapter configuration
 and native idle modes. Its `evidence: "adapter-declaration"` is deliberately not
 a readiness or compatibility claim. Per-sandbox runtime capabilities remain an
-observation of its actual assigned host. See the goal for current live evidence.
+observation of its actual assigned host. See the scoped evidence for actual supported combinations.
 
 For adaptive idle on boxd, set the idle budget's `currency: "EUR"` (or the actual
 account currency), and configure `idlePricing: { diskGiB: NUMBER }` on its host
@@ -144,14 +127,10 @@ arithmetic, installs the filter before workload admission, and reads back the
 exact kernel instruction sequence. Additional or changed filters reject reuse.
 The placement journal records which backend and fingerprint were verified.
 
-The first parity pilot exposed boxd kernel 6.18.0+'s missing nft netdev egress
-support. No workload started; the uncertain create was quarantined. On that same
-owned test VM, the equivalent tc backend passed public TCP/DNS and denied metadata
-and private-host traffic with exact kernel bytecode readback. Its empty persistent
-paths were independently checked before provider deletion. The subsequent boxd
-Podman arm passed five filesystem cycles, native RAM wake and live interactive
-checks. Both matched gVisor arms and exact source-deleted memory recovery now pass;
-see the consolidated report for failures and limits.
+The missing nft netdev hook on a tested boxd kernel is a known case for the verified
+tc backend. Its failed admission and subsequent exact policy checks are retained
+in [provider evidence](../maintainer/benchmarks/providers.md); no unfiltered fallback
+is permitted.
 
 ## Terminal compatibility
 

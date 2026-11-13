@@ -8,6 +8,7 @@ const jetski = await openJetski({
   // Default local storage puts checkpoints in ./.jetski/objects on this machine.
 });
 
+const failures: unknown[] = [];
 try {
   const sandbox = await jetski.create();
   console.log("Original sandbox:", sandbox.id);
@@ -22,10 +23,20 @@ try {
   });
   await restored.resume();
   console.log("Restored sandbox:", restored.id);
-  process.stdout.write(await restored.readText("/workspace/hello.txt"));
-} finally {
-  await jetski.close();
+  const text = await restored.readText("/workspace/hello.txt");
+  if (restored.id === sandbox.id || text !== "Hello, durable world!\n")
+    throw Error("Independent restore verification failed");
+  process.stdout.write(text);
+} catch (error) {
+  failures.push(error);
 }
+try {
+  await jetski.close();
+} catch (error) {
+  failures.push(error);
+}
+if (failures.length)
+  throw new AggregateError(failures, "Work or verified cleanup failed");
 
 function env(name: string): string {
   const value = process.env[name];

@@ -34,6 +34,7 @@ import {
   scopeKey,
   type Transaction,
 } from "./contracts.js";
+import { JetskiContractError } from "./failures.js";
 import { FILE_CHUNK_BYTES, persistentPath } from "./files.js";
 import {
   HOST_LIFECYCLE_LIMITS,
@@ -304,7 +305,10 @@ export class SandboxManager {
           .capabilities()
           .features?.nativeIdleModes.includes(lifecycle.nativeIdle.mode))
     )
-      throw Error("Native host sleep is unsupported by this provider");
+      throw new JetskiContractError(
+        "unsupported-capability",
+        "Native host sleep is unsupported by this provider",
+      );
     this.idlePriceSource = options.idlePriceSource;
     if (
       this.idlePriceSource &&
@@ -318,7 +322,10 @@ export class SandboxManager {
       maximum < 1 ||
       lifecycle.lifetimeMs > maximum
     )
-      throw Error("Host lifetime exceeds provider capability");
+      throw new JetskiContractError(
+        "unsupported-capability",
+        "Host lifetime exceeds provider capability",
+      );
     this.copyBatchObjects = checkpointCopyBatchObjects(
       options.checkpointCopyBatchObjects,
     );
@@ -1656,9 +1663,15 @@ export class SandboxManager {
       Array.isArray(capabilities) ||
       capabilities.memorySuspendVersion !== 1
     )
-      throw Error("Memory suspend not supported by this host");
+      throw new JetskiContractError(
+        "unsupported-capability",
+        "Memory suspend not supported by this host",
+      );
     if (portable && capabilities.portableMemoryVersion !== 1)
-      throw Error("Portable memory not supported by this host");
+      throw new JetskiContractError(
+        "unsupported-capability",
+        "Portable memory not supported by this host",
+      );
     // A known active/uncertain viewer is a precondition failure, not an admitted
     // native checkpoint with uncertain completion. Host fencing still rechecks
     // settled state after admission to cover races with new connections.

@@ -49,7 +49,8 @@
     "./transport/boxd": "./dist/transport/boxd.js",
     "./providers/boxd-hosts": "./dist/providers/boxd-hosts.js",
     "./providers/boxd-pricing": "./dist/providers/boxd-pricing.js",
-    "./transport/ssh-key": "./dist/transport/ssh-key.js"
+    "./transport/ssh-key": "./dist/transport/ssh-key.js",
+    "./providers/boat-hosts": "./dist/providers/boat-hosts.js"
   },
   "files": [
     "dist",

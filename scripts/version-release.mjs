@@ -14,7 +14,7 @@ const changelog = await readFile(new URL("CHANGELOG.md", root), "utf8");
 const section = changelog.split(`## ${pkg.version}\n`)[1]?.split(/\n## /)[0];
 assert(section?.trim(), "Missing generated release notes");
 await writeFile(
-  new URL("docs/release-notes.md", root),
+  new URL("maintainer/release-notes.md", root),
   `# Jetski ${pkg.version}\n${section.trimEnd()}\n`,
 );
 // Format the generated documents with the same formatter as CI.
@@ -31,6 +31,7 @@ execFileSync(
     "src/version.ts",
     "README.md",
     "docs",
+    "maintainer",
     "CHANGELOG.md",
     "examples",
   ],

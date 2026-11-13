@@ -3,6 +3,14 @@ import { observationDelay } from "./client/wait.js";
 import { assertNever } from "./core/exhaustive.js";
 
 export {
+  CommandHandle,
+  CommandOutcomeError,
+  type CommandOutputChunk,
+  JetskiCommandError,
+  JetskiOperationError,
+  QuarantinedSaveError,
+} from "./client/sandbox.js";
+export {
   OperationOutcomeError,
   type OperationWaitOptions,
 } from "./client/wait.js";
@@ -16,6 +24,7 @@ import {
   type FromCheckpointOptions,
   type OperationOptions,
   type SandboxApi,
+  type SandboxOperation,
   SandboxSession,
   type SessionOptions,
   sandboxSession,
@@ -42,28 +51,11 @@ import type { HostConfig } from "./server/hosts.js";
 import { SqliteState } from "./state/sqlite.js";
 import { gzipMemoryCodec } from "./storage/memory-codecs.js";
 
-export type NodeHostAdapters = {
-  provider: HostProvider;
-  transport: HostTransport;
-  streamTransport?: HostStreamTransport;
-  idlePriceSource?: IdlePriceSource;
-  close?: () => void | Promise<void>;
-};
-export type NodeHostFactoryContext = {
-  state: StateStore;
-  poolId: string;
-  approvedImages: readonly string[];
-};
+export type NodeHostAdapters = import("./core/composition.js").HostAdapters;
+export type NodeHostFactoryContext =
+  import("./core/composition.js").HostFactoryContext;
 export type NodeProvider =
-  | {
-      kind: "factory";
-      id: string;
-      /** Non-secret immutable policy included in controller identity. */
-      configuration?: Json;
-      create(
-        context: NodeHostFactoryContext,
-      ): NodeHostAdapters | Promise<NodeHostAdapters>;
-    }
+  | import("./core/composition.js").HostFactory
   | (Omit<Extract<HostConfig, { kind: "boat" }>, "tokenEnv"> & {
       token: string;
     })
@@ -351,6 +343,53 @@ export class NodeJetski {
       reconciliationFailed: this.lastFailure !== undefined,
     };
   }
+  /** Non-secret resolved locations and namespace identity. Does not relocate/adopt stores. */
+  async resolvedConfiguration() {
+    const identity = await this.state.transaction((tx) =>
+      tx.get<Identity>("node/identity"),
+    );
+    if (!identity) throw Error("Controller identity unavailable");
+    const directory = resolve(this.options.dataDirectory);
+    return {
+      dataDirectory: directory,
+      owner: identity.owner,
+      poolId: identity.poolId,
+      provider: this.options.provider.kind,
+      state: this.options.state
+        ? { kind: "custom" as const, id: this.options.state.id }
+        : { kind: "sqlite" as const, path: join(directory, "state.sqlite") },
+      storage:
+        !this.options.storage || this.options.storage.kind === "local"
+          ? { kind: "local" as const, directory: join(directory, "objects") }
+          : this.options.storage.kind === "custom"
+            ? { kind: "custom" as const, id: this.options.storage.id }
+            : {
+                kind: "s3" as const,
+                bucket: this.options.storage.bucket,
+                prefix: this.options.storage.prefix,
+              },
+      scheduler: this.options.scheduler
+        ? ("injected" as const)
+        : ("process-interval" as const),
+    };
+  }
+  /** Generated identities journaled before dispatch, including lost acknowledgements.
+   * This is an intent journal, not confirmation that admission happened. */
+  operationIntents(options: { after?: string; limit?: number } = {}) {
+    const limit = options.limit ?? 100;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000)
+      throw Error("Invalid intent page limit");
+    return this.state.transaction((tx) => {
+      const entries = tx
+        .scan<SandboxOperation>("node/intent/")
+        .filter((row) => row.key > (options.after ?? ""))
+        .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+      return {
+        intents: entries.slice(0, limit).map((row) => row.value),
+        next: entries.length > limit ? entries[limit - 1]!.key : null,
+      };
+    });
+  }
   /** Prepare approved images/runtime on count idle, owner-scoped hosts once.
    * Timeout only stops observation; reuse operationId to observe existing work. */
   async prepareHosts(options: OperationOptions & { count: number }) {
@@ -494,17 +533,14 @@ export class NodeJetski {
     }
     this.closed = true;
     if (failures.length)
-      throw new AggregateError(
-        failures,
-        `Controller shutdown incomplete; recovery state retained in ${this.options.dataDirectory}`,
-      );
+      throw new JetskiCleanupError(failures, this.options.dataDirectory);
   }
 }
 
 export async function openJetski(input: NodeOptions): Promise<NodeJetski> {
-  const options = { ...input },
+  if (!input.dataDirectory) throw Error("dataDirectory is required");
+  const options = { ...input, dataDirectory: resolve(input.dataDirectory) },
     storage = input.storage ?? { kind: "local" as const };
-  if (!options.dataDirectory) throw Error("dataDirectory is required");
   if (options.poolId !== undefined) identifier(options.poolId);
   const images = [
     ...(options.approvedImages ?? (options.image ? [options.image] : [])),
@@ -693,4 +729,19 @@ export async function runSandbox(
       "Sandbox run or verified cleanup failed",
     );
   return result!;
+}
+
+/** Shutdown did not confirm every save/release/retirement. History remains retained. */
+export class JetskiCleanupError extends AggregateError {
+  readonly code = "cleanup-unresolved";
+  constructor(
+    errors: unknown[],
+    readonly dataDirectory: string,
+  ) {
+    super(
+      errors,
+      `Controller shutdown incomplete; recovery state retained in ${dataDirectory}`,
+    );
+    this.name = "JetskiCleanupError";
+  }
 }

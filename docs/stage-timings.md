@@ -29,23 +29,15 @@ Records contain fixed stages and durations, never paths, command payloads, outpu
 credentials or exception text. Malformed/unrecognized host stderr is discarded.
 Use caller-owned correlation context to associate records with an operation.
 
-## Experimental combined quiesce/capture
+## Committed lifecycle events
 
-`ManagerOptions.eagerCheckpointCapture: true` asks the host to capture immediately
-after stopping execution, in the same control request. Default behavior remains
-separate quiesce and capture. A host without the optional receipt falls back to
-ordinary capture. This is a contract-based core optimization, independent of host
-provider or storage adapter; it is not required of third-party runtimes.
+`ManagerOptions.events` or `observeLifecycle(state, sink)` from `/core` emits
+committed phase changes with owner/sandbox, generation and operation identity.
+Do not wrap a store twice. `elapsedMs` covers durable admission to phase; payloads,
+output, error text, filesystem contents and credentials are excluded. Use a short
+nonblocking queue. Events are best effort and can be lost at crash/uncertain commit;
+persisted outcomes remain the authority for recovery or billing.
 
-The stopped archive receipt is validated and persisted before retaining output and
-publishing the checkpoint. Output/stream/input settlement still gates publication;
-remote object verification still gates destructive cleanup. Unknown outcomes keep
-the source fenced. The option saves one control round trip when supported, but can
-lose overlap between capture and retained-output uploads. Workloads with large
-command outputs may prefer the existing path. Hosted measurements determine the
-recommendation; fewer calls alone do not prove lower end-to-end latency.
-
-Rust extraction also uses a single bounded 1 MiB scratch buffer shared across files.
-It preserves complete compressed-hash/CRC validation, short-read rejection, final
-metadata/fsync and private staging publication. Neither optimization relaxes the
-checkpoint durability boundary or enables unverified writable cache reuse.
+For combined capture, concurrency and inline output choices, see
+[advanced configuration](advanced-configuration.md) and
+[measured host stages](../maintainer/benchmarks/host-stages.md).

@@ -1,6 +1,7 @@
 # Failure observation and recovery
 
-These convenience APIs are included in `@firtoz/jetski@0.2.1`.
+`waitForOperation()` is included in `@firtoz/jetski@0.2.1`;
+[compatibility](compatibility.md) covers the pending command-handle additions.
 Jetski distinguishes an operation that is still pending from a failed or uncertain
 remote effect. An observation timeout does not cancel work or grant permission
 to issue it again. Persist sandbox and operation IDs before admission using
@@ -50,22 +51,33 @@ remote exit, invalid receipt, output bound, deadline and abort. They are **not**
 a retryability policy. Raw stdout/stderr, command arguments and credentials are
 excluded from these diagnostics.
 
-## Deliberate safety boundaries
+## Recover deliberately
 
-Known runtime compatibility defects use shared implementations: filtered tc/BPF
-when the nftables hook is unsupported; terminal signal compatibility when its
-ioctl is unsupported; authenticated command-tree cleanup on private-input EOF.
-None silently disables networking policy, changes runtime, or signals a reused
-numeric PID.
+An uncertain command/save retains or quarantines its source. `close()` can fail
+with recovery state retained; it does not force-delete that source to finish
+cleanup. Inspect the sandbox and original operation before deciding the next action.
+Use [typed outcome fields](compatibility.md#identify-outcomes), not message parsing
+or an assumed retry policy. The [reconnect example](../examples/08-reconnect/) shows
+identity persistence and observation before continuing.
 
-A genuinely uncertain command/save still retains or quarantines its source.
-`close()` can fail with recovery state retained; it never force-deletes that source
-just to complete cleanup. Inspect the existing operation and host state before an
-operator chooses a recovery action. The benchmark's independent emergency archives
-were privileged forensic recovery, **not** an automatic public checkpoint or a
-successful release. This API does not turn an unclassified provider response into
-a known-safe outcome, and does not add automatic deletion of quarantined data.
+If an unfinished save's source is positively absent, explicit SDK/CLI
+`recover-missing-source` can select a verified older retained checkpoint:
 
-The [hosted parity report](provider-parity-benchmarks.md) preserves original
-failures and measurements. The observation/diagnostic follow-up has local API and
-adapter regression coverage; it does not claim another hosted benchmark pass.
+```sh
+jetski recover-missing-source SANDBOX --operation UUID --config /private/recovery.json
+```
+
+The JSON must contain the inspected `generation`, exact `lease`, `shutdownId`,
+`checkpointId` and `acknowledgement: "unpublished-changes-unavailable"`.
+For interrupted placement, use
+`recover-missing-placement` with the exact placement identity and its original
+checkpoint. These paths require provider-confirmed absence, no competing storage
+actors and current authority; a timeout does not prove absence. They leave the
+sandbox stopped and the original operation uncertain. A new resume is separate.
+Local fault/restart coverage is not universal hosted recovery qualification.
+The [OpenAPI recovery schemas](openapi.json) define the complete request types.
+
+[Operations and backups](operations.md) explain controller locks and authority
+handover. Privileged forensic archives in [historical evidence](../maintainer/benchmarks/providers.md)
+were not automatic checkpoints or successful managed releases. Never erase an
+uncertain journal/source or blindly repeat external effects to resolve ambiguity.

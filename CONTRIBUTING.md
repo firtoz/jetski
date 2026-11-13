@@ -1,29 +1,29 @@
 # Contributing
 
-Use the Node version in `.nvmrc`. From a source checkout:
+Library users can install the prebuilt package; start with the [README](README.md).
+To work on Jetski itself, use the Node version in [`.nvmrc`](.nvmrc):
 
 ```sh
-npm install
+npm ci
+npm run build
 npm run typecheck
 npm test
 npm run lint
 ```
 
-`npm install` runs the repository's `prepare` script to build the source. After
-source edits, use `npm run build` to refresh the compiled output. CI uses `npm ci`
-for a clean install that requires the lockfile to match the manifest.
+Read [maintainer documentation](maintainer/README.md) for design, acceptance,
+qualification and release procedures. Keep core portable, preserve adapter
+boundaries and verify publication before releasing acknowledged data.
+Run focused checks for changed behavior and reuse unchanged qualification.
+New dependencies or extracted code require license/provenance review.
 
-Normal users install the prebuilt npm package or container; they do not build this
-repository. `node scripts/qualify-package.mjs` checks a tarball in a clean consumer
-with lifecycle scripts disabled. Docker runtime qualification runs on disposable
-CI runners only. Hosted tests need an explicit spending allowance; never use
-operator credentials, workloads or protected recovery fixtures as test data.
+Use the [reader-first documentation skill](.agents/skills/reader-first-docs/SKILL.md)
+when editing Markdown: user guides explain value and actions; useful internals
+belong in the maintainer area. Superseded plans and run diaries belong in version
+history, not another archive. Keep credentials, application identities, process
+handles and routine receipts out of public source.
 
-Keep the core portable and adapter boundaries explicit. Acknowledged data,
-fencing and verified publication take precedence over optimizations. Add focused
-checks for changed behavior and reuse unchanged qualification. See docs/design.md
-and docs/qualification.md. Do not commit credentials, private receipts or application
-integrations. Releases follow docs/releases.md.
-
-New dependencies and extracted source require license/provenance review. Document
-adapter capabilities honestly and retain failed qualification evidence.
+Add a changeset for user-facing changes; use the existing
+[release process](maintainer/release-process.md). Hosted tests need an explicit
+allowance. Use disposable CI hosts for runtime qualification; do not install
+runtimes on the operator's desktop or use protected recovery fixtures as test data.

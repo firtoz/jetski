@@ -9,6 +9,7 @@ import {
   scopeKey,
   type Transaction,
 } from "./contracts.js";
+import { JetskiContractError } from "./failures.js";
 
 type Outcome = {
   phase: "succeeded" | "failed" | "uncertain";
@@ -32,7 +33,7 @@ export class OperationJournal {
   private check(tx: Transaction, fence: Fence) {
     const current = tx.get<number>(this.fenceKey(fence));
     if (!Number.isSafeInteger(fence.generation) || fence.generation !== current)
-      throw new Error("Stale generation");
+      throw new JetskiContractError("stale-generation", "Stale generation");
   }
   async generation(scope: Scope): Promise<Fence> {
     return this.state.transaction((tx) => this.generationIn(tx, scope));
