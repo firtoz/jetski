@@ -3,7 +3,7 @@
 Keep one `openJetski()` controller alive while two sequential sessions use its
 owner-exclusive pool, then close it.
 Requires Node 24.22.1+, an existing Boat account and a digest-approved image.
-Uses the prebuilt `@firtoz/jetski@0.2.1` package; no separate service, root build or
+Uses the prebuilt `@firtoz/jetski@0.3.0` package; no separate service, root build or
 local container runtime is required. Allocated hosts can incur charges.
 
 From this folder:

@@ -1,6 +1,6 @@
 # Failure observation and recovery
 
-`waitForOperation()` is included in `@firtoz/jetski@0.2.1`;
+`waitForOperation()` is included in `@firtoz/jetski@0.3.0`;
 [compatibility](compatibility.md) covers the pending command-handle additions.
 Jetski distinguishes an operation that is still pending from a failed or uncertain
 remote effect. An observation timeout does not cancel work or grant permission

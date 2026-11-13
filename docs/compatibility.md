@@ -1,6 +1,6 @@
 # API and release compatibility
 
-The published package is `@firtoz/jetski@0.2.1`. Its embedded `runSandbox()` and
+The published package is `@firtoz/jetski@0.3.0`. Its embedded `runSandbox()` and
 `openJetski()` helpers, service facade, files and checkpoints support the first
 examples. This checkout also contains pending minor-release APIs: command handles,
 shared terminal helpers, preview wrappers, intent discovery, resolved diagnostics,

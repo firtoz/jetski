@@ -2,7 +2,7 @@
 
 The same one-command Boat example with remote checkpoint objects.
 Requires Node 24.22.1+, an existing Boat account and a digest-approved image.
-Uses the prebuilt `@firtoz/jetski@0.2.1` package; no separate service, root build or
+Uses the prebuilt `@firtoz/jetski@0.3.0` package; no separate service, root build or
 local container runtime is required. Allocated hosts can incur charges.
 
 Use an existing private bucket and scoped credentials. From this folder:
