@@ -68,8 +68,7 @@ in `.jetski/` on the machine running this script. Keep that directory private.
 [Complete Boat example](examples/02-hello-world-boat/) ·
 [Try boxd instead](examples/06-boxd/) ·
 [Connect to an existing service](examples/01-hello-world/).
-The first example uses the published API; [compatibility](docs/compatibility.md)
-identifies additions awaiting release.
+[Compatibility](docs/compatibility.md) covers API layers and upgrading from earlier versions.
 
 ## Build on it
 

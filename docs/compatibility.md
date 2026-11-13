@@ -1,12 +1,11 @@
 # API and release compatibility
 
-The published package is `@firtoz/jetski@0.3.0`. Its embedded `runSandbox()` and
-`openJetski()` helpers, service facade, files and checkpoints support the first
-examples. This checkout also contains pending minor-release APIs: command handles,
-shared terminal helpers, preview wrappers, intent discovery, resolved diagnostics,
-neutral provider factories and the dedicated-machine seam. Use their packed
-artifact for source review or wait for the normal release before installing those
-APIs from npm. [Release notes](../CHANGELOG.md) identify published behavior.
+Version `@firtoz/jetski@0.3.0` includes the embedded controller and service facade,
+reconnectable command handles, shared terminal helpers, authenticated previews,
+intent discovery, resolved diagnostics, neutral provider factories and the
+host-only machine lifecycle seam. All numbered examples use this release.
+[Release notes](../CHANGELOG.md) describe changes from earlier versions; use the
+matching documentation when pinning an older package.
 
 ## Import the layer you use
 

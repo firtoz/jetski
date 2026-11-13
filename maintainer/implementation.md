@@ -21,5 +21,5 @@ in [task guides](../docs/README.md).
 Local verification covers build, typecheck, tests, lint, release/version checks and
 fresh installed consumer fixtures. [Qualification](qualification.md) distinguishes
 these from native CI and hosted evidence. Do not repeat unchanged hosted matrices
-or expand support claims from local mocks. The current source additions await the
-normal minor release; see [compatibility](../docs/compatibility.md).
+or expand support claims from local mocks. Version 0.3.0 includes the controller/SDK
+and composition helpers; see [compatibility](../docs/compatibility.md).

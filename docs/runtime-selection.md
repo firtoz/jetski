@@ -25,7 +25,7 @@ runtimeSelection: {
 }
 ```
 
-This factory requires the [pending API release](compatibility.md). The operator
+This factory is included in version 0.3.0; see [compatibility](compatibility.md). The operator
 must independently qualify the exact image/runtime/network combination before
 using `qualified`. An intentional gVisor exclusion uses `excluded`; missing or
 failed qualification is unknown, not exclusion. Fixed `runtime` and selection

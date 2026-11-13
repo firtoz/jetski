@@ -1,8 +1,8 @@
 # Embedded platform contracts
 
 Use `/node` for a Node controller and `/sdk` for a service client. A platform
-embedding `/core` does not need an HTTP service. The additive composition exports
-below are unreleased until the next normal package release.
+embedding `/core` does not need an HTTP service. The composition exports below
+are included in version 0.3.0; see [compatibility](compatibility.md) for older packages.
 
 ## Reusable composition
 

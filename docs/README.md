@@ -20,8 +20,8 @@ execution hosts; you own the controller and its metadata.
 | Deploy or upgrade a shared controller     | [Standalone service](standalone.md), [operations/backups](operations.md), [upgrades](releases.md)                       |
 | Embed Jetski into your own platform       | [Composition and scheduling](embedded-platforms.md), [runtime selection](runtime-selection.md), [OpenAPI](openapi.json) |
 
-[Compatibility](compatibility.md) distinguishes the published package from
-source additions awaiting release. Each guide describes the relevant operating
+[Compatibility](compatibility.md) describes API layers and version differences.
+Each guide describes the relevant operating
 limits; a supported configuration is not a guarantee for every workload or host.
 
 Working on Jetski itself? [Maintainer documentation](../maintainer/README.md)
